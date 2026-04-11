@@ -22,7 +22,7 @@ NETATMO_AUTH_URL = "https://api.netatmo.com/oauth2/authorize"
 NETATMO_TOKEN_URL = "https://api.netatmo.com/oauth2/token"
 NETATMO_BASE = "https://api.netatmo.com/api"
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "config.json")
 
 
 class NetatmoClient(ThermostatProvider):

@@ -26,7 +26,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "data", "config.json")
 KWH_PER_SMC = 10.691
 
 # COP Samsung AJ040TXJ2KG/EU — ancorato a 4.47@+7°C (EN14511 certificato)

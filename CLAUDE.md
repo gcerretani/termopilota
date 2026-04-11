@@ -4,7 +4,7 @@
 
 - **Backend**: Flask (Python 3.12), gunicorn in produzione
 - **Frontend**: Bootstrap 5.3.2, Chart.js 4.4.2, vanilla JS (no bundler)
-- **Database**: SQLite per utenti (`data/users.db`), JSON per configurazione (`config.json`)
+- **Database**: SQLite per utenti (`data/users.db`), JSON per configurazione (`data/config.json`)
 - **Auth**: Flask-Login con sessioni, admin iniziale da variabili d'ambiente
 
 ## Comandi
@@ -40,13 +40,13 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 ## Convenzioni
 
 - **Lingua**: UI e commenti in italiano, identificatori codice in italiano (snake_case)
-- **Config**: `config.json` e' gitignored, contiene credenziali. `config.example.json` e' il template
+- **Config**: `data/config.json` e' gitignored (tramite `data/`), contiene credenziali. `config.example.json` e' il template
 - **Provider pattern**: per aggiungere un nuovo tipo di termostato/pompa di calore, creare un modulo in `providers/` che implementi l'ABC e si registri nel registry
 - **COP_TABELLA**: duplicata in `app.py` e `automazione.py` — aggiornare entrambi se cambia
 
 ## File sensibili (mai committare)
 
-- `config.json` — contiene token OAuth, client secret, PAT SmartThings
+- `data/config.json` — contiene token OAuth, client secret, PAT SmartThings
 - `data/users.db` — hash password utenti
 - `*.log`
 

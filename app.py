@@ -43,7 +43,7 @@ COP_TABELLA = [
     (15, 5.15), (20, 5.40),
 ]
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "data", "config.json")
 DEFAULT_CONFIG = {
     "gas_fisso_smc": 0.38,
     "gas_totale_smc_manuale": 0.95,
