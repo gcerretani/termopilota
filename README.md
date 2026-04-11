@@ -45,7 +45,7 @@ L'app e' disponibile su http://localhost:5001
 ## Deploy con Docker
 
 ```bash
-# Build e avvio
+# Avvio da immagine pubblicata
 ADMIN_PASSWORD=la_tua_password docker compose up -d
 
 # Oppure con variabili personalizzate
