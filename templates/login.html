@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — Riscaldamento</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: #1a1a2e;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    .login-card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 2.5rem 2rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,.3);
+      width: 100%;
+      max-width: 400px;
+    }
+    .login-title {
+      font-weight: 800;
+      font-size: 1.5rem;
+      color: #1a1a2e;
+      margin-bottom: .3rem;
+    }
+    .login-subtitle {
+      font-size: .85rem;
+      color: #888;
+      margin-bottom: 1.8rem;
+    }
+    .form-label { font-weight: 600; font-size: .88rem; color: #555; }
+    .btn-login {
+      background: linear-gradient(135deg, #2f80ed, #1a6bc8);
+      border: none;
+      font-weight: 700;
+      padding: .7rem;
+      font-size: 1rem;
+    }
+    .btn-login:hover { background: linear-gradient(135deg, #1a6bc8, #155ab0); }
+  </style>
+</head>
+<body>
+
+<div class="login-card">
+  <div class="text-center">
+    <i class="bi bi-house-heart-fill" style="font-size: 2.5rem; color: #e07b39;"></i>
+    <div class="login-title">Riscaldamento</div>
+    <div class="login-subtitle">Controllo intelligente del riscaldamento</div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  {% for category, message in messages %}
+  <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show py-2" style="font-size:.88rem;">
+    {{ message }}
+    <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% endwith %}
+
+  <form method="POST" action="/login">
+    <div class="mb-3">
+      <label class="form-label" for="username">Utente</label>
+      <input type="text" class="form-control" id="username" name="username" required autofocus>
+    </div>
+    <div class="mb-3">
+      <label class="form-label" for="password">Password</label>
+      <input type="password" class="form-control" id="password" name="password" required>
+    </div>
+    <button type="submit" class="btn btn-login text-white w-100">Accedi</button>
+  </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

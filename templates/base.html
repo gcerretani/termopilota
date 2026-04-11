@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TermoPilota{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  {% block head_extra %}{% endblock %}
+  <style>
+    :root {
+      --gas-color: #e07b39;
+      --ac-color:  #2f80ed;
+      --green:     #27ae60;
+    }
+    body { background: #f5f7fa; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .navbar-brand { font-weight: 700; letter-spacing: -0.3px; }
+
+    .hero-card {
+      border-radius: 20px; padding: 2.2rem 2rem; color: #fff;
+      box-shadow: 0 8px 32px rgba(0,0,0,.15); position: relative; overflow: hidden;
+    }
+    .hero-card.gas  { background: linear-gradient(135deg, #e07b39, #c0392b); }
+    .hero-card.ac   { background: linear-gradient(135deg, #2f80ed, #1a6bc8); }
+    .hero-card .hero-icon { font-size: 4rem; opacity: .85; }
+    .hero-card .hero-title { font-size: 1.1rem; font-weight: 600; opacity: .9; margin-bottom: .2rem; }
+    .hero-card .hero-device { font-size: 2rem; font-weight: 800; line-height: 1.1; }
+    .hero-card .hero-reason { font-size: .9rem; opacity: .85; margin-top: .5rem; }
+    .hero-card .hero-temp { font-size: 1.4rem; font-weight: 700; opacity: .9; }
+    .hero-bg-circle {
+      position: absolute; right: -40px; top: -40px; width: 200px; height: 200px;
+      border-radius: 50%; background: rgba(255,255,255,.08);
+    }
+
+    .stat-card {
+      background: #fff; border-radius: 14px; padding: 1.2rem 1.4rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,.07); height: 100%;
+    }
+    .stat-card .stat-label { font-size: .78rem; color: #888; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
+    .stat-card .stat-value { font-size: 1.65rem; font-weight: 800; line-height: 1.1; margin-top: .2rem; }
+    .stat-card .stat-sub   { font-size: .8rem; color: #aaa; margin-top: .15rem; }
+    .stat-gas  { border-left: 4px solid var(--gas-color); }
+    .stat-ac   { border-left: 4px solid var(--ac-color); }
+    .stat-vs   { border-left: 4px solid var(--green); }
+
+    .rec-table { border-radius: 14px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+    .rec-table th { background: #343a40; color: #fff; font-size: .8rem; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+    .rec-table td { font-size: .88rem; vertical-align: middle; white-space: nowrap; }
+    .badge-gas { background-color: var(--gas-color); }
+    .badge-ac  { background-color: var(--ac-color); }
+    tr.evidenziata { background-color: #fffbf0 !important; font-weight: 600; }
+    tr.evidenziata td { border-left: 3px solid #e07b39; }
+
+    .chart-card { background: #fff; border-radius: 14px; padding: 1.5rem; box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+    .settings-card { background: #fff; border-radius: 14px; padding: 1.5rem; box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+    .form-label { font-weight: 600; font-size: .88rem; color: #555; }
+    .nav-pills .nav-link { font-size: .85rem; font-weight: 600; padding: .35rem 1rem; }
+    .nav-pills .nav-link.active { background: #343a40; }
+
+    .alert-prezzi {
+      background: #fff8e1; border: 1px solid #ffe082; border-radius: 10px;
+      font-size: .85rem; color: #7a5c00;
+    }
+
+    .auto-card { background: #fff; border-radius: 14px; padding: 1.5rem; box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+    .zona-card {
+      border-radius: 12px; padding: 1rem 1.2rem; border: 2px solid #e9ecef;
+      transition: border-color .2s;
+    }
+    .zona-card.gas  { border-color: var(--gas-color); background: #fff8f5; }
+    .zona-card.ac   { border-color: var(--ac-color);  background: #f5f9ff; }
+    .zona-card.off  { border-color: #ccc; background: #f9f9f9; }
+    .log-item { font-size: .82rem; padding: .3rem 0; border-bottom: 1px solid #f0f0f0; }
+    .log-item:last-child { border-bottom: none; }
+    .form-switch .form-check-input { width: 2.5em; height: 1.4em; cursor: pointer; }
+
+    {% block extra_css %}{% endblock %}
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark" style="background:#1a1a2e;">
+  <div class="container-lg d-flex justify-content-between align-items-center">
+    <div class="d-flex align-items-center gap-3">
+      <a class="navbar-brand mb-0" href="/">
+        <i class="bi bi-house-heart-fill me-2" style="color:#e07b39;"></i>
+        Riscaldamento
+      </a>
+      <a href="/" class="text-decoration-none small {% if request.endpoint == 'index' %}text-white{% else %}text-muted{% endif %}">
+        <i class="bi bi-speedometer2 me-1"></i>Dashboard
+      </a>
+      {% if current_user.is_admin %}
+      <a href="/admin/" class="text-decoration-none small {% if request.endpoint and request.endpoint.startswith('admin.') %}text-white{% else %}text-muted{% endif %}">
+        <i class="bi bi-gear me-1"></i>Admin
+      </a>
+      {% endif %}
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <span class="text-muted small">
+        <i class="bi bi-person me-1"></i>{{ current_user.username }}
+      </span>
+      <a href="/logout" class="text-muted small text-decoration-none"><i class="bi bi-box-arrow-right"></i></a>
+    </div>
+  </div>
+</nav>
+
+{% block content %}{% endblock %}
+
+<!-- Footer -->
+<footer class="bg-dark text-muted py-3 mt-2">
+  <div class="container-lg d-flex justify-content-between align-items-center" style="font-size:.8rem;">
+    <span><i class="bi bi-thermometer-half me-1"></i>TermoPilota</span>
+    <span>Meteo: <a href="https://open-meteo.com" class="text-muted" target="_blank">Open-Meteo</a></span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

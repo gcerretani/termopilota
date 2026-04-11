@@ -1,0 +1,12 @@
+services:
+  termopilota:
+    build: .
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?Impostare ADMIN_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY:-}
+    restart: unless-stopped

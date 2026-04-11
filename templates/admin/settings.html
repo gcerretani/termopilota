@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Impostazioni{% endblock %}
+
+{% block content %}
+<div class="container-lg py-4">
+
+  <div class="d-flex align-items-center gap-2 mb-4">
+    <h5 class="fw-bold mb-0"><i class="bi bi-gear me-2 text-secondary"></i>Impostazioni</h5>
+  </div>
+
+  <!-- Nav tabs admin -->
+  <ul class="nav nav-tabs mb-4">
+    <li class="nav-item"><a class="nav-link active" href="/admin/">Prezzi e impianto</a></li>
+    <li class="nav-item"><a class="nav-link" href="/admin/credentials">Credenziali API</a></li>
+    <li class="nav-item"><a class="nav-link" href="/admin/zones">Zone</a></li>
+    <li class="nav-item"><a class="nav-link" href="/admin/users">Utenti</a></li>
+  </ul>
+
+  <div class="settings-card mb-4">
+    <div id="msgImpostazioni"></div>
+
+    <!-- Gas -->
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">⛽ Gas (Edison World Gas Plus)</p>
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Componente fissa gas (€/Smc)</label>
+        <input type="number" step="0.001" class="form-control" id="gasFisso" value="{{ cfg.gas_fisso_smc }}">
+        <div class="form-text">Distribuzione + oneri + accisa + IVA — cambia ogni trimestre.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Prezzo manuale gas (€/Smc)</label>
+        <input type="number" step="0.001" class="form-control" id="gasManualeTotal" value="{{ cfg.gas_totale_smc_manuale }}">
+        <div class="form-text">Usato solo se TTF non disponibile.</div>
+      </div>
+    </div>
+
+    <!-- Luce -->
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">⚡ Luce (Edison World Luce)</p>
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Componente fissa luce (€/kWh)</label>
+        <input type="number" step="0.001" class="form-control" id="luceFissa" value="{{ cfg.luce_fisso_kwh }}">
+        <div class="form-text">Distribuzione + oneri + accisa + IVA — cambia ogni trimestre.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Prezzo manuale luce (€/kWh)</label>
+        <input type="number" step="0.001" class="form-control" id="luceManualeTotal" value="{{ cfg.luce_totale_kwh_manuale }}">
+        <div class="form-text">Usato se non hai la chiave ENTSO-E.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Chiave API ENTSO-E (opzionale)</label>
+        <input type="text" class="form-control font-monospace" id="entsoeToken" value="{{ cfg.entsoe_token }}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+        <div class="form-text">
+          PUN automatico. Registrazione gratuita →
+          <a href="https://transparency.entsoe.eu/usrm/user/createPublicUser" target="_blank">transparency.entsoe.eu</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Impianto -->
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">Impianto</p>
+    <div class="row g-3 mb-3">
+      <div class="col-md-3">
+        <label class="form-label">Efficienza caldaia</label>
+        <input type="number" step="0.01" class="form-control" id="efficienzaCaldaia" value="{{ cfg.efficienza_caldaia }}">
+        <div class="form-text">Es. 0.99 per condensazione con pavimento radiante a 30°C</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">T. min. condizionatore (°C)</label>
+        <input type="number" step="1" class="form-control" id="tempMinAC" value="{{ cfg.temperatura_minima_ac }}">
+        <div class="form-text">Sotto questa temp. il condizionatore non è consigliato</div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Note bolletta (opzionale)</label>
+        <input type="text" class="form-control" id="noteBolletta" value="{{ cfg.note_bolletta }}" placeholder="es. bolletta marzo 2026 — scadenza aprile">
+      </div>
+    </div>
+
+    <!-- Posizione e stazione meteo -->
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">📍 Posizione e stazione meteo</p>
+    <div class="row g-3 mb-3">
+      <div class="col-md-3">
+        <label class="form-label">Latitudine</label>
+        <input type="number" step="0.0001" class="form-control" id="lat" value="{{ cfg.lat }}">
+        <div class="form-text">Coordinate per le previsioni meteo</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Longitudine</label>
+        <input type="number" step="0.0001" class="form-control" id="lon" value="{{ cfg.lon }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">ID stazione CFR Toscana</label>
+        <input type="text" class="form-control font-monospace" id="cfrStationId" value="{{ cfg.cfr_station_id }}" placeholder="es. TOS01002661">
+        <div class="form-text">Temperatura esterna in tempo reale. <a href="https://cfr.toscana.it/monitoraggio/index.php" target="_blank">Cerca stazioni</a></div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Nome stazione CFR</label>
+        <input type="text" class="form-control" id="cfrStationName" value="{{ cfg.cfr_station_name }}" placeholder="es. Poggio al Vento">
+      </div>
+    </div>
+
+    <!-- Automazione -->
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">Automazione</p>
+    <div class="row g-3 mb-3">
+      <div class="col-md-3">
+        <label class="form-label">Intervallo controllo (minuti)</label>
+        <input type="number" step="1" class="form-control" id="intervallo" value="{{ cfg.intervallo_controllo_minuti }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Soglia risparmio minimo (€/kWh)</label>
+        <input type="number" step="0.001" class="form-control" id="soglia" value="{{ cfg.soglia_delta_risparmio }}">
+        <div class="form-text">L'AC si attiva solo se il risparmio supera questa soglia</div>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <button class="btn btn-dark px-4" onclick="salvaImpostazioni()">
+        <i class="bi bi-save me-2"></i>Salva e ricalcola
+      </button>
+      <small class="text-muted ms-3">Ultima modifica componenti fisse: <strong>{{ cfg.ultima_modifica_fissi }}</strong></small>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function salvaImpostazioni() {
+  const payload = {
+    gas_fisso_smc:              parseFloat(document.getElementById('gasFisso').value),
+    gas_totale_smc_manuale:     parseFloat(document.getElementById('gasManualeTotal').value),
+    luce_fisso_kwh:             parseFloat(document.getElementById('luceFissa').value),
+    luce_totale_kwh_manuale:    parseFloat(document.getElementById('luceManualeTotal').value),
+    entsoe_token:               document.getElementById('entsoeToken').value.trim(),
+    efficienza_caldaia:         parseFloat(document.getElementById('efficienzaCaldaia').value),
+    temperatura_minima_ac:      parseInt(document.getElementById('tempMinAC').value),
+    note_bolletta:              document.getElementById('noteBolletta').value,
+    intervallo_controllo_minuti: parseFloat(document.getElementById('intervallo').value),
+    soglia_delta_risparmio:     parseFloat(document.getElementById('soglia').value),
+    lat:                        parseFloat(document.getElementById('lat').value),
+    lon:                        parseFloat(document.getElementById('lon').value),
+    cfr_station_id:             document.getElementById('cfrStationId').value.trim(),
+    cfr_station_name:           document.getElementById('cfrStationName').value.trim(),
+  };
+
+  if (isNaN(payload.gas_fisso_smc) || isNaN(payload.luce_fisso_kwh)) {
+    mostraMsg('danger', 'Valori non validi per le componenti fisse.');
+    return;
+  }
+
+  const btn = document.querySelector('button[onclick="salvaImpostazioni()"]');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Salvataggio...';
+
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    mostraMsg('success', '✅ ' + data.messaggio);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-save me-2"></i>Salva e ricalcola';
+  } catch(e) {
+    mostraMsg('danger', 'Errore di rete: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-save me-2"></i>Salva e ricalcola';
+  }
+}
+
+function mostraMsg(tipo, testo) {
+  const el = document.getElementById('msgImpostazioni');
+  el.innerHTML = `<div class="alert alert-${tipo} py-2 mb-3 small">${testo}</div>`;
+  setTimeout(() => el.innerHTML = '', 5000);
+}
+</script>
+{% endblock %}

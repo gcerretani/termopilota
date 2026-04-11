@@ -1,0 +1,35 @@
+{
+  "_nota_gas": "gas_fisso_smc = tutto tranne PSV: distribuzione + oneri + accisa + IVA. Aggiorna ogni trimestre dalla bolletta.",
+  "_nota_luce": "luce_fisso_kwh = tutto tranne PUN: distribuzione + oneri + accisa + IVA. Aggiorna ogni trimestre.",
+  "_nota_entsoe": "Chiave API gratuita per PUN automatico. Registrazione: https://transparency.entsoe.eu/usrm/user/createPublicUser",
+  "_nota_automazione": "Per abilitare: inserire credenziali Netatmo e SmartThings, configurare le zone, poi impostare automazione_attiva=true.",
+  "gas_fisso_smc": 0.66,
+  "gas_totale_smc_manuale": 1.09,
+  "luce_fisso_kwh": 0.117,
+  "luce_totale_kwh_manuale": 0.246,
+  "entsoe_token": "",
+  "temperatura_minima_ac": -10,
+  "setpoint_interno": 21,
+  "efficienza_caldaia": 0.99,
+  "ultima_modifica_fissi": "2026-01-01",
+  "note_bolletta": "",
+  "automazione_attiva": false,
+  "intervallo_controllo_minuti": 15,
+  "soglia_delta_risparmio": 0.01,
+  "smartthings_token": "",
+  "legrand_client_id": "",
+  "legrand_client_secret": "",
+  "legrand_plant_id": "",
+  "legrand_token": {},
+  "cfr_station_id": "",
+  "cfr_station_name": "",
+  "lat": 0.0,
+  "lon": 0.0,
+  "zone": [
+    {
+      "nome": "Zona 1",
+      "room_id": "",
+      "ac_device_id": ""
+    }
+  ]
+}

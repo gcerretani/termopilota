@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TermoPilota</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --gas-color: #e07b39;
+      --ac-color:  #2f80ed;
+      --green:     #27ae60;
+    }
+    body { background: #f5f7fa; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .navbar-brand { font-weight: 700; letter-spacing: -0.3px; }
+
+    /* Hero raccomandazione */
+    .hero-card {
+      border-radius: 20px;
+      padding: 2.2rem 2rem;
+      color: #fff;
+      box-shadow: 0 8px 32px rgba(0,0,0,.15);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-card.gas  { background: linear-gradient(135deg, #e07b39, #c0392b); }
+    .hero-card.ac   { background: linear-gradient(135deg, #2f80ed, #1a6bc8); }
+    .hero-card .hero-icon { font-size: 4rem; opacity: .85; }
+    .hero-card .hero-title { font-size: 1.1rem; font-weight: 600; opacity: .9; margin-bottom: .2rem; }
+    .hero-card .hero-device { font-size: 2rem; font-weight: 800; line-height: 1.1; }
+    .hero-card .hero-reason { font-size: .9rem; opacity: .85; margin-top: .5rem; }
+    .hero-card .hero-temp { font-size: 1.4rem; font-weight: 700; opacity: .9; }
+    .hero-bg-circle {
+      position: absolute; right: -40px; top: -40px;
+      width: 200px; height: 200px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.08);
+    }
+
+    /* Schede statistiche */
+    .stat-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 1.2rem 1.4rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,.07);
+      height: 100%;
+    }
+    .stat-card .stat-label { font-size: .78rem; color: #888; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
+    .stat-card .stat-value { font-size: 1.65rem; font-weight: 800; line-height: 1.1; margin-top: .2rem; }
+    .stat-card .stat-sub   { font-size: .8rem; color: #aaa; margin-top: .15rem; }
+    .stat-gas  { border-left: 4px solid var(--gas-color); }
+    .stat-ac   { border-left: 4px solid var(--ac-color); }
+    .stat-vs   { border-left: 4px solid var(--green); }
+
+    /* Tabella oraria */
+    .rec-table { border-radius: 14px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+    .rec-table th { background: #343a40; color: #fff; font-size: .8rem; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+    .rec-table td { font-size: .88rem; vertical-align: middle; white-space: nowrap; }
+    .badge-gas { background-color: var(--gas-color); }
+    .badge-ac  { background-color: var(--ac-color); }
+    tr.evidenziata { background-color: #fffbf0 !important; font-weight: 600; }
+    tr.evidenziata td { border-left: 3px solid #e07b39; }
+
+    /* Grafico */
+    .chart-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    }
+
+    /* Impostazioni */
+    .settings-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    }
+    .form-label { font-weight: 600; font-size: .88rem; color: #555; }
+
+    /* Tab giorni */
+    .nav-pills .nav-link { font-size: .85rem; font-weight: 600; padding: .35rem 1rem; }
+    .nav-pills .nav-link.active { background: #343a40; }
+
+    .alert-prezzi {
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 10px;
+      font-size: .85rem;
+      color: #7a5c00;
+    }
+
+    /* Automazione */
+    .auto-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,.07);
+    }
+    .zona-card {
+      border-radius: 12px;
+      padding: 1rem 1.2rem;
+      border: 2px solid #e9ecef;
+      transition: border-color .2s;
+    }
+    .zona-card.gas  { border-color: var(--gas-color); background: #fff8f5; }
+    .zona-card.ac   { border-color: var(--ac-color);  background: #f5f9ff; }
+    .zona-card.off  { border-color: #ccc; background: #f9f9f9; }
+    .log-item { font-size: .82rem; padding: .3rem 0; border-bottom: 1px solid #f0f0f0; }
+    .log-item:last-child { border-bottom: none; }
+    .form-switch .form-check-input { width: 2.5em; height: 1.4em; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark" style="background:#1a1a2e;">
+  <div class="container-lg">
+    <span class="navbar-brand">
+      <i class="bi bi-house-heart-fill me-2" style="color:#e07b39;"></i>
+      TermoPilota
+    </span>
+    <span class="text-muted small">
+      <i class="bi bi-clock me-1"></i>Aggiornato: {{ ora_aggiornamento }}
+    </span>
+  </div>
+</nav>
+
+<div class="container-lg py-4">
+
+  {% if errore_meteo %}
+  <div class="alert alert-danger rounded-3 mb-4">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <strong>Errore previsioni meteo:</strong> {{ errore_meteo }} — Controlla la connessione internet.
+  </div>
+  {% endif %}
+  {% if errore_cfr %}
+  <div class="alert alert-warning rounded-3 mb-4">
+    <i class="bi bi-wifi-off me-2"></i>
+    <strong>Stazione CFR non raggiunta</strong> — uso temperatura da previsione. ({{ errore_cfr }})
+  </div>
+  {% endif %}
+
+  <!-- ── Banner prezzi automatici ─────────────────────────────────────────── -->
+  <div class="d-flex flex-wrap gap-2 mb-4">
+    <!-- Gas TTF -->
+    <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3"
+         style="background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.08);font-size:.85rem;">
+      <i class="bi bi-fire" style="color:var(--gas-color);"></i>
+      <span class="text-muted">Gas commodity:</span>
+      {% if prezzi.gas_fonte == 'ttf_auto' %}
+        <strong style="color:var(--gas-color);">TTF {{ prezzi.ttf_eur_mwh }} €/MWh</strong>
+        <span class="badge bg-success" style="font-size:.7rem;">auto</span>
+        <span class="text-muted">(= {{ prezzi.gas_commodity_smc }} €/Smc)</span>
+      {% else %}
+        <strong style="color:#aaa;">manuale</strong>
+        <a href="#impostazioni" class="text-muted" style="font-size:.75rem;">configura →</a>
+      {% endif %}
+    </div>
+    <!-- Luce PUN -->
+    <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3"
+         style="background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.08);font-size:.85rem;">
+      <i class="bi bi-lightning-charge" style="color:var(--ac-color);"></i>
+      <span class="text-muted">Luce commodity:</span>
+      {% if prezzi.luce_fonte == 'entsoe_auto' %}
+        <strong style="color:var(--ac-color);">PUN {{ prezzi.pun_eur_mwh }} €/MWh</strong>
+        <span class="badge bg-success" style="font-size:.7rem;">auto</span>
+        <span class="text-muted">(= {{ prezzi.luce_commodity_kwh }} €/kWh)</span>
+      {% else %}
+        <strong style="color:#aaa;">manuale</strong>
+        <a href="#impostazioni" style="font-size:.75rem;color:var(--ac-color);">configura chiave ENTSO-E →</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if attuale %}
+  <!-- ── Hero raccomandazione ora ─────────────────────────────────────────── -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-7">
+      <div class="hero-card {{ attuale.raccomandazione }} h-100">
+        <div class="hero-bg-circle"></div>
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="hero-title">Consiglio per adesso</div>
+            <div class="hero-device">
+              {% if attuale.raccomandazione == 'gas' %}
+                🔥 Usa la Caldaia
+              {% else %}
+                ❄️ Usa il Condizionatore
+              {% endif %}
+            </div>
+            <div class="hero-reason">{{ attuale.motivo }}</div>
+          </div>
+          <div class="text-end">
+            <div class="hero-temp">{{ attuale.temp_esterna }}°C</div>
+            {% if cfr_info %}
+            <div style="font-size:.78rem;opacity:.85;background:rgba(255,255,255,.2);border-radius:6px;padding:2px 7px;display:inline-block;margin-top:2px;">
+              📡 CFR {{ cfr_info.ora }}
+            </div>
+            {% endif %}
+            <div style="font-size:.85rem;opacity:.8;margin-top:4px;">{{ attuale.meteo_icon }} {{ attuale.meteo_desc }}</div>
+            {% if attuale.pioggia_prob > 20 %}
+            <div style="font-size:.8rem;opacity:.7;">🌧 pioggia {{ attuale.pioggia_prob }}%</div>
+            {% endif %}
+          </div>
+        </div>
+        {% if attuale.raccomandazione == 'gas' %}
+        <div class="mt-3 d-flex gap-3" style="font-size:.82rem;opacity:.85;">
+          <span><i class="bi bi-fire me-1"></i>Caldaia: <strong>{{ "%.3f"|format(attuale.costo_gas_kwh) }} €/kWh<sub>th</sub></strong></span>
+          <span><i class="bi bi-snow me-1"></i>AC: <strong>{{ "%.3f"|format(attuale.costo_ac_kwh) }} €/kWh<sub>th</sub></strong></span>
+          <span><i class="bi bi-thermometer me-1"></i>COP AC: <strong>{{ attuale.cop }}</strong></span>
+        </div>
+        {% else %}
+        <div class="mt-3 d-flex gap-3" style="font-size:.82rem;opacity:.85;">
+          <span><i class="bi bi-snow me-1"></i>AC: <strong>{{ "%.3f"|format(attuale.costo_ac_kwh) }} €/kWh<sub>th</sub></strong></span>
+          <span><i class="bi bi-fire me-1"></i>Caldaia: <strong>{{ "%.3f"|format(attuale.costo_gas_kwh) }} €/kWh<sub>th</sub></strong></span>
+          <span><i class="bi bi-thermometer me-1"></i>COP AC: <strong>{{ attuale.cop }}</strong></span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Schede statistiche -->
+    <div class="col-md-5">
+      <div class="row g-3 h-100">
+        <div class="col-6">
+          <div class="stat-card stat-gas h-100">
+            <div class="stat-label"><i class="bi bi-fire me-1" style="color:var(--gas-color);"></i>Caldaia gas</div>
+            <div class="stat-value" style="color:var(--gas-color);">{{ "%.3f"|format(attuale.costo_gas_kwh) }}</div>
+            <div class="stat-sub">€/kWh termico</div>
+            <div class="stat-sub mt-2">{{ prezzi.gas_totale_smc }} €/Smc totale</div>
+            {% if prezzi.gas_fonte == 'ttf_auto' %}
+            <div class="stat-sub"><span class="badge bg-success" style="font-size:.65rem;">TTF auto</span> + {{ prezzi.gas_fisso_smc }} €/Smc fissi</div>
+            {% else %}
+            <div class="stat-sub"><span class="badge bg-secondary" style="font-size:.65rem;">manuale</span></div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="stat-card stat-ac h-100">
+            <div class="stat-label"><i class="bi bi-snow me-1" style="color:var(--ac-color);"></i>Condizionatore</div>
+            <div class="stat-value" style="color:var(--ac-color);">{{ "%.3f"|format(attuale.costo_ac_kwh) }}</div>
+            <div class="stat-sub">€/kWh termico</div>
+            <div class="stat-sub mt-2">{{ prezzi.luce_totale_kwh }} €/kWh ÷ COP {{ attuale.cop }}</div>
+            {% if prezzi.luce_fonte == 'entsoe_auto' %}
+            <div class="stat-sub"><span class="badge bg-success" style="font-size:.65rem;">PUN auto</span> + {{ prezzi.luce_fisso_kwh }} €/kWh fissi</div>
+            {% else %}
+            <div class="stat-sub"><span class="badge bg-secondary" style="font-size:.65rem;">manuale</span></div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="stat-card stat-vs h-100">
+            <div class="stat-label"><i class="bi bi-calendar-day me-1" style="color:var(--green);"></i>Oggi</div>
+            <div class="stat-value" style="color:var(--green);">{{ ore_gas_oggi }}h / {{ ore_ac_oggi }}h</div>
+            <div class="stat-sub">caldaia / condizionatore</div>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="stat-card h-100" style="border-left:4px solid #9b59b6;">
+            <div class="stat-label"><i class="bi bi-lightning-charge me-1" style="color:#9b59b6;"></i>Prezzi totali</div>
+            <div class="stat-value" style="color:#9b59b6;font-size:1.1rem;">
+              ⛽ {{ prezzi.gas_totale_smc }}€/Smc<br>
+              ⚡ {{ prezzi.luce_totale_kwh }}€/kWh
+            </div>
+            <div class="stat-sub">Edison World (commodity + fissi)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Grafico 48h ───────────────────────────────────────────────────────── -->
+  <div class="chart-card mb-4">
+    <h6 class="fw-bold mb-3"><i class="bi bi-graph-up me-2 text-primary"></i>Confronto costo energetico prossime 48 ore</h6>
+    <div style="height: 260px;">
+      <canvas id="graficoComparazione"></canvas>
+    </div>
+    <div class="mt-2 d-flex gap-4 justify-content-center" style="font-size:.78rem;color:#888;">
+      <span><span style="background:var(--gas-color);display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:4px;"></span>Caldaia (€/kWh termico)</span>
+      <span><span style="background:var(--ac-color);display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:4px;"></span>Condizionatore (€/kWh termico)</span>
+      <span><span style="background:#bbb;display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:4px;"></span>Temperatura esterna (°C)</span>
+    </div>
+  </div>
+
+  <!-- ── Tabella oraria ───────────────────────────────────────────────────── -->
+  <div class="mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h6 class="fw-bold mb-0"><i class="bi bi-table me-2 text-secondary"></i>Dettaglio orario</h6>
+      <ul class="nav nav-pills" id="tabGiorni">
+        <li class="nav-item">
+          <a class="nav-link active" href="#" data-giorno="oggi">Oggi</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#" data-giorno="domani">Domani</a>
+        </li>
+      </ul>
+    </div>
+    <div class="rec-table">
+      <table class="table table-sm table-hover mb-0 bg-white">
+        <thead>
+          <tr>
+            <th class="ps-3">Ora</th>
+            <th>Meteo</th>
+            <th>T. est.</th>
+            <th>COP AC</th>
+            <th>€/kWh caldaia</th>
+            <th>€/kWh AC</th>
+            <th>Consiglio</th>
+            <th class="pe-3">Risparmio</th>
+          </tr>
+        </thead>
+        <tbody id="tabellaOraria">
+          <!-- Popolato da JavaScript -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Spiegazione metodo ────────────────────────────────────────────────── -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="stat-card">
+        <h6 class="fw-bold mb-2"><i class="bi bi-question-circle me-2 text-muted"></i>Come funziona il calcolo</h6>
+        <p class="small text-muted mb-2">Il sistema confronta il <strong>costo per produrre 1 kWh di calore</strong> con le due fonti:</p>
+        <ul class="small text-muted mb-2">
+          <li><strong>Caldaia Vaillant condensazione:</strong><br>
+              costo = prezzo_gas / (10,691 kWh/Smc × efficienza 96%) = <strong>€/kWh<sub>th</sub></strong></li>
+          <li class="mt-1"><strong>Samsung inverter (pompa di calore):</strong><br>
+              costo = prezzo_luce / COP(T<sub>esterna</sub>) = <strong>€/kWh<sub>th</sub></strong><br>
+              Il COP varia con la temperatura: più fa freddo, meno è efficiente.</li>
+        </ul>
+        <p class="small text-muted mb-0">Vince chi ha il costo minore. In genere sopra ~5°C il condizionatore è più economico; sotto ~0°C dipende molto dai prezzi.</p>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="stat-card">
+        <h6 class="fw-bold mb-2"><i class="bi bi-lightning me-2 text-warning"></i>I tuoi impianti</h6>
+        <table class="table table-sm small mb-0">
+          <tbody>
+            <tr><td class="text-muted">Riscaldamento a pavimento</td><td><strong>Vaillant condensazione</strong></td></tr>
+            <tr><td class="text-muted">Termostati</td><td><strong>BTicino Smarther 2 ×4</strong><br><small class="text-muted">salotto, camera, camerina, studio</small></td></tr>
+            <tr><td class="text-muted">Condizionatori</td><td><strong>Samsung inverter ×2</strong><br><small class="text-muted">salotto + corridoio (camera/camerina/studio)</small></td></tr>
+            <tr><td class="text-muted">Fornitore</td><td><strong>Edison World Luce + World Gas Plus</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Automazione ──────────────────────────────────────────────────────── -->
+  <div class="auto-card mb-4" id="automazione">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h6 class="fw-bold mb-0"><i class="bi bi-robot me-2 text-primary"></i>Automazione riscaldamento</h6>
+      <div class="d-flex align-items-center gap-3">
+        <span id="autoStatusBadge" class="badge bg-secondary">caricamento...</span>
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" id="autoToggle" onchange="toggleAutomazione(this)">
+          <label class="form-check-label fw-semibold" for="autoToggle">Attiva</label>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-muted small mb-3">
+      Quando attiva, ogni <strong>{{ cfg.intervallo_controllo_minuti }} minuti</strong> controlla la temperatura esterna
+      e i prezzi energia: se il condizionatore è più economico spegne il termostato BTicino e accende il Samsung
+      corrispondente, e viceversa.
+    </p>
+
+    <!-- Stato zone -->
+    <div id="zoneStatus" class="row g-3 mb-3"></div>
+
+    <!-- Log eventi -->
+    <div id="logEventiWrap" style="display:none;">
+      <h6 class="fw-semibold mb-2 mt-3" style="font-size:.85rem;color:#555;text-transform:uppercase;letter-spacing:.4px;">
+        <i class="bi bi-journal-text me-1"></i>Ultimi eventi
+      </h6>
+      <div id="logEventi" style="max-height:200px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- Configurazione credenziali -->
+    <hr class="my-3">
+    <div class="row g-3">
+      <div class="col-12">
+        <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">
+          <i class="bi bi-key me-1"></i>Credenziali API
+        </p>
+      </div>
+      <div class="col-md-6">
+        <p class="small fw-semibold mb-1">🏠 BTicino Smarther (Netatmo)</p>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label" style="font-size:.8rem;">Client ID</label>
+            <input type="text" class="form-control form-control-sm font-monospace" id="legrandClientId" value="{{ cfg.legrand_client_id }}" placeholder="da dev.netatmo.com">
+          </div>
+          <div class="col-6">
+            <label class="form-label" style="font-size:.8rem;">Client Secret</label>
+            <input type="password" class="form-control form-control-sm font-monospace" id="legrandClientSecret" value="{{ cfg.legrand_client_secret }}">
+          </div>
+          <div class="col-12">
+            <div class="input-group input-group-sm mt-1">
+              <button class="btn btn-outline-secondary btn-sm" onclick="avviaOAuth()">
+                <i class="bi bi-box-arrow-up-right me-1"></i>Autorizza con Netatmo
+              </button>
+            </div>
+            <div class="form-text" style="font-size:.75rem;">
+              Crea app gratuita → <a href="https://dev.netatmo.com" target="_blank">dev.netatmo.com</a> · accedi con l'account Home+Control
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <p class="small fw-semibold mb-1">❄️ Samsung SmartThings</p>
+        <label class="form-label" style="font-size:.8rem;">Personal Access Token (PAT)</label>
+        <input type="password" class="form-control form-control-sm font-monospace" id="smartthingsToken" value="{{ cfg.smartthings_token }}" placeholder="da account.smartthings.com/tokens">
+        <div class="form-text" style="font-size:.75rem;">
+          Genera su → <a href="https://account.smartthings.com/tokens" target="_blank">account.smartthings.com/tokens</a>
+        </div>
+        <button class="btn btn-outline-primary btn-sm mt-2" onclick="scopriDispositivi()">
+          <i class="bi bi-search me-1"></i>Scopri dispositivi
+        </button>
+        <div id="dispositivi-trovati" class="mt-2"></div>
+      </div>
+    </div>
+
+    <!-- Zone / associazioni -->
+    <hr class="my-3">
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">
+      <i class="bi bi-diagram-3 me-1"></i>Associazioni zona → condizionatore
+    </p>
+    <div id="zoneEditor"></div>
+    <button class="btn btn-sm btn-outline-secondary mt-2" onclick="aggiungiZona()">
+      <i class="bi bi-plus-circle me-1"></i>Aggiungi zona
+    </button>
+
+    <div class="mt-3">
+      <button class="btn btn-dark px-4" onclick="salvaAutomazione()">
+        <i class="bi bi-save me-2"></i>Salva configurazione automazione
+      </button>
+    </div>
+    <div id="msgAutomazione" class="mt-2"></div>
+  </div>
+
+  <!-- ── Impostazioni ─────────────────────────────────────────────────────── -->
+  <div class="settings-card mb-5" id="impostazioni">
+    <h6 class="fw-bold mb-3"><i class="bi bi-gear me-2 text-secondary"></i>Configurazione prezzi</h6>
+    <div id="msgImpostazioni"></div>
+
+    <!-- Gas -->
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">⛽ Gas (Edison World Gas Plus)</p>
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Componente fissa gas (€/Smc)</label>
+        <input type="number" step="0.001" class="form-control" id="gasFisso" value="{{ cfg.gas_fisso_smc }}">
+        <div class="form-text">Distribuzione + oneri + accisa + IVA — cambia ogni trimestre. Dalla bolletta: <em>totale Smc − voce commodity/materia prima</em>. Default ~€0.38/Smc.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Prezzo manuale gas (€/Smc)</label>
+        <input type="number" step="0.001" class="form-control" id="gasManualeTotal" value="{{ cfg.gas_totale_smc_manuale }}">
+        <div class="form-text">Usato solo se TTF non disponibile. Inserisci il totale dalla bolletta Edison.</div>
+      </div>
+    </div>
+
+    <!-- Luce -->
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">⚡ Luce (Edison World Luce)</p>
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Componente fissa luce (€/kWh)</label>
+        <input type="number" step="0.001" class="form-control" id="luceFissa" value="{{ cfg.luce_fisso_kwh }}">
+        <div class="form-text">Distribuzione + oneri + accisa + IVA — cambia ogni trimestre. Dalla bolletta: <em>totale kWh − voce PUN/energia</em>. Default ~€0.14/kWh.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Prezzo manuale luce (€/kWh)</label>
+        <input type="number" step="0.001" class="form-control" id="luceManualeTotal" value="{{ cfg.luce_totale_kwh_manuale }}">
+        <div class="form-text">Usato se non hai la chiave ENTSO-E. Inserisci il totale dalla bolletta Edison.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Chiave API ENTSO-E (opzionale)</label>
+        <input type="text" class="form-control font-monospace" id="entsoeToken" value="{{ cfg.entsoe_token }}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+        <div class="form-text">
+          PUN automatico. Registrazione gratuita (2 min) →
+          <a href="https://transparency.entsoe.eu/usrm/user/createPublicUser" target="_blank">transparency.entsoe.eu</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Altro -->
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">Impianto</p>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">T. min. condizionatore (°C)</label>
+        <input type="number" step="1" class="form-control" id="tempMinAC" value="{{ cfg.temperatura_minima_ac }}">
+        <div class="form-text">Sotto questa temp. il condizionatore non è consigliato</div>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label">Note bolletta (opzionale)</label>
+        <input type="text" class="form-control" id="noteBolletta" value="{{ cfg.note_bolletta }}" placeholder="es. bolletta marzo 2026 — scadenza aprile">
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <button class="btn btn-dark px-4" onclick="salvaPrezzi()">
+        <i class="bi bi-save me-2"></i>Salva e ricalcola
+      </button>
+      <small class="text-muted ms-3">Ultima modifica componenti fisse: <strong>{{ cfg.ultima_modifica_fissi }}</strong></small>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- Footer -->
+<footer class="bg-dark text-muted py-3 mt-2">
+  <div class="container-lg d-flex justify-content-between align-items-center" style="font-size:.8rem;">
+    <span><i class="bi bi-thermometer-half me-1"></i>TermoPilota</span>
+    <span>Meteo: <a href="https://open-meteo.com" class="text-muted" target="_blank">Open-Meteo</a></span>
+  </div>
+</footer>
+
+<script>
+// ── Dati dal backend ──────────────────────────────────────────────────────────
+const datiOrari = {{ raccomandazioni_json | safe }};
+const oraCorrente = new Date().toISOString().slice(0,13) + ":00";
+
+// ── Grafico comparazione ──────────────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('graficoComparazione');
+  if (!canvas || datiOrari.length === 0) return;
+
+  const labels     = datiOrari.map(d => d.ora.slice(11,16));  // HH:MM
+  const gasData    = datiOrari.map(d => d.costo_gas_kwh);
+  const acData     = datiOrari.map(d => d.costo_ac_kwh);
+  const tempData   = datiOrari.map(d => d.temp_esterna);
+
+  // Evidenzia zona dove AC conviene
+  const pluginSfondo = {
+    id: 'sfondoZone',
+    beforeDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      if (!chartArea) return;
+      const { left, right, top, bottom } = chartArea;
+      datiOrari.forEach((d, i) => {
+        if (d.raccomandazione === 'ac') {
+          const x0 = scales.x.getPixelForValue(i);
+          const x1 = scales.x.getPixelForValue(i + 1);
+          ctx.fillStyle = 'rgba(47,128,237,0.08)';
+          ctx.fillRect(x0, top, (x1 - x0), bottom - top);
+        }
+      });
+    }
+  };
+
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Caldaia (€/kWh_th)',
+          data: gasData,
+          borderColor: '#e07b39',
+          backgroundColor: 'rgba(224,123,57,.1)',
+          borderWidth: 2.5,
+          pointRadius: 0,
+          tension: 0.3,
+          yAxisID: 'y',
+        },
+        {
+          label: 'AC (€/kWh_th)',
+          data: acData,
+          borderColor: '#2f80ed',
+          backgroundColor: 'rgba(47,128,237,.1)',
+          borderWidth: 2.5,
+          pointRadius: 0,
+          tension: 0.3,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Temp. est. (°C)',
+          data: tempData,
+          borderColor: '#bbb',
+          borderDash: [4, 3],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.4,
+          yAxisID: 'y2',
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              if (ctx.dataset.yAxisID === 'y2')
+                return ` Temp: ${ctx.parsed.y.toFixed(1)}°C`;
+              return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)} €`;
+            },
+            afterBody(items) {
+              const i = items[0].dataIndex;
+              const d = datiOrari[i];
+              return [`Consiglio: ${d.raccomandazione === 'gas' ? '🔥 Caldaia' : '❄️ Condizionatore'}`, `COP AC: ${d.cop}`];
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { maxTicksLimit: 12, font: { size: 11 } },
+          grid: { color: 'rgba(0,0,0,.05)' }
+        },
+        y: {
+          title: { display: true, text: '€/kWh termico', font: { size: 11 } },
+          ticks: { callback: v => '€' + v.toFixed(3), font: { size: 11 } },
+          grid: { color: 'rgba(0,0,0,.05)' }
+        },
+        y2: {
+          position: 'right',
+          title: { display: true, text: '°C', font: { size: 11 } },
+          ticks: { callback: v => v.toFixed(0) + '°', font: { size: 11 } },
+          grid: { display: false }
+        }
+      }
+    },
+    plugins: [pluginSfondo]
+  });
+})();
+
+// ── Tabella oraria ────────────────────────────────────────────────────────────
+function renderTabella(giorno) {
+  const oggi = new Date().toISOString().slice(0, 10);
+  const domani = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const prefisso = giorno === 'oggi' ? oggi : domani;
+
+  const righe = datiOrari.filter(d => d.ora.startsWith(prefisso));
+  const tbody = document.getElementById('tabellaOraria');
+  if (!tbody) return;
+
+  tbody.innerHTML = righe.map(d => {
+    const ora = d.ora.slice(11, 16);
+    const isAdesso = d.ora === oraCorrente;
+    const badgeClass = d.raccomandazione === 'gas' ? 'badge-gas' : 'badge-ac';
+    const badgeLabel = d.raccomandazione === 'gas' ? '🔥 Caldaia' : '❄️ Condizionatore';
+    const risparmio = d.risparmio_pct != null ? `<strong>${d.risparmio_pct.toFixed(0)}%</strong>` : '—';
+    const adesso = isAdesso ? '<span class="badge bg-warning text-dark ms-1" style="font-size:.7rem;">ADESSO</span>' : '';
+    const cfr = (isAdesso && d.fonte_temp === 'cfr') ? '<span class="badge ms-1" style="font-size:.65rem;background:#1a7a4a;color:#fff;">📡 CFR</span>' : '';
+
+    return `<tr class="${isAdesso ? 'evidenziata' : ''}">
+      <td class="ps-3 fw-${isAdesso ? 'bold' : 'normal'}">${ora}${adesso}${cfr}</td>
+      <td>${d.meteo_icon} <span class="d-none d-md-inline text-muted" style="font-size:.8rem;">${d.meteo_desc}</span></td>
+      <td>${d.temp_esterna.toFixed(1)}°C</td>
+      <td><span style="color:var(--ac-color);">${d.cop.toFixed(2)}</span></td>
+      <td><span style="color:var(--gas-color);">€${d.costo_gas_kwh.toFixed(4)}</span></td>
+      <td><span style="color:var(--ac-color);">€${d.costo_ac_kwh.toFixed(4)}</span></td>
+      <td><span class="badge ${badgeClass} text-white">${badgeLabel}</span></td>
+      <td class="pe-3">${risparmio}</td>
+    </tr>`;
+  }).join('');
+}
+
+renderTabella('oggi');
+
+document.querySelectorAll('[data-giorno]').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    document.querySelectorAll('[data-giorno]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderTabella(btn.dataset.giorno);
+  });
+});
+
+// ── Salva prezzi ─────────────────────────────────────────────────────────────
+async function salvaPrezzi() {
+  const payload = {
+    gas_fisso_smc:           parseFloat(document.getElementById('gasFisso').value),
+    gas_totale_smc_manuale:  parseFloat(document.getElementById('gasManualeTotal').value),
+    luce_fisso_kwh:          parseFloat(document.getElementById('luceFissa').value),
+    luce_totale_kwh_manuale: parseFloat(document.getElementById('luceManualeTotal').value),
+    entsoe_token:            document.getElementById('entsoeToken').value.trim(),
+    temperatura_minima_ac:   parseInt(document.getElementById('tempMinAC').value),
+    note_bolletta:           document.getElementById('noteBolletta').value,
+  };
+
+  if (isNaN(payload.gas_fisso_smc) || isNaN(payload.luce_fisso_kwh)) {
+    mostraMsg('danger', 'Valori non validi per le componenti fisse.');
+    return;
+  }
+
+  const btn = document.querySelector('button[onclick="salvaPrezzi()"]');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Salvataggio...';
+
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    mostraMsg('success', '✅ ' + data.messaggio + ' — La pagina si aggiornerà tra 2 secondi.');
+    setTimeout(() => location.reload(), 2000);
+  } catch(e) {
+    mostraMsg('danger', 'Errore di rete: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-save me-2"></i>Salva prezzi e ricalcola';
+  }
+}
+
+function mostraMsg(tipo, testo) {
+  const el = document.getElementById('msgImpostazioni');
+  el.innerHTML = `<div class="alert alert-${tipo} py-2 mb-3 small">${testo}</div>`;
+}
+
+// ── Automazione ───────────────────────────────────────────────────────────────
+let zoneConfig = {{ cfg.zone | tojson }};
+
+async function caricaStatoAutomazione() {
+  try {
+    const res = await fetch('/api/automazione');
+    const data = await res.json();
+
+    // Toggle
+    document.getElementById('autoToggle').checked = data.attiva;
+    const badge = document.getElementById('autoStatusBadge');
+    if (data.attiva) {
+      badge.className = 'badge bg-success';
+      badge.textContent = 'Attiva';
+    } else {
+      badge.className = 'badge bg-secondary';
+      badge.textContent = 'Non attiva';
+    }
+
+    // Zone
+    const zoneDiv = document.getElementById('zoneStatus');
+    if (data.zone && data.zone.length > 0) {
+      zoneDiv.innerHTML = data.zone.map(z => {
+        const cls = z.fonte || 'off';
+        const icona = z.fonte === 'ac' ? '❄️' : z.fonte === 'gas' ? '🔥' : '⏸';
+        const etichetta = z.fonte === 'ac' ? 'Condizionatore' : z.fonte === 'gas' ? 'Caldaia' : 'In attesa';
+        const tStanza = z.t_stanza != null ? z.t_stanza.toFixed(1) + '°C' : '—';
+        const setpoint = z.setpoint != null ? z.setpoint.toFixed(1) + '°C' : '—';
+        const progressPct = (z.t_stanza != null && z.setpoint != null)
+          ? Math.min(100, Math.max(0, (z.t_stanza / z.setpoint) * 100)).toFixed(0)
+          : null;
+        return `<div class="col-md-6">
+          <div class="zona-card ${cls}">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <div class="fw-semibold">${z.nome}</div>
+                <div style="font-size:.82rem;color:#555;">${icona} ${etichetta}</div>
+              </div>
+              <div class="text-end">
+                <div style="font-size:1.3rem;font-weight:700;">${tStanza}</div>
+                <div style="font-size:.78rem;color:#888;">→ setpoint <strong>${setpoint}</strong></div>
+                <div style="font-size:.72rem;color:#999;">${z.aggiornato || ''}</div>
+              </div>
+            </div>
+            ${progressPct !== null ? `
+            <div class="mt-2">
+              <div class="progress" style="height:4px;border-radius:2px;">
+                <div class="progress-bar ${z.fonte === 'ac' ? 'bg-primary' : 'bg-warning'}"
+                     style="width:${progressPct}%"></div>
+              </div>
+            </div>` : ''}
+            ${z.costo_gas ? `<div class="mt-1" style="font-size:.75rem;color:#888;">
+              🔥 €${z.costo_gas.toFixed(3)} · ❄️ €${z.costo_ac.toFixed(3)} /kWh_th
+            </div>` : ''}
+            ${z.errore_ac ? `<div class="text-danger mt-1" style="font-size:.75rem;"><i class="bi bi-exclamation-triangle me-1"></i>${z.errore_ac}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // Log
+    if (data.log && data.log.length > 0) {
+      document.getElementById('logEventiWrap').style.display = '';
+      document.getElementById('logEventi').innerHTML = data.log.map(e =>
+        `<div class="log-item">
+          <span class="text-muted me-2">${e.ts}</span>
+          <strong>${e.zona}</strong>
+          <span class="mx-1 ${e.azione.includes('AC') ? 'text-primary' : 'text-warning'}">${e.azione}</span>
+          <span class="text-muted">${e.dettaglio}</span>
+        </div>`
+      ).join('');
+    }
+  } catch(e) {
+    console.warn('Stato automazione non disponibile:', e);
+  }
+}
+
+async function toggleAutomazione(checkbox) {
+  try {
+    const res = await fetch('/api/automazione/toggle', { method: 'POST' });
+    const data = await res.json();
+    const badge = document.getElementById('autoStatusBadge');
+    if (data.automazione_attiva) {
+      badge.className = 'badge bg-success'; badge.textContent = 'Attiva';
+    } else {
+      badge.className = 'badge bg-secondary'; badge.textContent = 'Non attiva';
+    }
+  } catch(e) {
+    mostraMsg2('danger', 'Errore toggle automazione: ' + e.message);
+    checkbox.checked = !checkbox.checked;
+  }
+}
+
+async function scopriDispositivi() {
+  const div = document.getElementById('dispositivi-trovati');
+  div.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Ricerca in corso...';
+  try {
+    const res = await fetch('/api/dispositivi');
+    const data = await res.json();
+    let html = '';
+    if (data.samsung.length > 0) {
+      html += '<div class="mt-1" style="font-size:.8rem;"><strong>Samsung AC trovati:</strong><ul class="mb-1 mt-1">';
+      data.samsung.forEach(d => {
+        html += `<li><code>${d.device_id}</code> — ${d.label}</li>`;
+      });
+      html += '</ul></div>';
+    }
+    if (data.bticino.length > 0) {
+      html += '<div class="mt-1" style="font-size:.8rem;"><strong>Termostati BTicino:</strong><ul class="mb-1 mt-1">';
+      data.bticino.forEach(d => {
+        html += `<li><code>${d.module_id}</code> — ${d.nome} (plant: ${d.plant_id})</li>`;
+      });
+      html += '</ul></div>';
+    }
+    if (data.errori.length > 0) {
+      data.errori.forEach(e => {
+        html += `<div class="text-danger mt-1" style="font-size:.78rem;"><i class="bi bi-exclamation-triangle me-1"></i>${e}</div>`;
+      });
+    }
+    div.innerHTML = html || '<span class="text-muted small">Nessun dispositivo trovato.</span>';
+  } catch(e) {
+    div.innerHTML = `<span class="text-danger small">Errore: ${e.message}</span>`;
+  }
+}
+
+async function avviaOAuth() {
+  try {
+    // Prima salva le credenziali inserite
+    await salvaAutomazione(false);
+    const res = await fetch('/api/automazione/oauth-url');
+    const data = await res.json();
+    if (data.url) {
+      window.open(data.url, '_blank', 'width=600,height=700');
+    } else {
+      mostraMsg2('warning', data.errore || 'Impossibile ottenere URL OAuth');
+    }
+  } catch(e) {
+    mostraMsg2('danger', 'Errore: ' + e.message);
+  }
+}
+
+function renderZoneEditor() {
+  const div = document.getElementById('zoneEditor');
+  div.innerHTML = zoneConfig.map((z, i) => `
+    <div class="border rounded-3 p-3 mb-2" id="zona-${i}">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label" style="font-size:.8rem;">Nome zona</label>
+          <input type="text" class="form-control form-control-sm" value="${z.nome}" onchange="zoneConfig[${i}].nome=this.value">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" style="font-size:.8rem;">Room ID termostato Netatmo</label>
+          <input type="text" class="form-control form-control-sm font-monospace" value="${z.room_id || ''}" placeholder="da Scopri dispositivi" onchange="zoneConfig[${i}].room_id=this.value">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" style="font-size:.8rem;">Device ID condizionatore Samsung</label>
+          <input type="text" class="form-control form-control-sm font-monospace" value="${z.ac_device_id || ''}" placeholder="da Scopri dispositivi" onchange="zoneConfig[${i}].ac_device_id=this.value">
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-outline-danger btn-sm w-100 mt-3" onclick="rimuoviZona(${i})"><i class="bi bi-trash"></i></button>
+        </div>
+      </div>
+      <div class="mt-1" style="font-size:.75rem;color:#888;">
+        <i class="bi bi-info-circle me-1"></i>Setpoint e temperatura letti in automatico dall'app Home+Control
+      </div>
+    </div>
+  `).join('');
+}
+
+function aggiungiZona() {
+  zoneConfig.push({ nome: `Zona ${zoneConfig.length + 1}`, room_id: '', ac_device_id: '' });
+  renderZoneEditor();
+}
+
+function rimuoviZona(i) {
+  zoneConfig.splice(i, 1);
+  renderZoneEditor();
+}
+
+async function salvaAutomazione(reload = true) {
+  const payload = {
+    legrand_client_id:     document.getElementById('legrandClientId').value.trim(),
+    legrand_client_secret: document.getElementById('legrandClientSecret').value.trim(),
+    smartthings_token:     document.getElementById('smartthingsToken').value.trim(),
+    intervallo_controllo_minuti: {{ cfg.intervallo_controllo_minuti }},
+    soglia_delta_risparmio:      {{ cfg.soglia_delta_risparmio }},
+    zone: zoneConfig,
+  };
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (reload) mostraMsg2('success', '✅ ' + data.messaggio);
+  } catch(e) {
+    if (reload) mostraMsg2('danger', 'Errore: ' + e.message);
+  }
+}
+
+function mostraMsg2(tipo, testo) {
+  const el = document.getElementById('msgAutomazione');
+  el.innerHTML = `<div class="alert alert-${tipo} py-2 mb-0 small">${testo}</div>`;
+  setTimeout(() => el.innerHTML = '', 4000);
+}
+
+// Init automazione
+renderZoneEditor();
+caricaStatoAutomazione();
+setInterval(caricaStatoAutomazione, 30000);  // aggiorna ogni 30s
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
