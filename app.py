@@ -432,6 +432,8 @@ def leggi_stato_stanze_dashboard(cfg: dict) -> dict:
     try:
         stati = bt.stato_tutte_stanze(home_id)
         for z in zone:
+            if not z["room_id"]:
+                continue
             stato = stati.get(z["room_id"], {})
             z["t_stanza"] = stato.get("temperatura_attuale")
             z["setpoint"] = stato.get("setpoint")

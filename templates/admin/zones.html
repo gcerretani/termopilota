@@ -82,12 +82,6 @@ function opzioniSelect(lista, valoreCorrente, tipo) {
     const selected = item.value === corrente ? 'selected' : '';
     html += `<option value="${escapeHtml(item.value)}" ${selected}>${escapeHtml(item.label)}</option>`;
   });
-  if (!corrente && tipo === 'room') {
-    html += '<option value="">(usa "Scopri termostati")</option>';
-  }
-  if (!corrente && tipo === 'ac') {
-    html += '<option value="">(usa "Scopri condizionatori")</option>';
-  }
   return html;
 }
 
