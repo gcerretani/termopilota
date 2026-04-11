@@ -56,6 +56,9 @@
     .form-label { font-weight: 600; font-size: .88rem; color: #555; }
     .nav-pills .nav-link { font-size: .85rem; font-weight: 600; padding: .35rem 1rem; }
     .nav-pills .nav-link.active { background: #343a40; }
+    .top-nav-link { color: rgba(255,255,255,.72); }
+    .top-nav-link:hover { color: #fff; }
+    .top-nav-link.active { color: #fff; font-weight: 700; }
 
     .alert-prezzi {
       background: #fff8e1; border: 1px solid #ffe082; border-radius: 10px;
@@ -87,11 +90,11 @@
         <i class="bi bi-house-heart-fill me-2" style="color:#e07b39;"></i>
         Riscaldamento
       </a>
-      <a href="/" class="text-decoration-none small {% if request.endpoint == 'index' %}text-white{% else %}text-muted{% endif %}">
+      <a href="/" class="text-decoration-none small top-nav-link {% if request.endpoint == 'index' %}active{% endif %}">
         <i class="bi bi-speedometer2 me-1"></i>Dashboard
       </a>
       {% if current_user.is_admin %}
-      <a href="/admin/" class="text-decoration-none small {% if request.endpoint and request.endpoint.startswith('admin.') %}text-white{% else %}text-muted{% endif %}">
+      <a href="/admin/" class="text-decoration-none small top-nav-link {% if request.endpoint and request.endpoint.startswith('admin.') %}active{% endif %}">
         <i class="bi bi-gear me-1"></i>Admin
       </a>
       {% endif %}
