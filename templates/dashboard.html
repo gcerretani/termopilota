@@ -185,7 +185,7 @@
     </div>
   </div>
 
-  <!-- Spiegazione metodo -->
+  <!-- Spiegazione metodo + stato stanze -->
   <div class="row g-3 mb-4">
     <div class="col-md-6">
       <div class="stat-card">
@@ -203,15 +203,44 @@
     </div>
     <div class="col-md-6">
       <div class="stat-card">
-        <h6 class="fw-bold mb-2"><i class="bi bi-lightning me-2 text-warning"></i>I tuoi impianti</h6>
-        <table class="table table-sm small mb-0">
-          <tbody>
-            <tr><td class="text-muted">Riscaldamento a pavimento</td><td><strong>Vaillant condensazione</strong></td></tr>
-            <tr><td class="text-muted">Termostati</td><td><strong>BTicino Smarther 2 ×4</strong><br><small class="text-muted">salotto, camera, camerina, studio</small></td></tr>
-            <tr><td class="text-muted">Condizionatori</td><td><strong>Samsung inverter ×2</strong><br><small class="text-muted">salotto + corridoio (camera/camerina/studio)</small></td></tr>
-            <tr><td class="text-muted">Fornitore</td><td><strong>Edison World Luce + World Gas Plus</strong></td></tr>
-          </tbody>
-        </table>
+        <h6 class="fw-bold mb-2"><i class="bi bi-house-check me-2 text-primary"></i>Stato stanze configurate</h6>
+        {% if stato_stanze_dashboard.errore %}
+        <div class="alert alert-warning py-2 small mb-2">{{ stato_stanze_dashboard.errore }}</div>
+        {% endif %}
+        {% if stato_stanze_dashboard.zone and stato_stanze_dashboard.zone|length > 0 %}
+        <div class="table-responsive">
+          <table class="table table-sm small mb-0">
+            <thead>
+              <tr>
+                <th>Zona</th>
+                <th>T stanza</th>
+                <th>Setpoint</th>
+                <th>Modalità</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for z in stato_stanze_dashboard.zone %}
+              <tr>
+                <td class="fw-semibold">{{ z.nome }}</td>
+                <td>{% if z.t_stanza is not none %}{{ "%.1f"|format(z.t_stanza) }}°C{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td>{% if z.setpoint is not none %}{{ "%.1f"|format(z.setpoint) }}°C{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td>
+                  {% if z.modalita %}
+                    {% if z.modalita == 'manual' %}Manuale
+                    {% elif z.modalita == 'schedule' %}Automatico
+                    {% else %}{{ z.modalita }}{% endif %}
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted small">Nessuna zona configurata in Admin → Zone.</div>
+        {% endif %}
       </div>
     </div>
   </div>

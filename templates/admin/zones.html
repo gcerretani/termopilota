@@ -27,6 +27,20 @@
       Piu' zone possono condividere lo stesso condizionatore.
     </p>
 
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <button class="btn btn-outline-primary btn-sm" onclick="scopriTermostatiPerZone()">
+          <i class="bi bi-search me-1"></i>Scopri termostati
+        </button>
+      </div>
+      <div class="col-md-6">
+        <button class="btn btn-outline-info btn-sm" onclick="scopriCondizionatoriPerZone()">
+          <i class="bi bi-search me-1"></i>Scopri condizionatori
+        </button>
+      </div>
+      <div class="col-12" id="msgScopertaZone"></div>
+    </div>
+
     <div id="zoneEditor"></div>
     <button class="btn btn-sm btn-outline-secondary mt-2" onclick="aggiungiZona()">
       <i class="bi bi-plus-circle me-1"></i>Aggiungi zona
@@ -45,6 +59,31 @@
 {% block scripts %}
 <script>
 let zoneConfig = {{ cfg.zone | tojson }};
+let opzioniRoom = [];
+let opzioniAc = [];
+
+function escapeHtml(val) {
+  return String(val || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function opzioniSelect(lista, valoreCorrente, tipo) {
+  const corrente = valoreCorrente || '';
+  const trovato = lista.some(x => x.value === corrente);
+  let html = '<option value="">-- seleziona --</option>';
+  if (corrente && !trovato) {
+    html += `<option value="${escapeHtml(corrente)}" selected>${escapeHtml(corrente)} (attuale)</option>`;
+  }
+  lista.forEach(item => {
+    const selected = item.value === corrente ? 'selected' : '';
+    html += `<option value="${escapeHtml(item.value)}" ${selected}>${escapeHtml(item.label)}</option>`;
+  });
+  return html;
+}
 
 function renderZoneEditor() {
   const div = document.getElementById('zoneEditor');
@@ -57,11 +96,15 @@ function renderZoneEditor() {
         </div>
         <div class="col-md-3">
           <label class="form-label" style="font-size:.8rem;">Room ID termostato Netatmo</label>
-          <input type="text" class="form-control form-control-sm font-monospace" value="${z.room_id || ''}" placeholder="da Scopri dispositivi" onchange="zoneConfig[${i}].room_id=this.value">
+          <select class="form-select form-select-sm font-monospace" onchange="zoneConfig[${i}].room_id=this.value">
+            ${opzioniSelect(opzioniRoom, z.room_id || '', 'room')}
+          </select>
         </div>
         <div class="col-md-4">
           <label class="form-label" style="font-size:.8rem;">Device ID condizionatore Samsung</label>
-          <input type="text" class="form-control form-control-sm font-monospace" value="${z.ac_device_id || ''}" placeholder="da Scopri dispositivi" onchange="zoneConfig[${i}].ac_device_id=this.value">
+          <select class="form-select form-select-sm font-monospace" onchange="zoneConfig[${i}].ac_device_id=this.value">
+            ${opzioniSelect(opzioniAc, z.ac_device_id || '', 'ac')}
+          </select>
         </div>
         <div class="col-md-2">
           <button class="btn btn-outline-danger btn-sm w-100 mt-3" onclick="rimuoviZona(${i})"><i class="bi bi-trash"></i></button>
@@ -88,6 +131,50 @@ function mostraMsg(tipo, testo) {
   const el = document.getElementById('msgZone');
   el.innerHTML = `<div class="alert alert-${tipo} py-2 mb-3 small">${testo}</div>`;
   setTimeout(() => el.innerHTML = '', 5000);
+}
+
+function mostraMsgScoperta(tipo, testo) {
+  const el = document.getElementById('msgScopertaZone');
+  el.innerHTML = `<div class="alert alert-${tipo} py-2 mb-0 small">${testo}</div>`;
+  setTimeout(() => el.innerHTML = '', 5000);
+}
+
+async function scopriTermostatiPerZone() {
+  mostraMsgScoperta('secondary', '<span class="spinner-border spinner-border-sm me-2"></span>Ricerca termostati in corso...');
+  try {
+    const res = await fetch('/api/dispositivi/termostati');
+    const data = await res.json();
+    opzioniRoom = (data.bticino || []).map(d => ({ value: d.id, label: `${d.name} (${d.id})` }));
+    renderZoneEditor();
+    if (opzioniRoom.length > 0) {
+      mostraMsgScoperta('success', `Trovati ${opzioniRoom.length} termostati.`);
+    } else if (data.errori && data.errori.length) {
+      mostraMsgScoperta('warning', data.errori.join(' · '));
+    } else {
+      mostraMsgScoperta('warning', 'Nessun termostato trovato.');
+    }
+  } catch(e) {
+    mostraMsgScoperta('danger', 'Errore ricerca termostati: ' + e.message);
+  }
+}
+
+async function scopriCondizionatoriPerZone() {
+  mostraMsgScoperta('secondary', '<span class="spinner-border spinner-border-sm me-2"></span>Ricerca condizionatori in corso...');
+  try {
+    const res = await fetch('/api/dispositivi/condizionatori');
+    const data = await res.json();
+    opzioniAc = (data.samsung || []).map(d => ({ value: d.device_id, label: `${d.label} (${d.device_id})` }));
+    renderZoneEditor();
+    if (opzioniAc.length > 0) {
+      mostraMsgScoperta('success', `Trovati ${opzioniAc.length} condizionatori.`);
+    } else if (data.errori && data.errori.length) {
+      mostraMsgScoperta('warning', data.errori.join(' · '));
+    } else {
+      mostraMsgScoperta('warning', 'Nessun condizionatore trovato.');
+    }
+  } catch(e) {
+    mostraMsgScoperta('danger', 'Errore ricerca condizionatori: ' + e.message);
+  }
 }
 
 async function salvaZone() {

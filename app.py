@@ -24,6 +24,7 @@ from flask_login import login_required, login_user, logout_user, current_user
 from prezzi import calcola_prezzi
 from automazione import get_servizio, avvia_se_attiva
 from auth import setup_auth, authenticate, create_user, list_users, delete_user
+from providers import get_thermostat, get_heatpump
 
 app = Flask(__name__)
 setup_auth(app)
@@ -386,6 +387,7 @@ def index():
     oggi_recs = [r for r in raccomandazioni if r["ora"].startswith(oggi)]
     ore_gas_oggi = sum(1 for r in oggi_recs if r["raccomandazione"] == "gas")
     ore_ac_oggi = sum(1 for r in oggi_recs if r["raccomandazione"] == "ac")
+    stato_stanze_dashboard = leggi_stato_stanze_dashboard(cfg)
 
     return render_template(
         "dashboard.html",
@@ -397,6 +399,7 @@ def index():
         raccomandazioni_json=json.dumps(raccomandazioni),
         ore_gas_oggi=ore_gas_oggi,
         ore_ac_oggi=ore_ac_oggi,
+        stato_stanze_dashboard=stato_stanze_dashboard,
         errore_meteo=errore_meteo,
         errore_cfr=errore_cfr,
         ora_aggiornamento=datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -404,6 +407,78 @@ def index():
 
 
 # ─── API JSON ────────────────────────────────────────────────────────────────
+
+def leggi_stato_stanze_dashboard(cfg: dict) -> dict:
+    zone_cfg = cfg.get("zone", []) or []
+    zone = [{
+        "nome": z.get("nome", "Zona"),
+        "room_id": z.get("room_id", ""),
+        "ac_device_id": z.get("ac_device_id", ""),
+        "t_stanza": None,
+        "setpoint": None,
+        "modalita": None,
+        "sta_riscaldando": None,
+    } for z in zone_cfg]
+
+    if not zone:
+        return {"zone": [], "errore": None}
+
+    home_id = cfg.get("legrand_plant_id", "")
+    bt = get_thermostat("netatmo", cfg)
+
+    if not bt or not bt.autenticato or not home_id:
+        return {"zone": zone, "errore": "Configura credenziali Netatmo e Plant ID per leggere lo stato stanze."}
+
+    try:
+        stati = bt.stato_tutte_stanze(home_id)
+        for z in zone:
+            if not z["room_id"]:
+                continue
+            stato = stati.get(z["room_id"], {})
+            z["t_stanza"] = stato.get("temperatura_attuale")
+            z["setpoint"] = stato.get("setpoint")
+            z["modalita"] = stato.get("modalita")
+            z["sta_riscaldando"] = stato.get("sta_riscaldando")
+        return {"zone": zone, "errore": None}
+    except Exception as e:
+        return {"zone": zone, "errore": f"Netatmo non raggiungibile: {e}"}
+
+
+def scopri_termostati(cfg: dict) -> dict:
+    risultato = {"bticino": [], "errori": []}
+    bt = get_thermostat("netatmo", cfg)
+    if bt and bt.autenticato:
+        try:
+            impianti = bt.lista_impianti()
+            for imp in impianti:
+                plant_id = imp.get("id", "")
+                moduli = bt.lista_moduli(plant_id)
+                for m in moduli:
+                    risultato["bticino"].append({
+                        "plant_id": plant_id,
+                        "id": m.get("id", ""),
+                        "name": m.get("name", "Termostato"),
+                    })
+        except Exception as e:
+            risultato["errori"].append(f"BTicino: {e}")
+    elif not cfg.get("legrand_client_id"):
+        risultato["errori"].append("BTicino: credenziali Netatmo non configurate")
+    else:
+        risultato["errori"].append("BTicino: autorizzazione OAuth2 non completata")
+    return risultato
+
+
+def scopri_condizionatori(cfg: dict) -> dict:
+    risultato = {"samsung": [], "errori": []}
+    st = get_heatpump("smartthings", cfg)
+    if st and st.configurato:
+        try:
+            risultato["samsung"] = st.lista_dispositivi_ac()
+        except Exception as e:
+            risultato["errori"].append(f"SmartThings: {e}")
+    else:
+        risultato["errori"].append("SmartThings: token non configurato")
+    return risultato
 
 @app.route("/api/prezzi")
 @login_required
@@ -503,40 +578,27 @@ def api_automazione_toggle():
 @login_required
 def api_dispositivi():
     cfg = carica_config()
-    risultato = {"bticino": [], "samsung": [], "errori": []}
-
-    from providers import get_thermostat, get_heatpump
-
-    bt = get_thermostat("netatmo", cfg)
-    if bt and bt.autenticato:
-        try:
-            impianti = bt.lista_impianti()
-            for imp in impianti:
-                plant_id = imp.get("id", "")
-                moduli = bt.lista_moduli(plant_id)
-                for m in moduli:
-                    risultato["bticino"].append({
-                        "plant_id": plant_id,
-                        "id": m.get("id", ""),
-                        "name": m.get("name", "Termostato"),
-                    })
-        except Exception as e:
-            risultato["errori"].append(f"BTicino: {e}")
-    elif not cfg.get("legrand_client_id"):
-        risultato["errori"].append("BTicino: credenziali Netatmo non configurate")
-    else:
-        risultato["errori"].append("BTicino: autorizzazione OAuth2 non completata")
-
-    st = get_heatpump("smartthings", cfg)
-    if st and st.configurato:
-        try:
-            risultato["samsung"] = st.lista_dispositivi_ac()
-        except Exception as e:
-            risultato["errori"].append(f"SmartThings: {e}")
-    else:
-        risultato["errori"].append("SmartThings: token non configurato")
+    termostati = scopri_termostati(cfg)
+    condizionatori = scopri_condizionatori(cfg)
+    risultato = {
+        "bticino": termostati["bticino"],
+        "samsung": condizionatori["samsung"],
+        "errori": termostati["errori"] + condizionatori["errori"],
+    }
 
     return jsonify(risultato)
+
+
+@app.route("/api/dispositivi/termostati")
+@login_required
+def api_dispositivi_termostati():
+    return jsonify(scopri_termostati(carica_config()))
+
+
+@app.route("/api/dispositivi/condizionatori")
+@login_required
+def api_dispositivi_condizionatori():
+    return jsonify(scopri_condizionatori(carica_config()))
 
 
 # ─── OAuth callback (pubblico — serve come redirect Netatmo) ─────────────────
@@ -547,7 +609,6 @@ def api_oauth_callback():
     if not code:
         return "Nessun codice ricevuto", 400
     cfg = carica_config()
-    from providers import get_thermostat
     bt = get_thermostat("netatmo", cfg)
     if not bt:
         return "Credenziali Netatmo non configurate", 400
@@ -576,7 +637,6 @@ def api_oauth_callback():
 @login_required
 def api_oauth_url():
     cfg = carica_config()
-    from providers import get_thermostat
     bt = get_thermostat("netatmo", cfg)
     if not bt:
         return jsonify({"errore": "Credenziali Netatmo non configurate"}), 400
