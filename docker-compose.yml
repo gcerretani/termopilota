@@ -1,6 +1,6 @@
 services:
   termopilota:
-    build: .
+    image: ghcr.io/gcerretani/termopilota:latest
     ports:
       - "5001:5001"
     volumes:
