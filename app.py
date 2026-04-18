@@ -59,6 +59,9 @@ DEFAULT_CONFIG = {
     "intervallo_controllo_minuti": 15.0,
     "soglia_delta_risparmio": 0.01,
     "smartthings_token": "",
+    "smartthings_client_id": "",
+    "smartthings_client_secret": "",
+    "smartthings_token_data": {},
     "legrand_client_id": "",
     "legrand_client_secret": "",
     "legrand_plant_id": "",
@@ -529,7 +532,9 @@ def api_config():
                        "intervallo_controllo_minuti", "soglia_delta_risparmio",
                        "lat", "lon")
         campi_str = ("entsoe_token", "note_bolletta",
-                     "smartthings_token", "legrand_client_id", "legrand_client_secret",
+                     "smartthings_token",
+                     "smartthings_client_id", "smartthings_client_secret",
+                     "legrand_client_id", "legrand_client_secret",
                      "legrand_subscription_key", "legrand_plant_id",
                      "cfr_station_id", "cfr_station_name")
         for campo in campi_float:
@@ -642,6 +647,49 @@ def api_oauth_url():
         return jsonify({"errore": "Credenziali Netatmo non configurate"}), 400
     redirect_uri = request.url_root.rstrip("/") + "/api/automazione/oauth-callback"
     return jsonify({"url": bt.url_autorizzazione(redirect_uri)})
+
+
+# ─── OAuth callback SmartThings ──────────────────────────────────────────────
+
+@app.route("/api/automazione/smartthings-callback")
+def api_smartthings_callback():
+    code = request.args.get("code")
+    if not code:
+        return "Nessun codice ricevuto", 400
+    cfg = carica_config()
+    st = get_heatpump("smartthings", cfg)
+    if not st or not st.client_id:
+        return "Credenziali SmartThings OAuth non configurate", 400
+    try:
+        redirect_uri = request.url_root.rstrip("/") + "/api/automazione/smartthings-callback"
+        st.scambia_codice(code, redirect_uri)
+        return """<html><body><h2>Autorizzazione SmartThings completata!</h2>
+        <p>Puoi chiudere questa finestra e tornare alla dashboard.</p></body></html>"""
+    except Exception as e:
+        detail = ""
+        if hasattr(e, "response") and e.response is not None:
+            detail = f"<pre>{e.response.text}</pre>"
+        redirect_used = request.url_root.rstrip("/") + "/api/automazione/smartthings-callback"
+        return f"""<html><body>
+        <h2>Errore autorizzazione SmartThings</h2>
+        <p><strong>{e}</strong></p>
+        {detail}
+        <hr>
+        <p><strong>redirect_uri usata:</strong><br><code>{redirect_used}</code></p>
+        <p>Verifica che questa URL sia registrata come redirect_uri dell'app OAuth
+        creata con <code>smartthings apps:create</code>.</p>
+        </body></html>""", 500
+
+
+@app.route("/api/automazione/smartthings-oauth-url")
+@login_required
+def api_smartthings_oauth_url():
+    cfg = carica_config()
+    st = get_heatpump("smartthings", cfg)
+    if not st or not st.client_id or not st.client_secret:
+        return jsonify({"errore": "Client ID/Secret SmartThings non configurati"}), 400
+    redirect_uri = request.url_root.rstrip("/") + "/api/automazione/smartthings-callback"
+    return jsonify({"url": st.url_autorizzazione(redirect_uri)})
 
 
 # ─── Blueprint Admin ──────────────────────────────────────────────────────────

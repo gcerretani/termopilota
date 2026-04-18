@@ -34,7 +34,7 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 - `providers/` — Architettura modulare per dispositivi
   - `__init__.py` — ABC `ThermostatProvider`, `HeatPumpProvider`, registry
   - `netatmo.py` — Client Netatmo OAuth2 per termostati BTicino Smarther
-  - `smartthings.py` — Client SmartThings REST per AC Samsung
+  - `smartthings.py` — Client SmartThings OAuth2 (consigliato) + PAT fallback per AC Samsung
 - `bticino.py`, `samsung.py` — Shim di compatibilita', importano da providers/
 
 ## Convenzioni
@@ -59,4 +59,5 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 - `GET /admin/zones` — Editor zone
 - `GET /admin/users` — Gestione utenti
 - `GET /api/automazione/oauth-callback` — Callback OAuth Netatmo (pubblico)
+- `GET /api/automazione/smartthings-callback` — Callback OAuth SmartThings (pubblico)
 - API JSON: `/api/prezzi`, `/api/dati`, `/api/temp-cfr`, `/api/config`, `/api/automazione`, `/api/dispositivi`
