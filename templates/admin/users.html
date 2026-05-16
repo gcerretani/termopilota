@@ -20,72 +20,162 @@
 
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-    {% for category, message in messages %}
-    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} py-2 small alert-dismissible fade show">
-      {{ message }}
-      <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
-    </div>
-    {% endfor %}
+      {% for category, message in messages %}
+      <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} py-2 small alert-dismissible fade show">
+        {{ message }}
+        <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert"></button>
+      </div>
+      {% endfor %}
     {% endif %}
     {% endwith %}
 
-    <!-- Lista utenti -->
     <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">
       <i class="bi bi-people me-1"></i>Utenti registrati
     </p>
-    <table class="table table-sm mb-4">
-      <thead>
-        <tr><th>Utente</th><th>Ruolo</th><th>Creato</th><th></th></tr>
-      </thead>
-      <tbody>
-        {% for u in users %}
-        <tr>
-          <td class="fw-semibold">{{ u.username }}</td>
-          <td>
-            {% if u.is_admin %}
-            <span class="badge bg-dark">Admin</span>
-            {% else %}
-            <span class="badge bg-secondary">Utente</span>
-            {% endif %}
-          </td>
-          <td class="text-muted small">{{ u.created_at[:16] }}</td>
-          <td>
-            {% if u.id != current_user.id %}
-            <form method="POST" action="/admin/users/{{ u.id }}/delete" style="display:inline;" onsubmit="return confirm('Eliminare {{ u.username }}?')">
-              <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" style="font-size:.8rem;">
-                <i class="bi bi-trash"></i>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-4">
+        <thead>
+          <tr>
+            <th>Utente</th>
+            <th>Email</th>
+            <th>Ruolo</th>
+            <th>Stato</th>
+            <th>Creato</th>
+            <th class="text-end">Azioni</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td class="fw-semibold">
+              {{ u.username }}
+              {% if u.id == current_user.id %}<span class="badge bg-info ms-1" style="font-size:.65rem;">tu</span>{% endif %}
+            </td>
+            <td class="small">
+              {% if u.email %}{{ u.email }}{% else %}<span class="text-muted">—</span>{% endif %}
+              {% if u.google_sub %}<i class="bi bi-google ms-1 text-primary" title="Account Google collegato"></i>{% endif %}
+            </td>
+            <td>
+              {% if u.is_admin %}<span class="badge bg-dark">Admin</span>
+              {% else %}<span class="badge bg-secondary">Utente</span>{% endif %}
+            </td>
+            <td>
+              {% if u.is_active %}<span class="badge bg-success">Attivo</span>
+              {% else %}<span class="badge bg-warning text-dark">Disattivato</span>{% endif %}
+            </td>
+            <td class="text-muted small">{{ u.created_at[:16] }}</td>
+            <td class="text-end">
+              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2"
+                      data-bs-toggle="modal" data-bs-target="#modalEdit-{{ u.id }}"
+                      title="Modifica">
+                <i class="bi bi-pencil"></i>
               </button>
-            </form>
-            {% else %}
-            <span class="text-muted small">(tu)</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2"
+                      data-bs-toggle="modal" data-bs-target="#modalReset-{{ u.id }}"
+                      title="Reset password">
+                <i class="bi bi-key"></i>
+              </button>
+              {% if u.id != current_user.id %}
+              <form method="POST" action="{{ url_for('admin.admin_toggle_active', user_id=u.id) }}"
+                    style="display:inline;"
+                    onsubmit="return confirm('{{ 'Disattivare' if u.is_active else 'Attivare' }} {{ u.username }}?')">
+                <button type="submit" class="btn btn-outline-secondary btn-sm py-0 px-2"
+                        title="{{ 'Disattiva' if u.is_active else 'Attiva' }}">
+                  <i class="bi bi-{{ 'pause-circle' if u.is_active else 'play-circle' }}"></i>
+                </button>
+              </form>
+              <form method="POST" action="{{ url_for('admin.admin_delete_user', user_id=u.id) }}"
+                    style="display:inline;"
+                    onsubmit="return confirm('Eliminare {{ u.username }}?')">
+                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Elimina">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
 
-    <!-- Aggiungi utente -->
+          <!-- Modale modifica -->
+          <div class="modal fade" id="modalEdit-{{ u.id }}" tabindex="-1">
+            <div class="modal-dialog">
+              <form method="POST" action="{{ url_for('admin.admin_edit_user', user_id=u.id) }}" class="modal-content">
+                <div class="modal-header">
+                  <h6 class="modal-title">Modifica utente <strong>{{ u.username }}</strong></h6>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="mb-3">
+                    <label class="form-label" for="edit-email-{{ u.id }}">Email</label>
+                    <input type="email" class="form-control form-control-sm" id="edit-email-{{ u.id }}"
+                           name="email" value="{{ u.email or '' }}">
+                    <div class="form-text">Serve per il login con Google.</div>
+                  </div>
+                  {% if u.id != current_user.id %}
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="edit-admin-{{ u.id }}"
+                           name="is_admin" value="1" {% if u.is_admin %}checked{% endif %}>
+                    <label class="form-check-label" for="edit-admin-{{ u.id }}">Amministratore</label>
+                  </div>
+                  {% endif %}
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Annulla</button>
+                  <button type="submit" class="btn btn-dark btn-sm">Salva</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Modale reset password -->
+          <div class="modal fade" id="modalReset-{{ u.id }}" tabindex="-1">
+            <div class="modal-dialog">
+              <form method="POST" action="{{ url_for('admin.admin_reset_password', user_id=u.id) }}"
+                    class="modal-content" autocomplete="off">
+                <div class="modal-header">
+                  <h6 class="modal-title">Reset password — <strong>{{ u.username }}</strong></h6>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <label class="form-label" for="reset-pwd-{{ u.id }}">Nuova password</label>
+                  <input type="password" class="form-control form-control-sm" id="reset-pwd-{{ u.id }}"
+                         name="password" required minlength="4" autocomplete="new-password">
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Annulla</button>
+                  <button type="submit" class="btn btn-dark btn-sm">Aggiorna password</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
     <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">
       <i class="bi bi-person-plus me-1"></i>Aggiungi utente
     </p>
-    <form method="POST" action="/admin/users" class="row g-2 align-items-end">
+    <form method="POST" action="{{ url_for('admin.admin_users') }}" class="row g-2 align-items-end">
       <div class="col-md-3">
         <label class="form-label" style="font-size:.8rem;">Username</label>
         <input type="text" name="username" class="form-control form-control-sm" required>
       </div>
       <div class="col-md-3">
+        <label class="form-label" style="font-size:.8rem;">Email</label>
+        <input type="email" name="email" class="form-control form-control-sm" placeholder="opzionale">
+      </div>
+      <div class="col-md-2">
         <label class="form-label" style="font-size:.8rem;">Password</label>
         <input type="password" name="password" class="form-control form-control-sm" required minlength="4">
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
         <div class="form-check mt-3">
           <input class="form-check-input" type="checkbox" name="is_admin" id="isAdmin" value="1">
-          <label class="form-check-label" for="isAdmin" style="font-size:.85rem;">Amministratore</label>
+          <label class="form-check-label" for="isAdmin" style="font-size:.85rem;">Admin</label>
         </div>
       </div>
-      <div class="col-md-3">
-        <button type="submit" class="btn btn-dark btn-sm px-3">
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-dark btn-sm px-3 w-100">
           <i class="bi bi-plus-circle me-1"></i>Aggiungi
         </button>
       </div>

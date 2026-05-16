@@ -7,8 +7,52 @@ Per aggiungere un nuovo provider:
 3. Importare il modulo (vedi fondo di questo file)
 """
 
+import json
+import os
+import tempfile
+import threading
 from abc import ABC, abstractmethod
 from typing import Optional
+
+_scrittura_lock = threading.Lock()
+
+
+def scrivi_json_atomico(path: str, dati: dict) -> None:
+    """Scrive un dict in JSON in modo atomico (tempfile + os.replace).
+
+    Garantisce che il file di destinazione non venga mai lasciato troncato
+    in caso di crash / kill durante la scrittura. Thread-safe via lock di modulo.
+    """
+    with _scrittura_lock:
+        directory = os.path.dirname(path) or "."
+        fd, tmp_path = tempfile.mkstemp(prefix=".tmp_", suffix=".json", dir=directory)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(dati, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+
+def aggiorna_config_atomico(path: str, mutator) -> None:
+    """Carica il config, applica `mutator(cfg)` e riscrive in modo atomico.
+
+    Usato dai provider per aggiornare un singolo campo (es. token OAuth) senza
+    sovrascrivere il resto del file di configurazione.
+    """
+    with _scrittura_lock:
+        if not os.path.exists(path):
+            return
+        with open(path, encoding="utf-8") as f:
+            cfg = json.load(f)
+        mutator(cfg)
+    scrivi_json_atomico(path, cfg)
 
 
 # ── Interfacce astratte ──────────────────────────────────────────────────────

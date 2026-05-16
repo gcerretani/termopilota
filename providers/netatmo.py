@@ -6,15 +6,15 @@ Registrazione app: https://dev.netatmo.com
 Scopes necessari: read_smarther write_smarther
 """
 
-import json
-import time
 import os
+import time
 import logging
 from typing import Optional
+from urllib.parse import urlencode
 
 import requests
 
-from providers import ThermostatProvider, register_thermostat
+from providers import ThermostatProvider, register_thermostat, aggiorna_config_atomico
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +35,19 @@ class NetatmoClient(ThermostatProvider):
 
     # ── OAuth2 ────────────────────────────────────────────────────────────────
 
-    def url_autorizzazione(self, redirect_uri: str, state: str = "domotica") -> str:
-        """URL per il flusso OAuth2 Authorization Code (primo accesso)."""
-        params = (
-            f"client_id={self.client_id}"
-            f"&redirect_uri={redirect_uri}"
-            f"&scope=read_smarther+write_smarther"
-            f"&response_type=code"
-            f"&state={state}"
-        )
+    def url_autorizzazione(self, redirect_uri: str, state: str) -> str:
+        """URL per il flusso OAuth2 Authorization Code (primo accesso).
+
+        `state` deve essere generato dal chiamante (es. token casuale salvato
+        in session) e validato nel callback per prevenire CSRF.
+        """
+        params = urlencode({
+            "client_id": self.client_id,
+            "redirect_uri": redirect_uri,
+            "scope": "read_smarther write_smarther",
+            "response_type": "code",
+            "state": state,
+        })
         return f"{NETATMO_AUTH_URL}?{params}"
 
     def scambia_codice(self, code: str, redirect_uri: str) -> dict:
@@ -83,13 +87,7 @@ class NetatmoClient(ThermostatProvider):
         self._salva_token()
 
     def _salva_token(self) -> None:
-        if not os.path.exists(CONFIG_FILE):
-            return
-        with open(CONFIG_FILE, encoding="utf-8") as f:
-            cfg = json.load(f)
-        cfg["legrand_token"] = self._token
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        aggiorna_config_atomico(CONFIG_FILE, lambda cfg: cfg.update({"legrand_token": self._token}))
 
     def _headers(self) -> dict:
         if not self._token:
