@@ -1,0 +1,319 @@
+/* TermoPilota — tema light/dark con CSS variables.
+ * Light di default. Dark si attiva con html[data-theme="dark"]. */
+
+:root {
+  --bg: #f5f7fa;
+  --panel: #ffffff;
+  --panel-soft: #fff8f5;
+  --panel-soft-ac: #f5f9ff;
+  --panel-muted: #f9f9f9;
+  --text: #1a1a2e;
+  --text-soft: #555;
+  --text-muted: #888;
+  --text-faint: #aaa;
+  --border: #e9ecef;
+  --border-soft: #f0f0f0;
+  --shadow-sm: 0 1px 8px rgba(0, 0, 0, .08);
+  --shadow-md: 0 2px 12px rgba(0, 0, 0, .07);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, .15);
+  --navbar-bg: #1a1a2e;
+  --footer-bg: #212529;
+  --footer-text: rgba(255, 255, 255, .55);
+  --alert-bg: #fff8e1;
+  --alert-border: #ffe082;
+  --alert-text: #7a5c00;
+  --highlight: #fffbf0;
+  --table-head-bg: #343a40;
+  --table-head-text: #fff;
+  --code-bg: #f3f3f3;
+
+  --gas-color: #e07b39;
+  --ac-color:  #2f80ed;
+  --green:     #27ae60;
+  --accent:    #e07b39;
+}
+
+html[data-theme="dark"] {
+  --bg: #15151f;
+  --panel: #1f1f2c;
+  --panel-soft: #2a201b;
+  --panel-soft-ac: #1a233a;
+  --panel-muted: #20202d;
+  --text: #e8e9ee;
+  --text-soft: #b6b9c2;
+  --text-muted: #8a8e99;
+  --text-faint: #696e7a;
+  --border: #2d2d3d;
+  --border-soft: #25252f;
+  --shadow-sm: 0 1px 8px rgba(0, 0, 0, .35);
+  --shadow-md: 0 2px 14px rgba(0, 0, 0, .35);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, .55);
+  --navbar-bg: #0e0e18;
+  --footer-bg: #0e0e18;
+  --footer-text: rgba(255, 255, 255, .5);
+  --alert-bg: #3a2e10;
+  --alert-border: #6b5418;
+  --alert-text: #ffdf8a;
+  --highlight: #2b2a1f;
+  --table-head-bg: #14141c;
+  --table-head-text: #e8e9ee;
+  --code-bg: #15151f;
+}
+
+html, body { background: var(--bg); }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: var(--text);
+}
+
+/* ── Bootstrap component overrides per il tema ───────────────────────────── */
+.card, .modal-content,
+.stat-card, .chart-card, .settings-card, .auto-card,
+.rec-table, .rec-table table {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.text-muted { color: var(--text-muted) !important; }
+.form-label { font-weight: 600; font-size: .88rem; color: var(--text-soft); }
+.form-text { color: var(--text-muted); }
+
+.form-control, .form-select {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--border);
+}
+.form-control:focus, .form-select:focus {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 .2rem rgba(224, 123, 57, .15);
+}
+.form-control::placeholder { color: var(--text-faint); }
+
+.nav-tabs { border-bottom-color: var(--border); }
+.nav-tabs .nav-link {
+  color: var(--text-soft);
+  border-color: transparent;
+}
+.nav-tabs .nav-link:hover { border-color: var(--border) var(--border) transparent; }
+.nav-tabs .nav-link.active {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--border) var(--border) var(--panel);
+}
+
+.table { color: var(--text); --bs-table-bg: transparent; }
+.table thead th { color: var(--text-soft); border-bottom-color: var(--border); }
+.table > :not(caption) > * > * {
+  background-color: transparent;
+  color: var(--text);
+  border-bottom-color: var(--border-soft);
+}
+.table-hover > tbody > tr:hover > * { background-color: rgba(224, 123, 57, .06); }
+
+code, .font-monospace { background: var(--code-bg); }
+hr { border-top-color: var(--border); }
+details summary { cursor: pointer; }
+
+/* ── Navbar ──────────────────────────────────────────────────────────────── */
+.navbar { background: var(--navbar-bg) !important; }
+.navbar-brand { font-weight: 700; letter-spacing: -.3px; }
+.top-nav-link { color: rgba(255, 255, 255, .72); }
+.top-nav-link:hover { color: #fff; }
+.top-nav-link.active { color: #fff; font-weight: 700; }
+.theme-toggle {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, .25);
+  color: rgba(255, 255, 255, .85);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .2s, transform .2s;
+}
+.theme-toggle:hover { background: rgba(255, 255, 255, .12); transform: rotate(-15deg); }
+.theme-toggle:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Hero card ───────────────────────────────────────────────────────────── */
+.hero-card {
+  border-radius: 20px;
+  padding: 2.2rem 2rem;
+  color: #fff;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+  transition: transform .2s, box-shadow .2s;
+  animation: fadeIn .35s ease;
+}
+.hero-card:hover { transform: translateY(-2px); box-shadow: 0 10px 36px rgba(0, 0, 0, .25); }
+.hero-card.gas { background: linear-gradient(135deg, #e07b39, #c0392b); }
+.hero-card.ac  { background: linear-gradient(135deg, #2f80ed, #1a6bc8); }
+.hero-card .hero-icon { font-size: 4rem; opacity: .85; }
+.hero-card .hero-title { font-size: 1.1rem; font-weight: 600; opacity: .9; margin-bottom: .2rem; }
+.hero-card .hero-device { font-size: 2rem; font-weight: 800; line-height: 1.1; }
+.hero-card .hero-reason { font-size: .9rem; opacity: .85; margin-top: .5rem; }
+.hero-card .hero-temp { font-size: 1.4rem; font-weight: 700; opacity: .9; }
+.hero-bg-circle {
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .08);
+}
+
+/* ── Stat / chart / settings / auto card ─────────────────────────────────── */
+.stat-card, .chart-card, .settings-card, .auto-card {
+  border-radius: 14px;
+  padding: 1.2rem 1.4rem;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
+}
+.chart-card, .settings-card, .auto-card { padding: 1.5rem; }
+.stat-card { height: 100%; animation: fadeIn .35s ease; }
+.stat-card .stat-label {
+  font-size: .78rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  font-weight: 600;
+}
+.stat-card .stat-value { font-size: 1.65rem; font-weight: 800; line-height: 1.1; margin-top: .2rem; }
+.stat-card .stat-sub { font-size: .8rem; color: var(--text-muted); margin-top: .15rem; }
+.stat-gas { border-left: 4px solid var(--gas-color); }
+.stat-ac  { border-left: 4px solid var(--ac-color); }
+.stat-vs  { border-left: 4px solid var(--green); }
+
+/* ── Tabella oraria ──────────────────────────────────────────────────────── */
+.rec-table { border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-md); }
+.rec-table th {
+  background: var(--table-head-bg);
+  color: var(--table-head-text);
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  white-space: nowrap;
+}
+.rec-table td { font-size: .88rem; vertical-align: middle; white-space: nowrap; }
+.badge-gas { background-color: var(--gas-color); }
+.badge-ac  { background-color: var(--ac-color); }
+tr.evidenziata { background-color: var(--highlight) !important; font-weight: 600; }
+tr.evidenziata td { border-left: 3px solid var(--accent); }
+
+/* ── Pills (tab giorni) ──────────────────────────────────────────────────── */
+.nav-pills .nav-link {
+  font-size: .85rem;
+  font-weight: 600;
+  padding: .35rem 1rem;
+  color: var(--text-soft);
+}
+.nav-pills .nav-link.active { background: var(--table-head-bg); color: var(--table-head-text); }
+
+/* ── Alert prezzi ────────────────────────────────────────────────────────── */
+.alert-prezzi {
+  background: var(--alert-bg);
+  border: 1px solid var(--alert-border);
+  border-radius: 10px;
+  font-size: .85rem;
+  color: var(--alert-text);
+}
+
+/* ── Auto / zone ─────────────────────────────────────────────────────────── */
+.zona-card {
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  border: 2px solid var(--border);
+  background: var(--panel);
+  transition: border-color .2s;
+}
+.zona-card.gas { border-color: var(--gas-color); background: var(--panel-soft); }
+.zona-card.ac  { border-color: var(--ac-color);  background: var(--panel-soft-ac); }
+.zona-card.off { border-color: var(--border); background: var(--panel-muted); }
+.log-item { font-size: .82rem; padding: .3rem 0; border-bottom: 1px solid var(--border-soft); }
+.log-item:last-child { border-bottom: none; }
+.form-switch .form-check-input { width: 2.5em; height: 1.4em; cursor: pointer; }
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.tp-footer { background: var(--footer-bg); color: var(--footer-text); }
+.tp-footer a { color: var(--footer-text); }
+
+/* ── Animations ──────────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Login page ──────────────────────────────────────────────────────────── */
+body.login-page {
+  background: var(--navbar-bg);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-card {
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 20px;
+  padding: 2.5rem 2rem;
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 400px;
+  animation: fadeIn .35s ease;
+}
+.login-title { font-weight: 800; font-size: 1.5rem; color: var(--text); margin-bottom: .3rem; }
+.login-subtitle { font-size: .85rem; color: var(--text-muted); margin-bottom: 1.8rem; }
+.btn-login {
+  background: linear-gradient(135deg, #2f80ed, #1a6bc8);
+  border: none;
+  font-weight: 700;
+  padding: .7rem;
+  font-size: 1rem;
+  color: #fff;
+}
+.btn-login:hover { background: linear-gradient(135deg, #1a6bc8, #155ab0); color: #fff; }
+.btn-google {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+  padding: .65rem;
+  font-size: .95rem;
+  transition: background .15s;
+}
+.btn-google:hover { background: var(--panel-muted); color: var(--text); }
+.btn-google .bi-google { color: #db4437; }
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  color: var(--text-muted);
+  font-size: .78rem;
+  margin: 1rem 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.login-divider::before, .login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Modali Bootstrap ────────────────────────────────────────────────────── */
+.modal-content { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+.modal-header { border-bottom-color: var(--border); }
+.modal-footer { border-top-color: var(--border); }
+html[data-theme="dark"] .btn-close { filter: invert(1) grayscale(100%) brightness(1.6); }
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .rec-table td, .rec-table th { font-size: .78rem; padding: .3rem .35rem; }
+  .hero-card { padding: 1.5rem 1.3rem; }
+  .hero-card .hero-device { font-size: 1.5rem; }
+  .stat-card .stat-value { font-size: 1.3rem; }
+}

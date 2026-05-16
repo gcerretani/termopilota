@@ -12,19 +12,34 @@ Apri:   http://localhost:5001
 """
 
 import json
+import logging
 import os
 import re
+import secrets
 import time
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse
 
 import requests
-from flask import Flask, Blueprint, jsonify, render_template, request, redirect, url_for, flash
-from flask_login import login_required, login_user, logout_user, current_user
+from flask import (
+    Blueprint, Flask, abort, flash, jsonify, redirect, render_template, request,
+    session, url_for,
+)
+from flask_login import current_user, login_required, login_user, logout_user
 from prezzi import calcola_prezzi
 from automazione import get_servizio, avvia_se_attiva
-from auth import setup_auth, authenticate, create_user, list_users, delete_user
-from providers import get_thermostat, get_heatpump
+from auth import (
+    User, authenticate, change_password, count_admin_attivi, create_user,
+    delete_user, link_google_account, list_users, set_active, set_admin,
+    set_password, setup_auth, update_user_email,
+)
+from auth_google import google_attivo, oauth, setup_google_oauth
+from providers import (
+    aggiorna_config_atomico, get_heatpump, get_thermostat, scrivi_json_atomico,
+)
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 setup_auth(app)
@@ -65,6 +80,8 @@ DEFAULT_CONFIG = {
     "legrand_client_id": "",
     "legrand_client_secret": "",
     "legrand_plant_id": "",
+    "google_client_id": "",
+    "google_client_secret": "",
     "zone": [],
     "cfr_station_id": "",
     "cfr_station_name": "",
@@ -77,8 +94,17 @@ DEFAULT_CONFIG = {
 
 def carica_config():
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, encoding="utf-8") as f:
-            cfg = json.load(f)
+        try:
+            with open(CONFIG_FILE, encoding="utf-8") as f:
+                cfg = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            backup = f"{CONFIG_FILE}.broken-{int(time.time())}"
+            try:
+                os.replace(CONFIG_FILE, backup)
+                logger.error("config.json corrotto, rinominato in %s: %s", backup, e)
+            except OSError:
+                logger.error("config.json corrotto e impossibile salvarne backup: %s", e)
+            return DEFAULT_CONFIG.copy()
         for k, v in DEFAULT_CONFIG.items():
             cfg.setdefault(k, v)
         return cfg
@@ -86,8 +112,8 @@ def carica_config():
 
 
 def salva_config(cfg):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    scrivi_json_atomico(CONFIG_FILE, cfg)
 
 
 # ─── COP interpolation ────────────────────────────────────────────────────────
@@ -264,7 +290,8 @@ def calcola_raccomandazioni(previsioni: dict, cfg: dict, temp_cfr: Optional[floa
     orario = previsioni["hourly"]
     gas_totale_smc = prezzi["gas_totale_smc"]
     luce_totale_kwh = prezzi["luce_totale_kwh"]
-    costo_gas_kwh = gas_totale_smc / (KWH_PER_SMC * cfg["efficienza_caldaia"])
+    eff = max(0.05, min(1.0, cfg.get("efficienza_caldaia") or 0.96))
+    costo_gas_kwh = gas_totale_smc / (KWH_PER_SMC * eff)
     temp_min_ac = cfg.get("temperatura_minima_ac", -10)
     ora_corrente = datetime.now().strftime("%Y-%m-%dT%H:00")
 
@@ -320,20 +347,40 @@ def calcola_raccomandazioni(previsioni: dict, cfg: dict, temp_cfr: Optional[floa
 
 # ─── Route autenticazione ────────────────────────────────────────────────────
 
+def _safe_next(url: Optional[str]) -> str:
+    """Restituisce un URL relativo sicuro, o '/' se l'input non e' valido.
+
+    Previene open redirect: rifiuta URL assoluti (con scheme/netloc) o
+    'protocol-relative' (che iniziano con '//').
+    """
+    if not url:
+        return "/"
+    if not url.startswith("/") or url.startswith("//"):
+        return "/"
+    parsed = urlparse(url)
+    if parsed.scheme or parsed.netloc:
+        return "/"
+    return url
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
+    next_url = _safe_next(request.values.get("next"))
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         user = authenticate(username, password)
         if user:
             login_user(user)
-            next_page = request.args.get("next", "/")
-            return redirect(next_page)
+            return redirect(next_url)
         flash("Credenziali non valide.", "error")
-    return render_template("login.html")
+    return render_template(
+        "login.html",
+        next_url=next_url,
+        google_abilitato=google_attivo(),
+    )
 
 
 @app.route("/logout")
@@ -341,6 +388,63 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for("login"))
+
+
+@app.route("/login/google")
+def login_google():
+    if not google_attivo():
+        flash("Login con Google non e' configurato.", "error")
+        return redirect(url_for("login"))
+    next_url = _safe_next(request.args.get("next"))
+    session["_login_next"] = next_url
+    redirect_uri = url_for("login_google_callback", _external=True)
+    return oauth.google.authorize_redirect(redirect_uri)
+
+
+@app.route("/login/google/callback")
+def login_google_callback():
+    if not google_attivo():
+        flash("Login con Google non e' configurato.", "error")
+        return redirect(url_for("login"))
+    next_url = _safe_next(session.pop("_login_next", "/"))
+    try:
+        token = oauth.google.authorize_access_token()
+    except Exception as e:
+        logger.warning("Errore OAuth Google: %s", e)
+        flash("Autenticazione Google fallita o annullata.", "error")
+        return redirect(url_for("login"))
+
+    info = token.get("userinfo") or {}
+    if not info:
+        try:
+            info = oauth.google.userinfo(token=token)
+        except Exception as e:
+            logger.warning("Errore userinfo Google: %s", e)
+            flash("Impossibile leggere il profilo Google.", "error")
+            return redirect(url_for("login"))
+
+    if not info.get("email_verified"):
+        flash("L'email Google non risulta verificata.", "error")
+        return redirect(url_for("login"))
+
+    sub = info.get("sub", "")
+    email = (info.get("email") or "").strip().lower()
+
+    user = User.get_by_google_sub(sub) if sub else None
+    if user is None and email:
+        user = User.get_by_email(email)
+        if user and sub and not user.google_sub:
+            link_google_account(user.id, sub)
+
+    if user is None:
+        flash("Nessun account associato a questa email. Chiedi all'amministratore.", "error")
+        return redirect(url_for("login"))
+    if not user.is_active:
+        flash("Account disabilitato.", "error")
+        return redirect(url_for("login"))
+
+    login_user(user)
+    return redirect(next_url)
 
 
 # ─── Route Dashboard ─────────────────────────────────────────────────────────
@@ -536,6 +640,7 @@ def api_config():
                      "smartthings_client_id", "smartthings_client_secret",
                      "legrand_client_id", "legrand_client_secret",
                      "legrand_subscription_key", "legrand_plant_id",
+                     "google_client_id", "google_client_secret",
                      "cfr_station_id", "cfr_station_name")
         for campo in campi_float:
             if campo in dati:
@@ -548,6 +653,13 @@ def api_config():
                 cfg[campo] = str(dati[campo])
         if "zone" in dati and isinstance(dati["zone"], list):
             cfg["zone"] = dati["zone"]
+
+        # Clamp di sicurezza lato server
+        cfg["efficienza_caldaia"] = max(0.05, min(1.0, float(cfg.get("efficienza_caldaia") or 0.96)))
+        cfg["intervallo_controllo_minuti"] = max(1.0, min(1440.0,
+            float(cfg.get("intervallo_controllo_minuti") or 15.0)))
+        cfg["soglia_delta_risparmio"] = max(0.0, float(cfg.get("soglia_delta_risparmio") or 0.01))
+
         cfg["ultima_modifica_fissi"] = datetime.now().strftime("%Y-%m-%d")
         salva_config(cfg)
         _cache_meteo["timestamp"] = 0.0
@@ -606,36 +718,36 @@ def api_dispositivi_condizionatori():
     return jsonify(scopri_condizionatori(carica_config()))
 
 
-# ─── OAuth callback (pubblico — serve come redirect Netatmo) ─────────────────
+# ─── OAuth callback Netatmo / SmartThings ────────────────────────────────────
+
+def _redirect_credenziali():
+    return redirect(url_for("admin.admin_credentials"))
+
 
 @app.route("/api/automazione/oauth-callback")
 def api_oauth_callback():
     code = request.args.get("code")
+    state = request.args.get("state", "")
+    state_atteso = session.pop("netatmo_oauth_state", None)
+    if not state_atteso or state != state_atteso:
+        flash("Stato OAuth Netatmo non valido. Ripeti l'autorizzazione.", "error")
+        return _redirect_credenziali()
     if not code:
-        return "Nessun codice ricevuto", 400
+        flash("Nessun codice ricevuto da Netatmo.", "error")
+        return _redirect_credenziali()
     cfg = carica_config()
     bt = get_thermostat("netatmo", cfg)
     if not bt:
-        return "Credenziali Netatmo non configurate", 400
+        flash("Credenziali Netatmo non configurate.", "error")
+        return _redirect_credenziali()
     try:
         redirect_uri = request.url_root.rstrip("/") + "/api/automazione/oauth-callback"
         bt.scambia_codice(code, redirect_uri)
-        return """<html><body><h2>Autorizzazione completata!</h2>
-        <p>Puoi chiudere questa finestra e tornare alla dashboard.</p></body></html>"""
+        flash("Autorizzazione Netatmo completata.", "success")
     except Exception as e:
-        detail = ""
-        if hasattr(e, "response") and e.response is not None:
-            detail = f"<pre>{e.response.text}</pre>"
-        redirect_used = request.url_root.rstrip("/") + "/api/automazione/oauth-callback"
-        return f"""<html><body>
-        <h2>Errore autorizzazione</h2>
-        <p><strong>{e}</strong></p>
-        {detail}
-        <hr>
-        <p><strong>redirect_uri usata:</strong><br><code>{redirect_used}</code></p>
-        <p>Verifica che questa URL sia registrata nelle impostazioni dell'app su
-        <a href="https://dev.netatmo.com">dev.netatmo.com</a></p>
-        </body></html>""", 500
+        logger.warning("Errore OAuth Netatmo: %s", e)
+        flash(f"Errore autorizzazione Netatmo: {e}", "error")
+    return _redirect_credenziali()
 
 
 @app.route("/api/automazione/oauth-url")
@@ -645,40 +757,36 @@ def api_oauth_url():
     bt = get_thermostat("netatmo", cfg)
     if not bt:
         return jsonify({"errore": "Credenziali Netatmo non configurate"}), 400
+    state = secrets.token_urlsafe(24)
+    session["netatmo_oauth_state"] = state
     redirect_uri = request.url_root.rstrip("/") + "/api/automazione/oauth-callback"
-    return jsonify({"url": bt.url_autorizzazione(redirect_uri)})
+    return jsonify({"url": bt.url_autorizzazione(redirect_uri, state)})
 
-
-# ─── OAuth callback SmartThings ──────────────────────────────────────────────
 
 @app.route("/api/automazione/smartthings-callback")
 def api_smartthings_callback():
     code = request.args.get("code")
+    state = request.args.get("state", "")
+    state_atteso = session.pop("smartthings_oauth_state", None)
+    if not state_atteso or state != state_atteso:
+        flash("Stato OAuth SmartThings non valido. Ripeti l'autorizzazione.", "error")
+        return _redirect_credenziali()
     if not code:
-        return "Nessun codice ricevuto", 400
+        flash("Nessun codice ricevuto da SmartThings.", "error")
+        return _redirect_credenziali()
     cfg = carica_config()
     st = get_heatpump("smartthings", cfg)
     if not st or not st.client_id:
-        return "Credenziali SmartThings OAuth non configurate", 400
+        flash("Credenziali SmartThings OAuth non configurate.", "error")
+        return _redirect_credenziali()
     try:
         redirect_uri = request.url_root.rstrip("/") + "/api/automazione/smartthings-callback"
         st.scambia_codice(code, redirect_uri)
-        return """<html><body><h2>Autorizzazione SmartThings completata!</h2>
-        <p>Puoi chiudere questa finestra e tornare alla dashboard.</p></body></html>"""
+        flash("Autorizzazione SmartThings completata.", "success")
     except Exception as e:
-        detail = ""
-        if hasattr(e, "response") and e.response is not None:
-            detail = f"<pre>{e.response.text}</pre>"
-        redirect_used = request.url_root.rstrip("/") + "/api/automazione/smartthings-callback"
-        return f"""<html><body>
-        <h2>Errore autorizzazione SmartThings</h2>
-        <p><strong>{e}</strong></p>
-        {detail}
-        <hr>
-        <p><strong>redirect_uri usata:</strong><br><code>{redirect_used}</code></p>
-        <p>Verifica che questa URL sia registrata come redirect_uri dell'app OAuth
-        creata con <code>smartthings apps:create</code>.</p>
-        </body></html>""", 500
+        logger.warning("Errore OAuth SmartThings: %s", e)
+        flash(f"Errore autorizzazione SmartThings: {e}", "error")
+    return _redirect_credenziali()
 
 
 @app.route("/api/automazione/smartthings-oauth-url")
@@ -688,8 +796,10 @@ def api_smartthings_oauth_url():
     st = get_heatpump("smartthings", cfg)
     if not st or not st.client_id or not st.client_secret:
         return jsonify({"errore": "Client ID/Secret SmartThings non configurati"}), 400
+    state = secrets.token_urlsafe(24)
+    session["smartthings_oauth_state"] = state
     redirect_uri = request.url_root.rstrip("/") + "/api/automazione/smartthings-callback"
-    return jsonify({"url": st.url_autorizzazione(redirect_uri)})
+    return jsonify({"url": st.url_autorizzazione(redirect_uri, state)})
 
 
 # ─── Blueprint Admin ──────────────────────────────────────────────────────────
@@ -728,13 +838,14 @@ def admin_users():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        email = request.form.get("email", "").strip() or None
         is_admin = request.form.get("is_admin") == "1"
         if not username or not password:
             flash("Username e password sono obbligatori.", "error")
-        elif create_user(username, password, is_admin=is_admin):
+        elif create_user(username, password, is_admin=is_admin, email=email):
             flash(f"Utente '{username}' creato.", "success")
         else:
-            flash(f"Username '{username}' gia' esistente.", "error")
+            flash(f"Username o email gia' esistenti.", "error")
         return redirect(url_for("admin.admin_users"))
     users = list_users()
     return render_template("admin/users.html", users=users)
@@ -744,14 +855,88 @@ def admin_users():
 def admin_delete_user(user_id):
     if user_id == current_user.id:
         flash("Non puoi eliminare il tuo stesso account.", "error")
-    elif delete_user(user_id):
-        flash("Utente eliminato.", "success")
+    else:
+        target = User.get(user_id)
+        if target and target.is_admin and target.is_active and count_admin_attivi() <= 1:
+            flash("Non puoi eliminare l'ultimo amministratore attivo.", "error")
+        elif delete_user(user_id):
+            flash("Utente eliminato.", "success")
+        else:
+            flash("Utente non trovato.", "error")
+    return redirect(url_for("admin.admin_users"))
+
+
+@admin_bp.route("/users/<int:user_id>/edit", methods=["POST"])
+def admin_edit_user(user_id):
+    target = User.get(user_id)
+    if target is None:
+        flash("Utente non trovato.", "error")
+        return redirect(url_for("admin.admin_users"))
+    email = request.form.get("email", "").strip() or None
+    if not update_user_email(user_id, email):
+        flash("Email gia' in uso da un altro utente.", "error")
+        return redirect(url_for("admin.admin_users"))
+    if "is_admin" in request.form and user_id != current_user.id:
+        nuovo_admin = request.form.get("is_admin") == "1"
+        if not set_admin(user_id, nuovo_admin):
+            flash("Impossibile rimuovere l'ultimo amministratore attivo.", "error")
+            return redirect(url_for("admin.admin_users"))
+    flash(f"Utente '{target.username}' aggiornato.", "success")
+    return redirect(url_for("admin.admin_users"))
+
+
+@admin_bp.route("/users/<int:user_id>/reset-password", methods=["POST"])
+def admin_reset_password(user_id):
+    nuova = request.form.get("password", "")
+    if not nuova or len(nuova) < 4:
+        flash("Password troppo corta (minimo 4 caratteri).", "error")
+    elif set_password(user_id, nuova):
+        flash("Password aggiornata.", "success")
     else:
         flash("Utente non trovato.", "error")
     return redirect(url_for("admin.admin_users"))
 
 
+@admin_bp.route("/users/<int:user_id>/toggle-active", methods=["POST"])
+def admin_toggle_active(user_id):
+    if user_id == current_user.id:
+        flash("Non puoi disattivare il tuo stesso account.", "error")
+        return redirect(url_for("admin.admin_users"))
+    target = User.get(user_id)
+    if target is None:
+        flash("Utente non trovato.", "error")
+        return redirect(url_for("admin.admin_users"))
+    nuovo_stato = not target.is_active
+    if set_active(user_id, nuovo_stato):
+        msg = "Utente attivato." if nuovo_stato else "Utente disattivato."
+        flash(msg, "success")
+    else:
+        flash("Impossibile disattivare l'ultimo amministratore attivo.", "error")
+    return redirect(url_for("admin.admin_users"))
+
+
 app.register_blueprint(admin_bp)
+
+
+# ─── Account self-service ────────────────────────────────────────────────────
+
+@app.route("/account", methods=["GET", "POST"])
+@login_required
+def account():
+    if request.method == "POST":
+        vecchia = request.form.get("password_vecchia", "")
+        nuova = request.form.get("password_nuova", "")
+        conferma = request.form.get("password_conferma", "")
+        if not nuova or len(nuova) < 4:
+            flash("La nuova password deve essere di almeno 4 caratteri.", "error")
+        elif nuova != conferma:
+            flash("Le due password non coincidono.", "error")
+        elif not change_password(current_user.id, vecchia, nuova):
+            flash("Password attuale non corretta.", "error")
+        else:
+            flash("Password aggiornata.", "success")
+        return redirect(url_for("account"))
+    return render_template("account.html", user=current_user)
 
 
 # ─── Avvio automazione (compatibile gunicorn --preload) ──────────────────────
@@ -769,6 +954,15 @@ def _avvia_automazione():
 
 
 _avvia_automazione()
+
+# Registra Google OAuth se le credenziali sono configurate. Cambiarle richiede
+# un riavvio dell'app.
+_cfg_iniziale = carica_config()
+setup_google_oauth(
+    app,
+    _cfg_iniziale.get("google_client_id", ""),
+    _cfg_iniziale.get("google_client_secret", ""),
+)
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

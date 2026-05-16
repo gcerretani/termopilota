@@ -22,15 +22,15 @@ Documentazione: https://developer.smartthings.com/docs/connected-services/oauth-
 """
 
 import base64
-import json
 import logging
 import os
 import time
 from typing import Optional
+from urllib.parse import urlencode
 
 import requests
 
-from providers import HeatPumpProvider, register_heatpump
+from providers import HeatPumpProvider, register_heatpump, aggiorna_config_atomico
 
 logger = logging.getLogger(__name__)
 
@@ -59,15 +59,19 @@ class SmartThingsClient(HeatPumpProvider):
 
     # ── OAuth2 ────────────────────────────────────────────────────────────────
 
-    def url_autorizzazione(self, redirect_uri: str, state: str = "smartthings") -> str:
-        """URL per il flusso OAuth2 Authorization Code (primo accesso)."""
-        params = (
-            f"client_id={self.client_id}"
-            f"&response_type=code"
-            f"&redirect_uri={requests.utils.quote(redirect_uri, safe='')}"
-            f"&scope={requests.utils.quote(ST_SCOPES, safe='')}"
-            f"&state={state}"
-        )
+    def url_autorizzazione(self, redirect_uri: str, state: str) -> str:
+        """URL per il flusso OAuth2 Authorization Code (primo accesso).
+
+        `state` deve essere generato dal chiamante (es. token casuale salvato
+        in session) e validato nel callback per prevenire CSRF.
+        """
+        params = urlencode({
+            "client_id": self.client_id,
+            "response_type": "code",
+            "redirect_uri": redirect_uri,
+            "scope": ST_SCOPES,
+            "state": state,
+        })
         return f"{ST_AUTH_URL}?{params}"
 
     def _basic_auth(self) -> str:
@@ -119,13 +123,7 @@ class SmartThingsClient(HeatPumpProvider):
         self._salva_token()
 
     def _salva_token(self) -> None:
-        if not os.path.exists(CONFIG_FILE):
-            return
-        with open(CONFIG_FILE, encoding="utf-8") as f:
-            cfg = json.load(f)
-        cfg["smartthings_token_data"] = self._token
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        aggiorna_config_atomico(CONFIG_FILE, lambda cfg: cfg.update({"smartthings_token_data": self._token}))
 
     def _headers(self) -> dict:
         # OAuth2 ha priorita' se configurato correttamente

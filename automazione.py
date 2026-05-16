@@ -85,7 +85,7 @@ def _costo_gas(cfg: dict) -> float:
         gas_smc = prezzi["gas_totale_smc"]
     except Exception:
         gas_smc = cfg.get("gas_totale_smc_manuale", 1.09)
-    eff = cfg.get("efficienza_caldaia", 0.99)
+    eff = max(0.05, min(1.0, cfg.get("efficienza_caldaia") or 0.96))
     return gas_smc / (KWH_PER_SMC * eff)
 
 
@@ -137,8 +137,8 @@ class AutomazioneRiscaldamento:
                 logger.exception("Errore nel ciclo automazione: %s", e)
                 self._log_evento("sistema", "errore", str(e))
             cfg = self._carica_config()
-            intervallo = cfg.get("intervallo_controllo_minuti", 15) * 60
-            self._stop_event.wait(timeout=intervallo)
+            intervallo_min = max(1.0, min(1440.0, cfg.get("intervallo_controllo_minuti") or 15.0))
+            self._stop_event.wait(timeout=intervallo_min * 60)
 
     def _ciclo(self) -> None:
         cfg = self._carica_config()
