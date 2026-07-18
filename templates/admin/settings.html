@@ -71,7 +71,12 @@
         <input type="number" step="1" class="form-control" id="tempMinAC" value="{{ cfg.temperatura_minima_ac }}">
         <div class="form-text">Sotto questa temp. il condizionatore non è consigliato</div>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-3">
+        <label class="form-label">Potenza termica media (kW)</label>
+        <input type="number" step="0.5" class="form-control" id="potenzaTermica" value="{{ cfg.potenza_termica_kw }}">
+        <div class="form-text">Usata per stimare i risparmi in € nella pagina Storico</div>
+      </div>
+      <div class="col-md-3">
         <label class="form-label">Note bolletta (opzionale)</label>
         <input type="text" class="form-control" id="noteBolletta" value="{{ cfg.note_bolletta }}" placeholder="es. bolletta marzo 2026 — scadenza aprile">
       </div>
@@ -139,6 +144,7 @@ async function salvaImpostazioni() {
     note_bolletta:              document.getElementById('noteBolletta').value,
     intervallo_controllo_minuti: parseFloat(document.getElementById('intervallo').value),
     soglia_delta_risparmio:     parseFloat(document.getElementById('soglia').value),
+    potenza_termica_kw:         parseFloat(document.getElementById('potenzaTermica').value),
     lat:                        parseFloat(document.getElementById('lat').value),
     lon:                        parseFloat(document.getElementById('lon').value),
     cfr_station_id:             document.getElementById('cfrStationId').value.trim(),

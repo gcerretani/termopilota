@@ -151,6 +151,7 @@ details summary { cursor: pointer; }
 .hero-card:hover { transform: translateY(-2px); box-shadow: 0 10px 36px rgba(0, 0, 0, .25); }
 .hero-card.gas { background: linear-gradient(135deg, #e07b39, #c0392b); }
 .hero-card.ac  { background: linear-gradient(135deg, #2f80ed, #1a6bc8); }
+.hero-card.risparmio { background: linear-gradient(135deg, #27ae60, #1e8449); }
 .hero-card .hero-icon { font-size: 4rem; opacity: .85; }
 .hero-card .hero-title { font-size: 1.1rem; font-weight: 600; opacity: .9; margin-bottom: .2rem; }
 .hero-card .hero-device { font-size: 2rem; font-weight: 800; line-height: 1.1; }
@@ -212,6 +213,20 @@ tr.evidenziata td { border-left: 3px solid var(--accent); }
   color: var(--text-soft);
 }
 .nav-pills .nav-link.active { background: var(--table-head-bg); color: var(--table-head-text); }
+
+/* ── Chip informativi (prezzi, risparmio, stato aggiornamento) ───────────── */
+.info-chip {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .8rem;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  font-size: .85rem;
+}
+.aggiornato-chip { font-size: .72rem; color: var(--text-faint); white-space: nowrap; }
+.aggiornato-chip.errore { color: #c0392b; }
 
 /* ── Alert prezzi ────────────────────────────────────────────────────────── */
 .alert-prezzi {
@@ -310,10 +325,44 @@ body.login-page {
 .modal-footer { border-top-color: var(--border); }
 html[data-theme="dark"] .btn-close { filter: invert(1) grayscale(100%) brightness(1.6); }
 
+/* ── Safe area (PWA installata, richiede viewport-fit=cover) ─────────────── */
+body { padding-bottom: env(safe-area-inset-bottom); }
+.navbar { padding-top: calc(.5rem + env(safe-area-inset-top)); }
+.tp-footer { padding-bottom: calc(1rem + env(safe-area-inset-bottom)) !important; }
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
+/* Tabella oraria scrollabile con colonna Ora fissa */
+.rec-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.rec-table th:first-child, .rec-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.rec-table td:first-child { background: var(--panel); }
+.rec-table th:first-child { background: var(--table-head-bg); }
+.rec-table tr.evidenziata td:first-child { background: var(--highlight); }
+
 @media (max-width: 768px) {
   .rec-table td, .rec-table th { font-size: .78rem; padding: .3rem .35rem; }
   .hero-card { padding: 1.5rem 1.3rem; }
   .hero-card .hero-device { font-size: 1.5rem; }
+  .stat-card { padding: .9rem 1rem; }
   .stat-card .stat-value { font-size: 1.3rem; }
+  .stat-card .stat-sub { font-size: .72rem; }
+  /* Touch target piu' generosi */
+  .nav-pills .nav-link { padding: .55rem 1.15rem; }
+  .theme-toggle { width: 40px; height: 40px; }
+}
+
+@media (max-width: 576px) {
+  /* Navbar compatta: niente overflow dei link su schermi stretti */
+  .navbar-brand { font-size: 1.05rem; }
+  .navbar .container-lg { row-gap: .25rem; }
+  .navbar .d-flex.gap-3 { gap: .6rem !important; }
+  .top-nav-link { font-size: .8rem; }
+  .hero-card { padding: 1.1rem 1rem; }
+  .hero-card .hero-device { font-size: 1.3rem; }
+  .hero-card .hero-temp { font-size: 1.1rem; }
+  .hero-bg-circle { display: none; }
+  .info-chip { font-size: .78rem; padding: .4rem .6rem; }
 }

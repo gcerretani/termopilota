@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Storico{% endblock %}
+
+{% block head_extra %}
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-lg py-4">
+
+  <!-- Hero risparmio -->
+  <div class="hero-card risparmio mb-4">
+    <div class="hero-bg-circle"></div>
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <div class="hero-title"><i class="bi bi-piggy-bank me-1"></i>Risparmiato questa stagione</div>
+        <div class="hero-device" id="risparmioStagione">€ —</div>
+        <div class="hero-reason" id="risparmioDettaglio">Stima basata sulle ore in cui la pompa di calore era la scelta più economica.</div>
+      </div>
+      <div class="text-end" style="font-size:.9rem;opacity:.9;">
+        <div>Oggi: <strong id="risparmioOggi">€ —</strong></div>
+        <div>Ultimi 7 giorni: <strong id="risparmioSettimana">€ —</strong></div>
+        <div style="font-size:.78rem;opacity:.8;margin-top:4px;" id="risparmioOre"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Selettore range -->
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h6 class="fw-bold mb-0"><i class="bi bi-clock-history me-2 text-secondary"></i>Andamento storico</h6>
+    <ul class="nav nav-pills" id="tabRange">
+      <li class="nav-item"><a class="nav-link active" href="#" data-range="7g">7 giorni</a></li>
+      <li class="nav-item"><a class="nav-link" href="#" data-range="30g">30 giorni</a></li>
+      <li class="nav-item"><a class="nav-link" href="#" data-range="stagione">Stagione</a></li>
+    </ul>
+  </div>
+
+  <div id="storicoVuoto" class="alert alert-prezzi rounded-3 mb-4" style="display:none;">
+    <i class="bi bi-hourglass-split me-2"></i>
+    Nessun dato ancora per questo intervallo — lo storico si popola automaticamente con l'uso, un campione all'ora.
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-lg-6">
+      <div class="chart-card h-100">
+        <h6 class="fw-bold mb-3"><i class="bi bi-graph-up me-2" style="color:var(--gas-color);"></i>Costo del calore: caldaia vs pompa di calore</h6>
+        <div style="height:240px;"><canvas id="graficoPrezzi"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="chart-card h-100">
+        <h6 class="fw-bold mb-3"><i class="bi bi-thermometer-half me-2 text-secondary"></i>Temperatura esterna</h6>
+        <div style="height:240px;"><canvas id="graficoTemperature"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="chart-card h-100">
+        <h6 class="fw-bold mb-3"><i class="bi bi-bar-chart-steps me-2 text-primary"></i>Ore consigliate per fonte, per giorno</h6>
+        <div style="height:240px;"><canvas id="graficoOreFonte"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="chart-card h-100">
+        <h6 class="fw-bold mb-3"><i class="bi bi-piggy-bank me-2" style="color:var(--green);"></i>Risparmio cumulativo stimato</h6>
+        <div style="height:240px;"><canvas id="graficoRisparmio"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="small text-muted">
+    <i class="bi bi-info-circle me-1"></i>
+    Il risparmio è una <strong>stima</strong>: per ogni ora con riscaldamento attivo in cui la pompa di calore era
+    più conveniente si conta (costo caldaia − costo pompa) × potenza termica media configurata in
+    <a href="/admin/">Admin → Impostazioni</a>.
+  </p>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/storico.js') }}"></script>
+{% endblock %}

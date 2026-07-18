@@ -24,33 +24,13 @@ from typing import Optional
 
 import requests
 
+from costanti import KWH_PER_SMC, interpola_cop
+
 logger = logging.getLogger(__name__)
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "data", "config.json")
-KWH_PER_SMC = 10.691
-
-# COP Samsung AJ040TXJ2KG/EU — ancorato a 4.47@+7°C (EN14511 certificato)
-COP_TABELLA = [
-    (-15, 1.60), (-10, 1.95), (-7, 2.20), (-5, 2.40), (-2, 2.70),
-    (0, 2.90), (2, 3.15), (5, 3.75), (7, 4.47), (10, 4.80),
-    (15, 5.15), (20, 5.40),
-]
 
 ISTERESI = 0.5  # °C — AC si accende se T < setpoint-0.5, si spegne se T >= setpoint
-
-
-def _cop(t_ext: float) -> float:
-    """Interpola il COP del Samsung in funzione della temperatura esterna."""
-    if t_ext <= COP_TABELLA[0][0]:
-        return COP_TABELLA[0][1]
-    if t_ext >= COP_TABELLA[-1][0]:
-        return COP_TABELLA[-1][1]
-    for i in range(len(COP_TABELLA) - 1):
-        t1, c1 = COP_TABELLA[i]
-        t2, c2 = COP_TABELLA[i + 1]
-        if t1 <= t_ext <= t2:
-            return c1 + (c2 - c1) * (t_ext - t1) / (t2 - t1)
-    return COP_TABELLA[-1][1]
 
 
 def _temp_cfr(station_id: str) -> Optional[float]:
@@ -97,7 +77,7 @@ def _costo_ac(t_ext: float, cfg: dict) -> float:
         luce_kwh = prezzi["luce_totale_kwh"]
     except Exception:
         luce_kwh = cfg.get("luce_totale_kwh_manuale", 0.246)
-    cop = _cop(t_ext)
+    cop = interpola_cop(t_ext)
     return luce_kwh / cop
 
 

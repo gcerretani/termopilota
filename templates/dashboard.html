@@ -3,7 +3,7 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block head_extra %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
 {% endblock %}
 
 {% block content %}
@@ -24,8 +24,7 @@
 
   <!-- Banner prezzi automatici -->
   <div class="d-flex flex-wrap gap-2 mb-4">
-    <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3"
-         style="background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.08);font-size:.85rem;">
+    <div class="info-chip">
       <i class="bi bi-fire" style="color:var(--gas-color);"></i>
       <span class="text-muted">Gas commodity:</span>
       {% if prezzi.gas_fonte == 'ttf_auto' %}
@@ -37,8 +36,7 @@
         {% if current_user.is_admin %}<a href="/admin/" class="text-muted" style="font-size:.75rem;">configura →</a>{% endif %}
       {% endif %}
     </div>
-    <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3"
-         style="background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.08);font-size:.85rem;">
+    <div class="info-chip">
       <i class="bi bi-lightning-charge" style="color:var(--ac-color);"></i>
       <span class="text-muted">Luce commodity:</span>
       {% if prezzi.luce_fonte == 'entsoe_auto' %}
@@ -50,52 +48,57 @@
         {% if current_user.is_admin %}<a href="/admin/" style="font-size:.75rem;color:var(--ac-color);">configura chiave ENTSO-E →</a>{% endif %}
       {% endif %}
     </div>
+    <div class="info-chip" id="chipRisparmio" style="display:none;">
+      <i class="bi bi-piggy-bank" style="color:var(--green);"></i>
+      <span class="text-muted">Risparmiato questa stagione:</span>
+      <strong style="color:var(--green);"><span id="chipRisparmioVal"></span></strong>
+      <a href="/storico" class="text-muted" style="font-size:.75rem;">storico →</a>
+    </div>
   </div>
 
   {% if attuale %}
   <!-- Hero raccomandazione ora -->
   <div class="row g-3 mb-4">
     <div class="col-md-7">
-      <div class="hero-card {{ attuale.raccomandazione }} h-100">
+      <div class="hero-card {{ attuale.raccomandazione }} h-100" id="heroCard">
         <div class="hero-bg-circle"></div>
         <div class="d-flex justify-content-between align-items-start">
           <div>
             <div class="hero-title">Consiglio per adesso</div>
-            <div class="hero-device">
+            <div class="hero-device" id="heroDevice">
               {% if attuale.raccomandazione == 'gas' %}
                 <i class="bi bi-fire me-1"></i>Usa la Caldaia
               {% else %}
                 <i class="bi bi-snow me-1"></i>Usa il Condizionatore
               {% endif %}
             </div>
-            <div class="hero-reason">{{ attuale.motivo }}</div>
+            <div class="hero-reason" id="heroReason">{{ attuale.motivo }}</div>
           </div>
           <div class="text-end">
-            <div class="hero-temp">{{ attuale.temp_esterna }}°C</div>
-            {% if cfr_info %}
-            <div style="font-size:.78rem;opacity:.85;background:rgba(255,255,255,.2);border-radius:6px;padding:2px 7px;display:inline-block;margin-top:2px;">
-              📡 CFR {{ cfr_info.ora }}
+            <div class="hero-temp" id="heroTemp">{{ attuale.temp_esterna }}°C</div>
+            <div id="heroExtra">
+              {% if cfr_info %}
+              <div style="font-size:.78rem;opacity:.85;background:rgba(255,255,255,.2);border-radius:6px;padding:2px 7px;display:inline-block;margin-top:2px;">
+                📡 CFR {{ cfr_info.ora }}
+              </div>
+              {% endif %}
+              <div style="font-size:.85rem;opacity:.8;margin-top:4px;">{{ attuale.meteo_icon }} {{ attuale.meteo_desc }}</div>
+              {% if attuale.pioggia_prob > 20 %}
+              <div style="font-size:.8rem;opacity:.7;">🌧 pioggia {{ attuale.pioggia_prob }}%</div>
+              {% endif %}
             </div>
-            {% endif %}
-            <div style="font-size:.85rem;opacity:.8;margin-top:4px;">{{ attuale.meteo_icon }} {{ attuale.meteo_desc }}</div>
-            {% if attuale.pioggia_prob > 20 %}
-            <div style="font-size:.8rem;opacity:.7;">🌧 pioggia {{ attuale.pioggia_prob }}%</div>
-            {% endif %}
           </div>
         </div>
-        {% if attuale.raccomandazione == 'gas' %}
-        <div class="mt-3 d-flex gap-3" style="font-size:.82rem;opacity:.85;">
+        <div class="mt-3 d-flex gap-3 flex-wrap" style="font-size:.82rem;opacity:.85;" id="heroCosti">
+          {% if attuale.raccomandazione == 'gas' %}
           <span><i class="bi bi-fire me-1"></i>Caldaia: <strong>{{ "%.3f"|format(attuale.costo_gas_kwh) }} €/kWh<sub>th</sub></strong></span>
           <span><i class="bi bi-snow me-1"></i>AC: <strong>{{ "%.3f"|format(attuale.costo_ac_kwh) }} €/kWh<sub>th</sub></strong></span>
-          <span><i class="bi bi-thermometer me-1"></i>COP AC: <strong>{{ attuale.cop }}</strong></span>
-        </div>
-        {% else %}
-        <div class="mt-3 d-flex gap-3" style="font-size:.82rem;opacity:.85;">
+          {% else %}
           <span><i class="bi bi-snow me-1"></i>AC: <strong>{{ "%.3f"|format(attuale.costo_ac_kwh) }} €/kWh<sub>th</sub></strong></span>
           <span><i class="bi bi-fire me-1"></i>Caldaia: <strong>{{ "%.3f"|format(attuale.costo_gas_kwh) }} €/kWh<sub>th</sub></strong></span>
+          {% endif %}
           <span><i class="bi bi-thermometer me-1"></i>COP AC: <strong>{{ attuale.cop }}</strong></span>
         </div>
-        {% endif %}
       </div>
     </div>
 
@@ -105,7 +108,7 @@
         <div class="col-6">
           <div class="stat-card stat-gas h-100">
             <div class="stat-label"><i class="bi bi-fire me-1" style="color:var(--gas-color);"></i>Caldaia gas</div>
-            <div class="stat-value" style="color:var(--gas-color);">{{ "%.3f"|format(attuale.costo_gas_kwh) }}</div>
+            <div class="stat-value" style="color:var(--gas-color);" id="statGasVal">{{ "%.3f"|format(attuale.costo_gas_kwh) }}</div>
             <div class="stat-sub">€/kWh termico</div>
             <div class="stat-sub mt-2">{{ prezzi.gas_totale_smc }} €/Smc totale</div>
             {% if prezzi.gas_fonte == 'ttf_auto' %}
@@ -118,7 +121,7 @@
         <div class="col-6">
           <div class="stat-card stat-ac h-100">
             <div class="stat-label"><i class="bi bi-snow me-1" style="color:var(--ac-color);"></i>Condizionatore</div>
-            <div class="stat-value" style="color:var(--ac-color);">{{ "%.3f"|format(attuale.costo_ac_kwh) }}</div>
+            <div class="stat-value" style="color:var(--ac-color);" id="statAcVal">{{ "%.3f"|format(attuale.costo_ac_kwh) }}</div>
             <div class="stat-sub">€/kWh termico</div>
             <div class="stat-sub mt-2">{{ prezzi.luce_totale_kwh }} €/kWh ÷ COP {{ attuale.cop }}</div>
             {% if prezzi.luce_fonte == 'entsoe_auto' %}
@@ -131,14 +134,14 @@
         <div class="col-6">
           <div class="stat-card stat-vs h-100">
             <div class="stat-label"><i class="bi bi-calendar-day me-1" style="color:var(--green);"></i>Oggi</div>
-            <div class="stat-value" style="color:var(--green);">{{ ore_gas_oggi }}h / {{ ore_ac_oggi }}h</div>
+            <div class="stat-value" style="color:var(--green);" id="statOreVal">{{ ore_gas_oggi }}h / {{ ore_ac_oggi }}h</div>
             <div class="stat-sub">caldaia / condizionatore</div>
           </div>
         </div>
         <div class="col-6">
           <div class="stat-card h-100" style="border-left:4px solid #9b59b6;">
             <div class="stat-label"><i class="bi bi-lightning-charge me-1" style="color:#9b59b6;"></i>Prezzi totali</div>
-            <div class="stat-value" style="color:#9b59b6;font-size:1.1rem;">
+            <div class="stat-value" style="color:#9b59b6;font-size:1.1rem;" id="statTotaliVal">
               ⛽ {{ prezzi.gas_totale_smc }}€/Smc<br>
               ⚡ {{ prezzi.luce_totale_kwh }}€/kWh
             </div>
@@ -152,7 +155,10 @@
 
   <!-- Grafico 48h -->
   <div class="chart-card mb-4">
-    <h6 class="fw-bold mb-3"><i class="bi bi-graph-up me-2 text-primary"></i>Confronto costo energetico prossime 48 ore</h6>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h6 class="fw-bold mb-0"><i class="bi bi-graph-up me-2 text-primary"></i>Confronto costo energetico prossime 48 ore</h6>
+      <span id="aggiornatoAlle" class="aggiornato-chip"></span>
+    </div>
     <div style="height: 260px;">
       <canvas id="graficoComparazione"></canvas>
     </div>
@@ -173,7 +179,7 @@
       </ul>
     </div>
     <div class="rec-table">
-      <table class="table table-sm table-hover mb-0 bg-white">
+      <table class="table table-sm table-hover mb-0">
         <thead>
           <tr>
             <th class="ps-3">Ora</th><th>Meteo</th><th>T. est.</th><th>COP AC</th>

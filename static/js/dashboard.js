@@ -1,48 +1,62 @@
 // TermoPilota — script dashboard.
-// I dati orari sono iniettati dal template come `window.datiOrari`.
+// Primo paint renderizzato dal server (window.datiOrari); poi la dashboard si
+// aggiorna in place da /api/dashboard ogni 5 minuti (e al ritorno sul tab).
 
 (function () {
-  const datiOrari = window.datiOrari || [];
-  const oraCorrente = new Date().toISOString().slice(0, 13) + ':00';
+  let datiOrari = window.datiOrari || [];
+  let grafico = null;
+  let giornoAttivo = 'oggi';
+  let ultimoFetch = Date.now();
+
+  const oraCorrente = () => new Date().toISOString().slice(0, 13) + ':00';
 
   // ── Grafico comparazione ───────────────────────────────────────────────
-  const canvas = document.getElementById('graficoComparazione');
-  if (canvas && datiOrari.length > 0 && typeof Chart !== 'undefined') {
-    const labels   = datiOrari.map(d => d.ora.slice(11, 16));
-    const gasData  = datiOrari.map(d => d.costo_gas_kwh);
-    const acData   = datiOrari.map(d => d.costo_ac_kwh);
-    const tempData = datiOrari.map(d => d.temp_esterna);
+  const pluginSfondo = {
+    id: 'sfondoZone',
+    beforeDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      if (!chartArea) return;
+      const { top, bottom } = chartArea;
+      datiOrari.forEach((d, i) => {
+        if (d.raccomandazione === 'ac') {
+          const x0 = scales.x.getPixelForValue(i);
+          const x1 = scales.x.getPixelForValue(i + 1);
+          ctx.fillStyle = 'rgba(47,128,237,0.08)';
+          ctx.fillRect(x0, top, (x1 - x0), bottom - top);
+        }
+      });
+    },
+  };
 
-    const pluginSfondo = {
-      id: 'sfondoZone',
-      beforeDraw(chart) {
-        const { ctx, chartArea, scales } = chart;
-        if (!chartArea) return;
-        const { top, bottom } = chartArea;
-        datiOrari.forEach((d, i) => {
-          if (d.raccomandazione === 'ac') {
-            const x0 = scales.x.getPixelForValue(i);
-            const x1 = scales.x.getPixelForValue(i + 1);
-            ctx.fillStyle = 'rgba(47,128,237,0.08)';
-            ctx.fillRect(x0, top, (x1 - x0), bottom - top);
-          }
-        });
-      },
+  function datasetGrafico() {
+    return {
+      labels: datiOrari.map(d => d.ora.slice(11, 16)),
+      gas: datiOrari.map(d => d.costo_gas_kwh),
+      ac: datiOrari.map(d => d.costo_ac_kwh),
+      temp: datiOrari.map(d => d.temp_esterna),
     };
+  }
 
-    new Chart(canvas, {
+  function creaGrafico() {
+    const canvas = document.getElementById('graficoComparazione');
+    if (!canvas || datiOrari.length === 0 || typeof Chart === 'undefined') return;
+    const isMobile = window.matchMedia('(max-width: 576px)').matches;
+    const d = datasetGrafico();
+
+    grafico = new Chart(canvas, {
       type: 'line',
       data: {
-        labels,
+        labels: d.labels,
         datasets: [
-          { label: 'Caldaia (€/kWh_th)', data: gasData, borderColor: '#e07b39', backgroundColor: 'rgba(224,123,57,.1)', borderWidth: 2.5, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
-          { label: 'AC (€/kWh_th)',      data: acData,  borderColor: '#2f80ed', backgroundColor: 'rgba(47,128,237,.1)', borderWidth: 2.5, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
-          { label: 'Temp. est. (°C)',    data: tempData, borderColor: '#bbb', borderDash: [4, 3], borderWidth: 1.5, pointRadius: 0, tension: 0.4, yAxisID: 'y2' },
+          { label: 'Caldaia (€/kWh_th)', data: d.gas, borderColor: '#e07b39', backgroundColor: 'rgba(224,123,57,.1)', borderWidth: 2.5, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
+          { label: 'AC (€/kWh_th)',      data: d.ac,  borderColor: '#2f80ed', backgroundColor: 'rgba(47,128,237,.1)', borderWidth: 2.5, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
+          { label: 'Temp. est. (°C)',    data: d.temp, borderColor: '#bbb', borderDash: [4, 3], borderWidth: 1.5, pointRadius: 0, tension: 0.4, yAxisID: 'y2' },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
@@ -54,34 +68,46 @@
               },
               afterBody(items) {
                 const i = items[0].dataIndex;
-                const d = datiOrari[i];
-                return [`Consiglio: ${d.raccomandazione === 'gas' ? '🔥 Caldaia' : '❄️ Condizionatore'}`, `COP AC: ${d.cop}`];
+                const dd = datiOrari[i];
+                return [`Consiglio: ${dd.raccomandazione === 'gas' ? '🔥 Caldaia' : '❄️ Condizionatore'}`, `COP AC: ${dd.cop}`];
               },
             },
           },
         },
         scales: {
-          x:  { ticks: { maxTicksLimit: 12, font: { size: 11 } }, grid: { color: 'rgba(127,127,127,.15)' } },
-          y:  { title: { display: true, text: '€/kWh termico', font: { size: 11 } }, ticks: { callback: v => '€' + v.toFixed(3), font: { size: 11 } }, grid: { color: 'rgba(127,127,127,.15)' } },
-          y2: { position: 'right', title: { display: true, text: '°C', font: { size: 11 } }, ticks: { callback: v => v.toFixed(0) + '°', font: { size: 11 } }, grid: { display: false } },
+          x:  { ticks: { maxTicksLimit: isMobile ? 8 : 12, font: { size: 11 } }, grid: { color: 'rgba(127,127,127,.15)' } },
+          y:  { title: { display: !isMobile, text: '€/kWh termico', font: { size: 11 } }, ticks: { callback: v => '€' + v.toFixed(3), font: { size: 11 } }, grid: { color: 'rgba(127,127,127,.15)' } },
+          y2: { position: 'right', title: { display: !isMobile, text: '°C', font: { size: 11 } }, ticks: { callback: v => v.toFixed(0) + '°', font: { size: 11 } }, grid: { display: false } },
         },
       },
       plugins: [pluginSfondo],
     });
   }
 
+  function aggiornaGrafico() {
+    if (!grafico) { creaGrafico(); return; }
+    const d = datasetGrafico();
+    grafico.data.labels = d.labels;
+    grafico.data.datasets[0].data = d.gas;
+    grafico.data.datasets[1].data = d.ac;
+    grafico.data.datasets[2].data = d.temp;
+    grafico.update('none');
+  }
+
   // ── Tabella oraria ─────────────────────────────────────────────────────
   function renderTabella(giorno) {
+    giornoAttivo = giorno;
     const oggi   = new Date().toISOString().slice(0, 10);
     const domani = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     const prefisso = giorno === 'oggi' ? oggi : domani;
+    const adessoStr = oraCorrente();
     const righe = datiOrari.filter(d => d.ora.startsWith(prefisso));
     const tbody = document.getElementById('tabellaOraria');
     if (!tbody) return;
 
     tbody.innerHTML = righe.map(d => {
       const ora = d.ora.slice(11, 16);
-      const isAdesso = d.ora === oraCorrente;
+      const isAdesso = d.ora === adessoStr;
       const badgeClass = d.raccomandazione === 'gas' ? 'badge-gas' : 'badge-ac';
       const badgeLabel = d.raccomandazione === 'gas' ? '🔥 Caldaia' : '❄️ Condizionatore';
       const risparmio = d.risparmio_pct != null ? `<strong>${d.risparmio_pct.toFixed(0)}%</strong>` : '—';
@@ -100,7 +126,88 @@
     }).join('');
   }
 
+  // ── Refresh live (hero + stat card + grafico + tabella) ────────────────
+  function renderHero(attuale, cfrInfo) {
+    const card = document.getElementById('heroCard');
+    if (!card || !attuale) return;
+    card.classList.remove('gas', 'ac');
+    card.classList.add(attuale.raccomandazione);
+
+    const device = document.getElementById('heroDevice');
+    if (device) {
+      device.innerHTML = attuale.raccomandazione === 'gas'
+        ? '<i class="bi bi-fire me-1"></i>Usa la Caldaia'
+        : '<i class="bi bi-snow me-1"></i>Usa il Condizionatore';
+    }
+    const reason = document.getElementById('heroReason');
+    if (reason) reason.textContent = attuale.motivo;
+    const temp = document.getElementById('heroTemp');
+    if (temp) temp.textContent = `${attuale.temp_esterna}°C`;
+
+    const extra = document.getElementById('heroExtra');
+    if (extra) {
+      let html = '';
+      if (cfrInfo) {
+        html += `<div style="font-size:.78rem;opacity:.85;background:rgba(255,255,255,.2);border-radius:6px;padding:2px 7px;display:inline-block;margin-top:2px;">📡 CFR ${cfrInfo.ora}</div>`;
+      }
+      html += `<div style="font-size:.85rem;opacity:.8;margin-top:4px;">${attuale.meteo_icon} ${attuale.meteo_desc}</div>`;
+      if (attuale.pioggia_prob > 20) {
+        html += `<div style="font-size:.8rem;opacity:.7;">🌧 pioggia ${attuale.pioggia_prob}%</div>`;
+      }
+      extra.innerHTML = html;
+    }
+
+    const costi = document.getElementById('heroCosti');
+    if (costi) {
+      const gas = `<span><i class="bi bi-fire me-1"></i>Caldaia: <strong>${attuale.costo_gas_kwh.toFixed(3)} €/kWh<sub>th</sub></strong></span>`;
+      const ac  = `<span><i class="bi bi-snow me-1"></i>AC: <strong>${attuale.costo_ac_kwh.toFixed(3)} €/kWh<sub>th</sub></strong></span>`;
+      const cop = `<span><i class="bi bi-thermometer me-1"></i>COP AC: <strong>${attuale.cop}</strong></span>`;
+      costi.innerHTML = (attuale.raccomandazione === 'gas' ? gas + ac : ac + gas) + cop;
+    }
+  }
+
+  function renderStatCards(dati) {
+    const a = dati.attuale;
+    if (!a) return;
+    const set = (id, html) => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    };
+    set('statGasVal', a.costo_gas_kwh.toFixed(3));
+    set('statAcVal', a.costo_ac_kwh.toFixed(3));
+    set('statOreVal', `${dati.ore_gas_oggi}h / ${dati.ore_ac_oggi}h`);
+    set('statTotaliVal', `⛽ ${dati.prezzi.gas_totale_smc}€/Smc<br>⚡ ${dati.prezzi.luce_totale_kwh}€/kWh`);
+  }
+
+  function segnalaAggiornamento(testo, errore) {
+    const chip = document.getElementById('aggiornatoAlle');
+    if (!chip) return;
+    chip.textContent = testo;
+    chip.classList.toggle('errore', !!errore);
+  }
+
+  async function aggiornaDashboard() {
+    ultimoFetch = Date.now();
+    try {
+      const res = await fetch('/api/dashboard');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const dati = await res.json();
+      if (dati.raccomandazioni && dati.raccomandazioni.length > 0) {
+        datiOrari = dati.raccomandazioni;
+        aggiornaGrafico();
+        renderTabella(giornoAttivo);
+      }
+      renderHero(dati.attuale, dati.cfr_info);
+      renderStatCards(dati);
+      segnalaAggiornamento(`Aggiornato alle ${dati.generato_alle}`, false);
+    } catch (e) {
+      console.warn('Refresh dashboard fallito:', e);
+      segnalaAggiornamento('aggiornamento fallito — riprovo', true);
+    }
+  }
+
   renderTabella('oggi');
+  creaGrafico();
   document.querySelectorAll('[data-giorno]').forEach(btn => {
     btn.addEventListener('click', e => {
       e.preventDefault();
@@ -109,6 +216,31 @@
       renderTabella(btn.dataset.giorno);
     });
   });
+
+  setInterval(aggiornaDashboard, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - ultimoFetch > 60000) {
+      aggiornaDashboard();
+    }
+  });
+
+  // ── Chip risparmio (storico) ───────────────────────────────────────────
+  async function caricaChipRisparmio() {
+    try {
+      const res = await fetch('/api/risparmi');
+      if (!res.ok) return;
+      const r = await res.json();
+      if (r.stagione_eur > 0) {
+        const chip = document.getElementById('chipRisparmio');
+        const val = document.getElementById('chipRisparmioVal');
+        if (chip && val) {
+          val.textContent = r.stagione_eur.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+          chip.style.display = '';
+        }
+      }
+    } catch (e) { /* silenzioso: lo storico può essere vuoto */ }
+  }
+  caricaChipRisparmio();
 
   // ── Automazione ────────────────────────────────────────────────────────
   async function caricaStatoAutomazione() {

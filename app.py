@@ -17,18 +17,19 @@ import os
 import re
 import secrets
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import urlparse
 
 import requests
 from flask import (
     Blueprint, Flask, abort, flash, jsonify, redirect, render_template, request,
-    session, url_for,
+    send_from_directory, session, url_for,
 )
 from flask_login import current_user, login_required, login_user, logout_user
 from prezzi import calcola_prezzi
 from automazione import get_servizio, avvia_se_attiva
+import storico
 from auth import (
     User, authenticate, change_password, count_admin_attivi, create_user,
     delete_user, link_google_account, list_users, set_active, set_admin,
@@ -39,24 +40,12 @@ from providers import (
     aggiorna_config_atomico, get_heatpump, get_thermostat, scrivi_json_atomico,
 )
 
+from raccomandazioni import calcola_raccomandazioni
+
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 setup_auth(app)
-
-# ─── Costanti fisiche ──────────────────────────────────────────────────────────
-
-KWH_PER_SMC = 10.691
-
-# COP pompa di calore Samsung AJ040TXJ2KG/EU (WindFree Comfort Dual)
-# COP nominale certificato EN14511: 4.47 W/W a +7°C est. / +20°C int.
-# SCOP stagionale: 4.61 W/W — classe A++
-# Tabella ancorata al punto certificato con modello η=0.199 × COP_Carnot
-COP_TABELLA = [
-    (-15, 1.60), (-10, 1.95), (-7, 2.20), (-5, 2.40), (-2, 2.70),
-    (0, 2.90), (2, 3.15), (5, 3.75), (7, 4.47), (10, 4.80),
-    (15, 5.15), (20, 5.40),
-]
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "data", "config.json")
 DEFAULT_CONFIG = {
@@ -73,6 +62,7 @@ DEFAULT_CONFIG = {
     "automazione_attiva": False,
     "intervallo_controllo_minuti": 15.0,
     "soglia_delta_risparmio": 0.01,
+    "potenza_termica_kw": 4.0,
     "smartthings_token": "",
     "smartthings_client_id": "",
     "smartthings_client_secret": "",
@@ -114,21 +104,6 @@ def carica_config():
 def salva_config(cfg):
     os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
     scrivi_json_atomico(CONFIG_FILE, cfg)
-
-
-# ─── COP interpolation ────────────────────────────────────────────────────────
-
-def interpola_cop(temp: float) -> float:
-    if temp <= COP_TABELLA[0][0]:
-        return COP_TABELLA[0][1]
-    if temp >= COP_TABELLA[-1][0]:
-        return COP_TABELLA[-1][1]
-    for i in range(len(COP_TABELLA) - 1):
-        t0, c0 = COP_TABELLA[i]
-        t1, c1 = COP_TABELLA[i + 1]
-        if t0 <= temp <= t1:
-            return round(c0 + (c1 - c0) * (temp - t0) / (t1 - t0), 2)
-    return 3.0
 
 
 # ─── CFR Toscana — temperatura attuale ───────────────────────────────────────
@@ -267,84 +242,6 @@ def scarica_previsioni(lat: float, lon: float) -> dict:
     return dati
 
 
-WMO_DESC = {
-    0: "Sereno", 1: "Prevalentemente sereno", 2: "Parzialmente nuvoloso", 3: "Coperto",
-    45: "Nebbia", 48: "Nebbia gelata",
-    51: "Pioggerella leggera", 53: "Pioggerella moderata", 55: "Pioggerella intensa",
-    61: "Pioggia leggera", 63: "Pioggia moderata", 65: "Pioggia intensa",
-    71: "Neve leggera", 73: "Neve moderata", 75: "Neve intensa",
-    80: "Rovesci leggeri", 81: "Rovesci moderati", 82: "Rovesci intensi",
-    95: "Temporale", 96: "Temporale con grandine",
-}
-WMO_ICON = {
-    0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️", 45: "🌫️", 48: "🌫️",
-    51: "🌦️", 53: "🌦️", 55: "🌧️", 61: "🌧️", 63: "🌧️", 65: "🌧️",
-    71: "❄️", 73: "❄️", 75: "❄️", 80: "🌦️", 81: "🌧️", 82: "⛈️",
-    95: "⛈️", 96: "⛈️",
-}
-
-
-# ─── Logica di raccomandazione ────────────────────────────────────────────────
-
-def calcola_raccomandazioni(previsioni: dict, cfg: dict, temp_cfr: Optional[float], prezzi: dict) -> list:
-    orario = previsioni["hourly"]
-    gas_totale_smc = prezzi["gas_totale_smc"]
-    luce_totale_kwh = prezzi["luce_totale_kwh"]
-    eff = max(0.05, min(1.0, cfg.get("efficienza_caldaia") or 0.96))
-    costo_gas_kwh = gas_totale_smc / (KWH_PER_SMC * eff)
-    temp_min_ac = cfg.get("temperatura_minima_ac", -10)
-    ora_corrente = datetime.now().strftime("%Y-%m-%dT%H:00")
-
-    risultati = []
-    for i, t in enumerate(orario["time"]):
-        te = orario["temperature_2m"][i]
-        tp = orario["apparent_temperature"][i]
-        pp = orario["precipitation_probability"][i]
-        wmo = orario["weathercode"][i]
-
-        is_ora_corrente = (t == ora_corrente)
-        if is_ora_corrente and temp_cfr is not None:
-            te_calc = temp_cfr
-            fonte_temp = "cfr"
-        else:
-            te_calc = te
-            fonte_temp = "previsione"
-
-        cop = interpola_cop(te_calc)
-        costo_ac_kwh = luce_totale_kwh / cop
-
-        if te_calc < temp_min_ac:
-            raccomandazione = "gas"
-            risparmio_pct = None
-            motivo = f"Temp. troppo bassa per il condizionatore ({te_calc:.1f}°C)"
-        elif costo_ac_kwh < costo_gas_kwh:
-            raccomandazione = "ac"
-            risparmio_pct = round((1 - costo_ac_kwh / costo_gas_kwh) * 100, 1)
-            motivo = f"Condizionatore più economico — COP {cop:.1f}, risparmio {risparmio_pct:.0f}%"
-        else:
-            raccomandazione = "gas"
-            risparmio_pct = round((1 - costo_gas_kwh / costo_ac_kwh) * 100, 1)
-            motivo = f"Caldaia più economica — risparmio {risparmio_pct:.0f}% vs condizionatore"
-
-        risultati.append({
-            "ora": t,
-            "temp_esterna": round(te_calc, 1),
-            "temp_percepita": round(tp, 1),
-            "pioggia_prob": pp,
-            "meteo_desc": WMO_DESC.get(wmo, "—"),
-            "meteo_icon": WMO_ICON.get(wmo, "🌡️"),
-            "cop": cop,
-            "costo_gas_kwh": round(costo_gas_kwh, 4),
-            "costo_ac_kwh": round(costo_ac_kwh, 4),
-            "raccomandazione": raccomandazione,
-            "motivo": motivo,
-            "risparmio_pct": risparmio_pct,
-            "fonte_temp": fonte_temp,
-        })
-
-    return risultati
-
-
 # ─── Route autenticazione ────────────────────────────────────────────────────
 
 def _safe_next(url: Optional[str]) -> str:
@@ -449,10 +346,9 @@ def login_google_callback():
 
 # ─── Route Dashboard ─────────────────────────────────────────────────────────
 
-@app.route("/")
-@login_required
-def index():
-    cfg = carica_config()
+def dati_dashboard(cfg: dict) -> dict:
+    """Raccoglie tutti i dati della dashboard: usato dal render Jinja al primo
+    paint e dall'API /api/dashboard per il refresh live senza ricaricare."""
     errore_meteo = errore_cfr = None
     raccomandazioni = []
     attuale = None
@@ -494,23 +390,54 @@ def index():
     oggi_recs = [r for r in raccomandazioni if r["ora"].startswith(oggi)]
     ore_gas_oggi = sum(1 for r in oggi_recs if r["raccomandazione"] == "gas")
     ore_ac_oggi = sum(1 for r in oggi_recs if r["raccomandazione"] == "ac")
+
+    return {
+        "prezzi": prezzi,
+        "attuale": attuale,
+        "cfr_info": cfr_info,
+        "raccomandazioni": raccomandazioni,
+        "ore_gas_oggi": ore_gas_oggi,
+        "ore_ac_oggi": ore_ac_oggi,
+        "errori": {"meteo": errore_meteo, "cfr": errore_cfr},
+        "generato_alle": datetime.now().strftime("%H:%M"),
+    }
+
+
+@app.route("/")
+@login_required
+def index():
+    cfg = carica_config()
+    dati = dati_dashboard(cfg)
     stato_stanze_dashboard = leggi_stato_stanze_dashboard(cfg)
 
     return render_template(
         "dashboard.html",
         cfg=cfg,
-        prezzi=prezzi,
-        attuale=attuale,
-        cfr_info=cfr_info,
-        raccomandazioni=raccomandazioni,
-        raccomandazioni_json=json.dumps(raccomandazioni),
-        ore_gas_oggi=ore_gas_oggi,
-        ore_ac_oggi=ore_ac_oggi,
+        prezzi=dati["prezzi"],
+        attuale=dati["attuale"],
+        cfr_info=dati["cfr_info"],
+        raccomandazioni=dati["raccomandazioni"],
+        raccomandazioni_json=json.dumps(dati["raccomandazioni"]),
+        ore_gas_oggi=dati["ore_gas_oggi"],
+        ore_ac_oggi=dati["ore_ac_oggi"],
         stato_stanze_dashboard=stato_stanze_dashboard,
-        errore_meteo=errore_meteo,
-        errore_cfr=errore_cfr,
+        errore_meteo=dati["errori"]["meteo"],
+        errore_cfr=dati["errori"]["cfr"],
         ora_aggiornamento=datetime.now().strftime("%d/%m/%Y %H:%M"),
     )
+
+
+@app.route("/storico")
+@login_required
+def pagina_storico():
+    return render_template("storico.html")
+
+
+@app.route("/sw.js")
+def service_worker():
+    # Servito dalla root cosi' lo scope del service worker copre tutta l'app.
+    return send_from_directory(app.static_folder, "sw.js",
+                               mimetype="application/javascript")
 
 
 # ─── API JSON ────────────────────────────────────────────────────────────────
@@ -587,6 +514,40 @@ def scopri_condizionatori(cfg: dict) -> dict:
         risultato["errori"].append("SmartThings: token non configurato")
     return risultato
 
+@app.route("/api/dashboard")
+@login_required
+def api_dashboard():
+    return jsonify(dati_dashboard(carica_config()))
+
+
+@app.route("/api/storico")
+@login_required
+def api_storico():
+    oggi = datetime.now().date()
+    da = request.args.get("da", (oggi - timedelta(days=6)).isoformat())
+    a = request.args.get("a", oggi.isoformat())
+    risoluzione = request.args.get("risoluzione", "oraria")
+    if risoluzione not in ("oraria", "giornaliera"):
+        return jsonify({"errore": "risoluzione deve essere 'oraria' o 'giornaliera'"}), 400
+    try:
+        datetime.strptime(da, "%Y-%m-%d")
+        datetime.strptime(a, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"errore": "date nel formato YYYY-MM-DD"}), 400
+    cfg = carica_config()
+    potenza = max(0.5, min(30.0, float(cfg.get("potenza_termica_kw") or 4.0)))
+    punti = storico.leggi_campioni(da, a, risoluzione, potenza)
+    return jsonify({"da": da, "a": a, "risoluzione": risoluzione, "punti": punti})
+
+
+@app.route("/api/risparmi")
+@login_required
+def api_risparmi():
+    cfg = carica_config()
+    potenza = max(0.5, min(30.0, float(cfg.get("potenza_termica_kw") or 4.0)))
+    return jsonify(storico.calcola_risparmi(potenza))
+
+
 @app.route("/api/prezzi")
 @login_required
 def api_prezzi():
@@ -634,7 +595,7 @@ def api_config():
                        "luce_fisso_kwh", "luce_totale_kwh_manuale",
                        "temperatura_minima_ac", "setpoint_interno", "efficienza_caldaia",
                        "intervallo_controllo_minuti", "soglia_delta_risparmio",
-                       "lat", "lon")
+                       "potenza_termica_kw", "lat", "lon")
         campi_str = ("entsoe_token", "note_bolletta",
                      "smartthings_token",
                      "smartthings_client_id", "smartthings_client_secret",
@@ -659,6 +620,7 @@ def api_config():
         cfg["intervallo_controllo_minuti"] = max(1.0, min(1440.0,
             float(cfg.get("intervallo_controllo_minuti") or 15.0)))
         cfg["soglia_delta_risparmio"] = max(0.0, float(cfg.get("soglia_delta_risparmio") or 0.01))
+        cfg["potenza_termica_kw"] = max(0.5, min(30.0, float(cfg.get("potenza_termica_kw") or 4.0)))
 
         cfg["ultima_modifica_fissi"] = datetime.now().strftime("%Y-%m-%d")
         salva_config(cfg)
@@ -939,21 +901,51 @@ def account():
     return render_template("account.html", user=current_user)
 
 
-# ─── Avvio automazione (compatibile gunicorn --preload) ──────────────────────
+# ─── Avvio servizi in background (compatibile gunicorn --preload) ────────────
 
-_automazione_avviata = False
+def _campione_corrente() -> Optional[dict]:
+    """Produce il campione dell'ora corrente per lo storico (o None se i dati
+    non sono disponibili — il campionatore ritentera' al prossimo giro)."""
+    cfg = carica_config()
+    try:
+        prezzi = calcola_prezzi(cfg)
+        misura_cfr = scarica_temp_cfr(cfg.get("cfr_station_id", ""))
+        temp_cfr = misura_cfr["temp"] if misura_cfr else None
+        previsioni = scarica_previsioni(cfg.get("lat", 0.0), cfg.get("lon", 0.0))
+        raccomandazioni = calcola_raccomandazioni(previsioni, cfg, temp_cfr, prezzi)
+    except Exception as e:
+        logger.warning("Campione storico non disponibile: %s", e)
+        return None
+    ora_str = datetime.now().strftime("%Y-%m-%dT%H:00")
+    attuale = next((r for r in raccomandazioni if r["ora"] == ora_str), None)
+    if attuale is None:
+        return None
+    return {
+        "temp_esterna": attuale["temp_esterna"],
+        "fonte_temp": attuale["fonte_temp"],
+        "cop": attuale["cop"],
+        "costo_gas_kwh": attuale["costo_gas_kwh"],
+        "costo_ac_kwh": attuale["costo_ac_kwh"],
+        "gas_totale_smc": prezzi["gas_totale_smc"],
+        "luce_totale_kwh": prezzi["luce_totale_kwh"],
+        "raccomandazione": attuale["raccomandazione"],
+    }
 
 
-def _avvia_automazione():
-    global _automazione_avviata
-    if not _automazione_avviata:
+_servizi_avviati = False
+
+
+def _avvia_servizi():
+    global _servizi_avviati
+    if not _servizi_avviati:
         if not os.path.exists(CONFIG_FILE):
             salva_config(DEFAULT_CONFIG)
         avvia_se_attiva()
-        _automazione_avviata = True
+        storico.avvia_campionatore(_campione_corrente)
+        _servizi_avviati = True
 
 
-_avvia_automazione()
+_avvia_servizi()
 
 # Registra Google OAuth se le credenziali sono configurate. Cambiarle richiede
 # un riavvio dell'app.
