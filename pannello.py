@@ -56,12 +56,26 @@ def _scarica_irraggiamento(lat: float, lon: float) -> list:
     url = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
-        "&hourly=shortwave_radiation&forecast_days=1&timezone=Europe%2FRome"
+        "&hourly=shortwave_radiation&forecast_days=2&timezone=Europe%2FRome"
     )
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     orario = resp.json()["hourly"]
     return list(zip(orario["time"], [v or 0.0 for v in orario["shortwave_radiation"]]))
+
+
+def kw_per_ora(cfg: dict) -> Optional[dict]:
+    """{ora: kW} stimati per oggi e domani, o None se non disponibili.
+
+    Usato dal motore di raccomandazione: se Open-Meteo non risponde si
+    prosegue senza compensazione, senza bloccare la dashboard.
+    """
+    if cfg.get("pannello_compensazione", "totale") == "nessuna":
+        return None
+    try:
+        return {o["ora"]: o["kw"] for o in produzione_pannello(cfg)["serie"]}
+    except Exception:
+        return None
 
 
 def produzione_pannello(cfg: dict) -> dict:
@@ -84,11 +98,13 @@ def produzione_pannello(cfg: dict) -> dict:
 
     ore = stima_giornata(serie, potenza, fattore)
     ora_corrente = datetime.now().strftime("%Y-%m-%dT%H:00")
+    oggi = ora_corrente[:10]
     adesso = next((o for o in ore if o["ora"] == ora_corrente), None)
     return {
         "adesso_kw": adesso["kw"] if adesso else 0.0,
         "irraggiamento_wm2": adesso["irraggiamento_wm2"] if adesso else 0.0,
-        "oggi_kwh": round(sum(o["kw"] for o in ore), 2),  # ogni punto vale 1 ora
+        # ogni punto vale 1 ora, quindi kW e kWh coincidono
+        "oggi_kwh": round(sum(o["kw"] for o in ore if o["ora"].startswith(oggi)), 2),
         "serie": ore,
         "potenza_kw": potenza,
         "fattore": fattore,

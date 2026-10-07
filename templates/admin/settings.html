@@ -155,6 +155,27 @@
         <div class="form-text">Stima = potenza × irraggiamento/1000 × fattore</div>
       </div>
     </div>
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Compensazione del pannello</label>
+        <select class="form-select" id="pannelloCompensazione">
+          <option value="totale" {% if cfg.pannello_compensazione == 'totale' or not cfg.pannello_compensazione %}selected{% endif %}>Azzera tutto il costo al kWh coperto</option>
+          <option value="materia_prima" {% if cfg.pannello_compensazione == 'materia_prima' %}selected{% endif %}>Azzera solo la materia prima energia</option>
+          <option value="nessuna" {% if cfg.pannello_compensazione == 'nessuna' %}selected{% endif %}>Non considerare il pannello</option>
+        </select>
+        <div class="form-text">Ogni quarto d'ora la produzione si sottrae al consumo di casa: se produce 0,8 kW e assorbi 1 kW, ne contano 0,2. Verifica in bolletta quali voci vengono azzerate.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Assorbimento elettrico pompa di calore (kW)</label>
+        <input type="number" step="0.1" class="form-control" id="pompaPotenza" value="{{ cfg.pompa_potenza_elettrica_kw }}">
+        <div class="form-text">Potenza elettrica media quando riscalda</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Consumo base del resto della casa (kW)</label>
+        <input type="number" step="0.1" class="form-control" id="consumoBase" value="{{ cfg.consumo_base_kw }}">
+        <div class="form-text">Frigo, luci, standby: assorbe parte della produzione prima della pompa</div>
+      </div>
+    </div>
     <div class="row g-2 mb-3 align-items-end">
       <div class="col-md-4">
         <label class="form-label">Calibra: produzione letta ora nell'app (kW)</label>
@@ -214,6 +235,9 @@ async function salvaImpostazioni() {
     pannello_lat:               parseFloat(document.getElementById('pannelloLat').value),
     pannello_lon:               parseFloat(document.getElementById('pannelloLon').value),
     pannello_fattore:           parseFloat(document.getElementById('pannelloFattore').value),
+    pannello_compensazione:     document.getElementById('pannelloCompensazione').value,
+    pompa_potenza_elettrica_kw: parseFloat(document.getElementById('pompaPotenza').value),
+    consumo_base_kw:            parseFloat(document.getElementById('consumoBase').value),
     lat:                        parseFloat(document.getElementById('lat').value),
     lon:                        parseFloat(document.getElementById('lon').value),
     cfr_station_id:             document.getElementById('cfrStationId').value.trim(),

@@ -41,7 +41,7 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 - `auth.py` — Autenticazione, gestione utenti SQLite, Flask-Login setup
 - `automazione.py` — Thread daemon, ciclo di controllo zone (ogni 15 min default)
 - `prezzi.py` — Prezzi gas/luce: tariffa variabile (TTF Yahoo Finance, PUN ENTSO-E, cache in memoria) oppure fissa (prezzo bloccato da config), per gas e luce indipendentemente
-- `pannello.py` — Stima produzione del pannello adottato Plenitude (Murcia) da irraggiamento Open-Meteo, con calibrazione del fattore di resa
+- `pannello.py` — Stima produzione del pannello adottato Plenitude (Murcia) da irraggiamento Open-Meteo, con calibrazione del fattore di resa; la produzione di ogni quarto d'ora compensa il consumo di casa (`copertura_pannello` in `raccomandazioni.py`) e abbassa il costo marginale della pompa di calore
 - `tests/` — pytest per motore raccomandazioni, COP e storico
 - `providers/` — Architettura modulare per dispositivi
   - `__init__.py` — ABC `ThermostatProvider`, `HeatPumpProvider`, registry

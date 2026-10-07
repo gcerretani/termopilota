@@ -72,6 +72,10 @@ DEFAULT_CONFIG = {
     "pannello_lat": 38.5,
     "pannello_lon": -1.2,
     "pannello_fattore": 0.9,
+    # Compensazione nel quarto d'ora: "totale" | "materia_prima" | "nessuna"
+    "pannello_compensazione": "totale",
+    "pompa_potenza_elettrica_kw": 1.2,   # assorbimento elettrico della pompa quando riscalda
+    "consumo_base_kw": 0.3,              # consumo medio del resto della casa
     "smartthings_token": "",
     "smartthings_client_id": "",
     "smartthings_client_secret": "",
@@ -385,7 +389,7 @@ def dati_dashboard(cfg: dict) -> dict:
 
     try:
         previsioni = scarica_previsioni(lat, lon)
-        raccomandazioni = calcola_raccomandazioni(previsioni, cfg, temp_cfr_val, prezzi)
+        raccomandazioni = calcola_raccomandazioni(previsioni, cfg, temp_cfr_val, prezzi, pannello.kw_per_ora(cfg))
         ora_str = datetime.now().strftime("%Y-%m-%dT%H:00")
         attuale = next((r for r in raccomandazioni if r["ora"] == ora_str),
                        raccomandazioni[0] if raccomandazioni else None)
@@ -609,7 +613,7 @@ def api_dati():
     misura_cfr = scarica_temp_cfr(cfg.get("cfr_station_id", ""))
     temp_cfr = misura_cfr["temp"] if misura_cfr else None
     previsioni = scarica_previsioni(cfg.get("lat", 0.0), cfg.get("lon", 0.0))
-    return jsonify(calcola_raccomandazioni(previsioni, cfg, temp_cfr, prezzi))
+    return jsonify(calcola_raccomandazioni(previsioni, cfg, temp_cfr, prezzi, pannello.kw_per_ora(cfg)))
 
 
 @app.route("/api/temp-cfr")
@@ -644,7 +648,8 @@ def api_config():
                        "potenza_termica_kw", "lat", "lon",
                        "gas_commodity_fisso_smc", "luce_commodity_fisso_kwh",
                        "pannello_potenza_kw", "pannello_lat", "pannello_lon",
-                       "pannello_fattore")
+                       "pannello_fattore", "pompa_potenza_elettrica_kw",
+                       "consumo_base_kw")
         campi_str = ("entsoe_token", "note_bolletta",
                      "smartthings_token",
                      "smartthings_client_id", "smartthings_client_secret",
@@ -664,6 +669,8 @@ def api_config():
         for campo in ("gas_tariffa", "luce_tariffa"):
             if dati.get(campo) in ("variabile", "fissa"):
                 cfg[campo] = dati[campo]
+        if dati.get("pannello_compensazione") in ("totale", "materia_prima", "nessuna"):
+            cfg["pannello_compensazione"] = dati["pannello_compensazione"]
         if "zone" in dati and isinstance(dati["zone"], list):
             cfg["zone"] = dati["zone"]
 
@@ -677,6 +684,9 @@ def api_config():
         cfg["luce_commodity_fisso_kwh"] = max(0.0, float(cfg.get("luce_commodity_fisso_kwh") or 0.0))
         cfg["pannello_potenza_kw"] = max(0.1, min(100.0, float(cfg.get("pannello_potenza_kw") or 0.9)))
         cfg["pannello_fattore"] = max(0.1, min(2.0, float(cfg.get("pannello_fattore") or 0.9)))
+        cfg["pompa_potenza_elettrica_kw"] = max(0.1, min(10.0, float(cfg.get("pompa_potenza_elettrica_kw") or 1.2)))
+        base_kw = cfg.get("consumo_base_kw")
+        cfg["consumo_base_kw"] = max(0.0, min(10.0, float(0.3 if base_kw is None else base_kw)))
 
         cfg["ultima_modifica_fissi"] = datetime.now().strftime("%Y-%m-%d")
         salva_config(cfg)
@@ -968,7 +978,7 @@ def _campione_corrente() -> Optional[dict]:
         misura_cfr = scarica_temp_cfr(cfg.get("cfr_station_id", ""))
         temp_cfr = misura_cfr["temp"] if misura_cfr else None
         previsioni = scarica_previsioni(cfg.get("lat", 0.0), cfg.get("lon", 0.0))
-        raccomandazioni = calcola_raccomandazioni(previsioni, cfg, temp_cfr, prezzi)
+        raccomandazioni = calcola_raccomandazioni(previsioni, cfg, temp_cfr, prezzi, pannello.kw_per_ora(cfg))
     except Exception as e:
         logger.warning("Campione storico non disponibile: %s", e)
         return None
