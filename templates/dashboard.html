@@ -31,6 +31,9 @@
         <strong style="color:var(--gas-color);">TTF {{ prezzi.ttf_eur_mwh }} €/MWh</strong>
         <span class="badge bg-success" style="font-size:.7rem;">auto</span>
         <span class="text-muted">(= {{ prezzi.gas_commodity_smc }} €/Smc)</span>
+      {% elif prezzi.gas_fonte == 'fisso' %}
+        <strong style="color:var(--gas-color);">{{ prezzi.gas_commodity_smc }} €/Smc</strong>
+        <span class="badge bg-primary" style="font-size:.7rem;">fisso</span>
       {% else %}
         <strong style="color:#aaa;">manuale</strong>
         {% if current_user.is_admin %}<a href="/admin/" class="text-muted" style="font-size:.75rem;">configura →</a>{% endif %}
@@ -43,10 +46,19 @@
         <strong style="color:var(--ac-color);">PUN {{ prezzi.pun_eur_mwh }} €/MWh</strong>
         <span class="badge bg-success" style="font-size:.7rem;">auto</span>
         <span class="text-muted">(= {{ prezzi.luce_commodity_kwh }} €/kWh)</span>
+      {% elif prezzi.luce_fonte == 'fisso' %}
+        <strong style="color:var(--ac-color);">{{ prezzi.luce_commodity_kwh }} €/kWh</strong>
+        <span class="badge bg-primary" style="font-size:.7rem;">fisso</span>
       {% else %}
         <strong style="color:#aaa;">manuale</strong>
         {% if current_user.is_admin %}<a href="/admin/" style="font-size:.75rem;color:var(--ac-color);">configura chiave ENTSO-E →</a>{% endif %}
       {% endif %}
+    </div>
+    <div class="info-chip" id="chipPannello" style="display:none;" title="Stima da irraggiamento (Open-Meteo): non è la lettura ufficiale dell'app Plenitude">
+      <i class="bi bi-sun" style="color:#f1c40f;"></i>
+      <span class="text-muted">Pannello Murcia:</span>
+      <strong><span id="chipPannelloKw"></span></strong>
+      <span class="text-muted">· oggi <span id="chipPannelloKwh"></span> <span class="badge bg-secondary" style="font-size:.65rem;">stima</span></span>
     </div>
     <div class="info-chip" id="chipRisparmio" style="display:none;">
       <i class="bi bi-piggy-bank" style="color:var(--green);"></i>
@@ -113,6 +125,8 @@
             <div class="stat-sub mt-2">{{ prezzi.gas_totale_smc }} €/Smc totale</div>
             {% if prezzi.gas_fonte == 'ttf_auto' %}
             <div class="stat-sub"><span class="badge bg-success" style="font-size:.65rem;">TTF auto</span> + {{ prezzi.gas_fisso_smc }} €/Smc fissi</div>
+            {% elif prezzi.gas_fonte == 'fisso' %}
+            <div class="stat-sub"><span class="badge bg-primary" style="font-size:.65rem;">tariffa fissa</span> + {{ prezzi.gas_fisso_smc }} €/Smc fissi</div>
             {% else %}
             <div class="stat-sub"><span class="badge bg-secondary" style="font-size:.65rem;">manuale</span></div>
             {% endif %}
@@ -126,6 +140,8 @@
             <div class="stat-sub mt-2">{{ prezzi.luce_totale_kwh }} €/kWh ÷ COP {{ attuale.cop }}</div>
             {% if prezzi.luce_fonte == 'entsoe_auto' %}
             <div class="stat-sub"><span class="badge bg-success" style="font-size:.65rem;">PUN auto</span> + {{ prezzi.luce_fisso_kwh }} €/kWh fissi</div>
+            {% elif prezzi.luce_fonte == 'fisso' %}
+            <div class="stat-sub"><span class="badge bg-primary" style="font-size:.65rem;">tariffa fissa</span> + {{ prezzi.luce_fisso_kwh }} €/kWh fissi</div>
             {% else %}
             <div class="stat-sub"><span class="badge bg-secondary" style="font-size:.65rem;">manuale</span></div>
             {% endif %}

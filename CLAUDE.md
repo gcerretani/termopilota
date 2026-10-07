@@ -40,7 +40,8 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 - `storico.py` — Persistenza SQLite (`data/storico.db`): campionatore orario in thread daemon, query per grafici e stima risparmi
 - `auth.py` — Autenticazione, gestione utenti SQLite, Flask-Login setup
 - `automazione.py` — Thread daemon, ciclo di controllo zone (ogni 15 min default)
-- `prezzi.py` — Fetch TTF (Yahoo Finance) e PUN (ENTSO-E), cache in memoria
+- `prezzi.py` — Prezzi gas/luce: tariffa variabile (TTF Yahoo Finance, PUN ENTSO-E, cache in memoria) oppure fissa (prezzo bloccato da config), per gas e luce indipendentemente
+- `pannello.py` — Stima produzione del pannello adottato Plenitude (Murcia) da irraggiamento Open-Meteo, con calibrazione del fattore di resa
 - `tests/` — pytest per motore raccomandazioni, COP e storico
 - `providers/` — Architettura modulare per dispositivi
   - `__init__.py` — ABC `ThermostatProvider`, `HeatPumpProvider`, registry
@@ -73,4 +74,4 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 - `GET /admin/users` — Gestione utenti
 - `GET /api/automazione/oauth-callback` — Callback OAuth Netatmo (pubblico)
 - `GET /api/automazione/smartthings-callback` — Callback OAuth SmartThings (pubblico)
-- API JSON: `/api/prezzi`, `/api/dati`, `/api/temp-cfr`, `/api/config`, `/api/automazione`, `/api/dispositivi`, `/api/dashboard`, `/api/storico?da=&a=&risoluzione=oraria|giornaliera`, `/api/risparmi`
+- API JSON: `/api/prezzi`, `/api/dati`, `/api/temp-cfr`, `/api/config`, `/api/automazione`, `/api/dispositivi`, `/api/dashboard`, `/api/pannello`, `POST /api/pannello/calibra`, `/api/storico?da=&a=&risoluzione=oraria|giornaliera`, `/api/risparmi`

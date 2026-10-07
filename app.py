@@ -29,6 +29,7 @@ from flask import (
 from flask_login import current_user, login_required, login_user, logout_user
 from prezzi import calcola_prezzi
 from automazione import get_servizio, avvia_se_attiva
+import pannello
 import storico
 from auth import (
     User, authenticate, change_password, count_admin_attivi, create_user,
@@ -63,6 +64,14 @@ DEFAULT_CONFIG = {
     "intervallo_controllo_minuti": 15.0,
     "soglia_delta_risparmio": 0.01,
     "potenza_termica_kw": 4.0,
+    "gas_tariffa": "variabile",          # "variabile" (TTF) | "fissa" (prezzo bloccato)
+    "gas_commodity_fisso_smc": 0.0,      # €/Smc, solo materia prima gas se tariffa fissa
+    "luce_tariffa": "variabile",         # "variabile" (PUN) | "fissa"
+    "luce_commodity_fisso_kwh": 0.0,     # €/kWh, solo materia prima energia se fissa
+    "pannello_potenza_kw": 0.9,          # pannello adottato (Plenitude, Cerrillares)
+    "pannello_lat": 38.5,
+    "pannello_lon": -1.2,
+    "pannello_fattore": 0.9,
     "smartthings_token": "",
     "smartthings_client_id": "",
     "smartthings_client_secret": "",
@@ -520,6 +529,43 @@ def api_dashboard():
     return jsonify(dati_dashboard(carica_config()))
 
 
+@app.route("/api/pannello")
+@login_required
+def api_pannello():
+    try:
+        return jsonify(pannello.produzione_pannello(carica_config()))
+    except Exception as e:
+        logger.warning("Stima pannello non disponibile: %s", e)
+        return jsonify({"errore": "Dati di irraggiamento non disponibili"}), 503
+
+
+@app.route("/api/pannello/calibra", methods=["POST"])
+@login_required
+def api_pannello_calibra():
+    """Imposta pannello_fattore dalla produzione letta nell'app Plenitude."""
+    if not current_user.is_admin:
+        return jsonify({"errore": "Solo gli amministratori possono calibrare"}), 403
+    dati = request.get_json(silent=True) or {}
+    try:
+        lettura_kw = float(dati["produzione_kw"])
+    except (KeyError, ValueError, TypeError):
+        return jsonify({"errore": "produzione_kw mancante o non numerico"}), 400
+    cfg = carica_config()
+    try:
+        stima = pannello.produzione_pannello(cfg)
+    except Exception:
+        return jsonify({"errore": "Dati di irraggiamento non disponibili"}), 503
+    fattore = pannello.calibra_fattore(
+        lettura_kw, stima["irraggiamento_wm2"], stima["potenza_kw"])
+    if fattore is None:
+        return jsonify({"errore": "Irraggiamento troppo basso per calibrare: riprova "
+                                  "nelle ore centrali di una giornata soleggiata"}), 409
+    fattore = max(0.1, min(2.0, fattore))
+    cfg["pannello_fattore"] = fattore
+    salva_config(cfg)
+    return jsonify({"status": "ok", "pannello_fattore": fattore})
+
+
 @app.route("/api/storico")
 @login_required
 def api_storico():
@@ -595,7 +641,10 @@ def api_config():
                        "luce_fisso_kwh", "luce_totale_kwh_manuale",
                        "temperatura_minima_ac", "setpoint_interno", "efficienza_caldaia",
                        "intervallo_controllo_minuti", "soglia_delta_risparmio",
-                       "potenza_termica_kw", "lat", "lon")
+                       "potenza_termica_kw", "lat", "lon",
+                       "gas_commodity_fisso_smc", "luce_commodity_fisso_kwh",
+                       "pannello_potenza_kw", "pannello_lat", "pannello_lon",
+                       "pannello_fattore")
         campi_str = ("entsoe_token", "note_bolletta",
                      "smartthings_token",
                      "smartthings_client_id", "smartthings_client_secret",
@@ -612,6 +661,9 @@ def api_config():
         for campo in campi_str:
             if campo in dati:
                 cfg[campo] = str(dati[campo])
+        for campo in ("gas_tariffa", "luce_tariffa"):
+            if dati.get(campo) in ("variabile", "fissa"):
+                cfg[campo] = dati[campo]
         if "zone" in dati and isinstance(dati["zone"], list):
             cfg["zone"] = dati["zone"]
 
@@ -621,6 +673,10 @@ def api_config():
             float(cfg.get("intervallo_controllo_minuti") or 15.0)))
         cfg["soglia_delta_risparmio"] = max(0.0, float(cfg.get("soglia_delta_risparmio") or 0.01))
         cfg["potenza_termica_kw"] = max(0.5, min(30.0, float(cfg.get("potenza_termica_kw") or 4.0)))
+        cfg["gas_commodity_fisso_smc"] = max(0.0, float(cfg.get("gas_commodity_fisso_smc") or 0.0))
+        cfg["luce_commodity_fisso_kwh"] = max(0.0, float(cfg.get("luce_commodity_fisso_kwh") or 0.0))
+        cfg["pannello_potenza_kw"] = max(0.1, min(100.0, float(cfg.get("pannello_potenza_kw") or 0.9)))
+        cfg["pannello_fattore"] = max(0.1, min(2.0, float(cfg.get("pannello_fattore") or 0.9)))
 
         cfg["ultima_modifica_fissi"] = datetime.now().strftime("%Y-%m-%d")
         salva_config(cfg)

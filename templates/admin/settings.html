@@ -24,6 +24,20 @@
     <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">⛽ Gas (Edison World Gas Plus)</p>
     <div class="row g-3 mb-3">
       <div class="col-md-4">
+        <label class="form-label">Tipo di tariffa gas</label>
+        <select class="form-select" id="gasTariffa" onchange="aggiornaVisibilitaTariffe()">
+          <option value="variabile" {% if cfg.gas_tariffa != 'fissa' %}selected{% endif %}>Variabile (TTF automatico)</option>
+          <option value="fissa" {% if cfg.gas_tariffa == 'fissa' %}selected{% endif %}>Fissa (prezzo bloccato)</option>
+        </select>
+      </div>
+      <div class="col-md-4" id="gasFissoBox">
+        <label class="form-label">Prezzo materia prima gas bloccato (€/Smc)</label>
+        <input type="number" step="0.0001" class="form-control" id="gasCommodityFisso" value="{{ cfg.gas_commodity_fisso_smc }}">
+        <div class="form-text">Solo la materia prima del contratto (es. Fixa Time 24 Gas Smart), IVA e oneri esclusi: si sommano alla componente fissa.</div>
+      </div>
+    </div>
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
         <label class="form-label">Componente fissa gas (€/Smc)</label>
         <input type="number" step="0.001" class="form-control" id="gasFisso" value="{{ cfg.gas_fisso_smc }}">
         <div class="form-text">Distribuzione + oneri + accisa + IVA — cambia ogni trimestre.</div>
@@ -37,6 +51,20 @@
 
     <!-- Luce -->
     <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">⚡ Luce (Edison World Luce)</p>
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Tipo di tariffa luce</label>
+        <select class="form-select" id="luceTariffa" onchange="aggiornaVisibilitaTariffe()">
+          <option value="variabile" {% if cfg.luce_tariffa != 'fissa' %}selected{% endif %}>Variabile (PUN automatico)</option>
+          <option value="fissa" {% if cfg.luce_tariffa == 'fissa' %}selected{% endif %}>Fissa (prezzo bloccato)</option>
+        </select>
+      </div>
+      <div class="col-md-4" id="luceFissoBox">
+        <label class="form-label">Prezzo energia bloccato (€/kWh)</label>
+        <input type="number" step="0.0001" class="form-control" id="luceCommodityFisso" value="{{ cfg.luce_commodity_fisso_kwh }}">
+        <div class="form-text">Solo la materia prima del contratto (es. Fixa Time 24 Luce Smart), oneri e tasse esclusi: si sommano alla componente fissa.</div>
+      </div>
+    </div>
     <div class="row g-3 mb-3">
       <div class="col-md-4">
         <label class="form-label">Componente fissa luce (€/kWh)</label>
@@ -105,6 +133,39 @@
       </div>
     </div>
 
+    <!-- Pannello adottato -->
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">☀️ Pannello adottato (Plenitude)</p>
+    <div class="row g-3 mb-3">
+      <div class="col-md-3">
+        <label class="form-label">Potenza (kW)</label>
+        <input type="number" step="0.1" class="form-control" id="pannelloPotenza" value="{{ cfg.pannello_potenza_kw }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Latitudine impianto</label>
+        <input type="number" step="0.01" class="form-control" id="pannelloLat" value="{{ cfg.pannello_lat }}">
+        <div class="form-text">Default: zona Jumilla/Yecla (Murcia)</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Longitudine impianto</label>
+        <input type="number" step="0.01" class="form-control" id="pannelloLon" value="{{ cfg.pannello_lon }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fattore di resa</label>
+        <input type="number" step="0.01" class="form-control" id="pannelloFattore" value="{{ cfg.pannello_fattore }}">
+        <div class="form-text">Stima = potenza × irraggiamento/1000 × fattore</div>
+      </div>
+    </div>
+    <div class="row g-2 mb-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Calibra: produzione letta ora nell'app (kW)</label>
+        <input type="number" step="0.01" class="form-control" id="calibraLettura" placeholder="es. 0.62">
+      </div>
+      <div class="col-md-3">
+        <button type="button" class="btn btn-outline-secondary" onclick="calibraPannello()">Calibra il fattore</button>
+      </div>
+      <div class="col-12 form-text">Fallo nelle ore centrali di una giornata soleggiata, confrontando con l'app Plenitude.</div>
+    </div>
+
     <!-- Automazione -->
     <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">Automazione</p>
     <div class="row g-3 mb-3">
@@ -145,6 +206,14 @@ async function salvaImpostazioni() {
     intervallo_controllo_minuti: parseFloat(document.getElementById('intervallo').value),
     soglia_delta_risparmio:     parseFloat(document.getElementById('soglia').value),
     potenza_termica_kw:         parseFloat(document.getElementById('potenzaTermica').value),
+    gas_tariffa:                document.getElementById('gasTariffa').value,
+    gas_commodity_fisso_smc:    parseFloat(document.getElementById('gasCommodityFisso').value) || 0,
+    luce_tariffa:               document.getElementById('luceTariffa').value,
+    luce_commodity_fisso_kwh:   parseFloat(document.getElementById('luceCommodityFisso').value) || 0,
+    pannello_potenza_kw:        parseFloat(document.getElementById('pannelloPotenza').value),
+    pannello_lat:               parseFloat(document.getElementById('pannelloLat').value),
+    pannello_lon:               parseFloat(document.getElementById('pannelloLon').value),
+    pannello_fattore:           parseFloat(document.getElementById('pannelloFattore').value),
     lat:                        parseFloat(document.getElementById('lat').value),
     lon:                        parseFloat(document.getElementById('lon').value),
     cfr_station_id:             document.getElementById('cfrStationId').value.trim(),
@@ -153,6 +222,11 @@ async function salvaImpostazioni() {
 
   if (isNaN(payload.gas_fisso_smc) || isNaN(payload.luce_fisso_kwh)) {
     mostraMsg('danger', 'Valori non validi per le componenti fisse.');
+    return;
+  }
+  if ((payload.gas_tariffa === 'fissa' && !payload.gas_commodity_fisso_smc) ||
+      (payload.luce_tariffa === 'fissa' && !payload.luce_commodity_fisso_kwh)) {
+    mostraMsg('danger', 'Con la tariffa fissa devi indicare il prezzo bloccato della materia prima.');
     return;
   }
 
@@ -174,6 +248,30 @@ async function salvaImpostazioni() {
     mostraMsg('danger', 'Errore di rete: ' + e.message);
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-save me-2"></i>Salva e ricalcola';
+  }
+}
+
+// Con tariffa fissa si chiede il prezzo bloccato; con variabile i campi manuali/TTF restano il fallback.
+function aggiornaVisibilitaTariffe() {
+  document.getElementById('gasFissoBox').style.display =
+    document.getElementById('gasTariffa').value === 'fissa' ? '' : 'none';
+  document.getElementById('luceFissoBox').style.display =
+    document.getElementById('luceTariffa').value === 'fissa' ? '' : 'none';
+}
+aggiornaVisibilitaTariffe();
+
+async function calibraPannello() {
+  const lettura = parseFloat(document.getElementById('calibraLettura').value);
+  if (isNaN(lettura) || lettura < 0) {
+    mostraMsg('danger', 'Inserisci la produzione letta nell\'app (kW).');
+    return;
+  }
+  try {
+    const data = await apiPostJson('/api/pannello/calibra', { produzione_kw: lettura });
+    document.getElementById('pannelloFattore').value = data.pannello_fattore;
+    mostraMsg('success', `✅ Fattore di resa calibrato a ${data.pannello_fattore}`);
+  } catch (e) {
+    mostraMsg('danger', e.message);
   }
 }
 

@@ -242,6 +242,20 @@
   }
   caricaChipRisparmio();
 
+  // ── Chip pannello adottato (stima da irraggiamento) ────────────────────
+  async function caricaChipPannello() {
+    try {
+      const res = await fetch('/api/pannello');
+      if (!res.ok) return;
+      const p = await res.json();
+      document.getElementById('chipPannelloKw').textContent = `${p.adesso_kw.toFixed(2)} kW`;
+      document.getElementById('chipPannelloKwh').textContent = `${p.oggi_kwh.toFixed(1)} kWh`;
+      document.getElementById('chipPannello').style.display = '';
+    } catch (e) { /* silenzioso: dato accessorio */ }
+  }
+  caricaChipPannello();
+  setInterval(caricaChipPannello, 10 * 60 * 1000);
+
   // ── Automazione ────────────────────────────────────────────────────────
   async function caricaStatoAutomazione() {
     try {

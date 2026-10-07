@@ -175,47 +175,63 @@ def calcola_prezzi(cfg: dict) -> dict:
       luce_commodity_kwh  - EUR/kWh (PUN auto o None)
       luce_fisso_kwh      - EUR/kWh (distribuzione+tasse, config)
       luce_totale_kwh     - EUR/kWh (usato per confronto)
-      gas_fonte           - "ttf_auto" | "manuale"
-      luce_fonte          - "entsoe_auto" | "manuale"
-      ttf_eur_mwh         - prezzo TTF raw in EUR/MWh (per display)
-      pun_eur_mwh         - prezzo PUN raw in EUR/MWh (per display)
+      gas_fonte           - "ttf_auto" | "fisso" | "manuale"
+      luce_fonte          - "entsoe_auto" | "fisso" | "manuale"
+      ttf_eur_mwh         - prezzo TTF raw in EUR/MWh (per display; None se fisso)
+      pun_eur_mwh         - prezzo PUN raw in EUR/MWh (per display; None se fisso)
+
+    Con gas_tariffa/luce_tariffa = "fissa" la commodity e' il prezzo bloccato
+    da contratto (gas_commodity_fisso_smc / luce_commodity_fisso_kwh) e non
+    si interrogano TTF/ENTSO-E; la componente fissa (distribuzione, oneri,
+    tasse) si somma comunque.
     """
     # ── Gas ──
-    ttf_smc = ottieni_ttf_eur_per_smc()
-    ttf_mwh = ottieni_ttf_eur_per_mwh_raw()
-
     gas_fisso = cfg.get("gas_fisso_smc", 0.35)
 
-    if ttf_smc is not None:
-        gas_commodity = ttf_smc
+    if cfg.get("gas_tariffa") == "fissa" and cfg.get("gas_commodity_fisso_smc"):
+        # Tariffa a prezzo bloccato: niente chiamata a Yahoo Finance
+        ttf_smc = ttf_mwh = None
+        gas_commodity = float(cfg["gas_commodity_fisso_smc"])
         gas_totale = round(gas_commodity + gas_fisso, 4)
-        gas_fonte = "ttf_auto"
+        gas_fonte = "fisso"
     else:
-        gas_commodity = None
-        gas_totale = cfg.get("gas_totale_smc_manuale", 0.95)
-        gas_fonte = "manuale"
+        ttf_smc = ottieni_ttf_eur_per_smc()
+        ttf_mwh = ottieni_ttf_eur_per_mwh_raw()
+        if ttf_smc is not None:
+            gas_commodity = ttf_smc
+            gas_totale = round(gas_commodity + gas_fisso, 4)
+            gas_fonte = "ttf_auto"
+        else:
+            gas_commodity = None
+            gas_totale = cfg.get("gas_totale_smc_manuale", 0.95)
+            gas_fonte = "manuale"
 
     # ── Luce ──
-    entsoe_token = cfg.get("entsoe_token", "").strip()
     luce_fisso = cfg.get("luce_fisso_kwh", 0.14)
 
-    pun_kwh = ottieni_pun_eur_per_kwh(entsoe_token) if entsoe_token else None
-    pun_mwh = round(pun_kwh * 1000, 2) if pun_kwh else None
-
-    if pun_kwh is not None:
-        luce_commodity = pun_kwh
+    if cfg.get("luce_tariffa") == "fissa" and cfg.get("luce_commodity_fisso_kwh"):
+        pun_kwh = pun_mwh = None
+        luce_commodity = float(cfg["luce_commodity_fisso_kwh"])
         luce_totale = round(luce_commodity + luce_fisso, 4)
-        luce_fonte = "entsoe_auto"
+        luce_fonte = "fisso"
     else:
-        luce_commodity = None
-        luce_totale = cfg.get("luce_totale_kwh_manuale", 0.27)
-        luce_fonte = "manuale"
+        entsoe_token = cfg.get("entsoe_token", "").strip()
+        pun_kwh = ottieni_pun_eur_per_kwh(entsoe_token) if entsoe_token else None
+        pun_mwh = round(pun_kwh * 1000, 2) if pun_kwh else None
+        if pun_kwh is not None:
+            luce_commodity = pun_kwh
+            luce_totale = round(luce_commodity + luce_fisso, 4)
+            luce_fonte = "entsoe_auto"
+        else:
+            luce_commodity = None
+            luce_totale = cfg.get("luce_totale_kwh_manuale", 0.27)
+            luce_fonte = "manuale"
 
     return {
         "gas_commodity_smc":  round(gas_commodity, 4) if gas_commodity else None,
         "gas_fisso_smc":      gas_fisso,
         "gas_totale_smc":     gas_totale,
-        "luce_commodity_kwh": round(pun_kwh, 5) if pun_kwh else None,
+        "luce_commodity_kwh": round(luce_commodity, 5) if luce_commodity else None,
         "luce_fisso_kwh":     luce_fisso,
         "luce_totale_kwh":    luce_totale,
         "gas_fonte":          gas_fonte,
