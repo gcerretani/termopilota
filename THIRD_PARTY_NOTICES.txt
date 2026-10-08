@@ -1,0 +1,46 @@
+Componenti di terze parti
+==========================
+
+TermoPilota e' distribuito con licenza GNU GPL v3 o successiva (vedi LICENSE).
+Questo elenco riguarda i componenti di terze parti inclusi nel repository o
+usati a runtime; tutte le licenze sono compatibili con la GPL v3.
+
+Librerie front-end (package.json, copiate in static/vendor/ da npm run vendor)
+------------------------------------------------------------------------------
+
+I file non sono nel repository: si generano da package-lock.json e finiscono
+nell'immagine Docker. Gli avvisi di copyright originali restano nell'intestazione
+di ogni file, come richiesto dalla licenza MIT.
+
+- Bootstrap 5.3.2 (CSS e JS) - MIT
+  Copyright 2011-2023 The Bootstrap Authors
+  https://github.com/twbs/bootstrap/blob/main/LICENSE
+- Bootstrap Icons 1.11.3 (CSS e font) - MIT
+  Copyright 2019-2024 The Bootstrap Authors
+  https://github.com/twbs/icons/blob/main/LICENSE
+- Chart.js 4.4.2 - MIT
+  (c) 2024 Chart.js Contributors
+  https://github.com/chartjs/Chart.js/blob/master/LICENSE.md
+
+Incorporate nei file sopra (stessa licenza MIT): Popper 2.11.8 in bootstrap.bundle
+(Copyright (c) 2019 Federico Zivolo) e @kurkle/color 0.3.4 in chart.umd
+(Copyright (c) 2018-2024 Jukka Kurkela).
+
+Le icone dell'applicazione (static/icons/) sono ricavate dai glifi "fire" e
+"snow" di Bootstrap Icons (MIT), ricolorati e composti.
+
+Dipendenze Python (installate con pip, non incluse)
+--------------------------------------------------
+
+- Flask, Werkzeug, Jinja2 - BSD-3-Clause
+- Flask-Login - MIT
+- requests - Apache-2.0 (compatibile con la GPL v3, non con la v2)
+- Authlib - BSD-3-Clause
+- email-validator - Unlicense
+- gunicorn - MIT
+
+Le licenze esatte e aggiornate sono quelle dei pacchetti installati.
+
+Manutenzione: Dependabot aggiorna dipendenze Python, librerie npm, immagini Docker e
+action. Le versioni delle librerie front-end sono quelle di package.json; se cambia
+il nome di un file in static/vendor/ va aggiornato anche il precache di static/sw.js.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Sistema di raccomandazione energetica per riscaldamento domestico.
 Confronta costo riscaldamento: caldaia a condensazione (gas) vs pompa di calore (AC).
@@ -31,6 +33,7 @@ from prezzi import calcola_prezzi
 from automazione import get_servizio, avvia_se_attiva
 import pannello
 import storico
+from versione import VERSIONE
 from auth import (
     User, authenticate, change_password, count_admin_attivi, create_user,
     delete_user, link_google_account, list_users, set_active, set_admin,
@@ -48,7 +51,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 setup_auth(app)
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "data", "config.json")
+DATA_DIR = os.environ.get("TERMOPILOTA_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 DEFAULT_CONFIG = {
     "gas_fisso_smc": 0.38,
     "gas_totale_smc_manuale": 0.95,
@@ -91,6 +95,11 @@ DEFAULT_CONFIG = {
     "lat": 0.0,
     "lon": 0.0,
 }
+
+
+@app.context_processor
+def _contesto_template():
+    return {"versione_app": VERSIONE}
 
 
 # ─── Config ───────────────────────────────────────────────────────────────────
@@ -1006,8 +1015,10 @@ def _avvia_servizi():
     if not _servizi_avviati:
         if not os.path.exists(CONFIG_FILE):
             salva_config(DEFAULT_CONFIG)
-        avvia_se_attiva()
-        storico.avvia_campionatore(_campione_corrente)
+        # I test importano l'app senza thread in background ne' chiamate di rete
+        if os.environ.get("TERMOPILOTA_SENZA_SERVIZI") != "1":
+            avvia_se_attiva()
+            storico.avvia_campionatore(_campione_corrente)
         _servizi_avviati = True
 
 

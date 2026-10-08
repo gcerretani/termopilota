@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Motore di raccomandazione: per ogni ora delle previsioni decide se conviene
 la caldaia a gas o la pompa di calore. Estratto da app.py per poterlo

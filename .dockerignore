@@ -1,0 +1,13 @@
+# Fuori dall'immagine: dati e segreti locali, cache, strumenti di sviluppo
+.git
+.github
+venv
+__pycache__
+*.pyc
+data
+config.json
+*.log
+node_modules
+static/vendor
+tests
+.pytest_cache

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Autenticazione utenti con SQLite + Flask-Login.
 
@@ -16,7 +18,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 logger = logging.getLogger(__name__)
 
-DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+# TERMOPILOTA_DATA_DIR sposta tutti i dati persistenti (usato dai test)
+DB_DIR = os.environ.get("TERMOPILOTA_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_PATH = os.path.join(DB_DIR, "users.db")
 SECRET_KEY_FILE = os.path.join(DB_DIR, ".secret_key")
 

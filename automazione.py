@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Servizio di automazione riscaldamento.
 
@@ -28,7 +30,8 @@ from costanti import KWH_PER_SMC, interpola_cop
 
 logger = logging.getLogger(__name__)
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "data", "config.json")
+DATA_DIR = os.environ.get("TERMOPILOTA_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 
 ISTERESI = 0.5  # °C — AC si accende se T < setpoint-0.5, si spegne se T >= setpoint
 

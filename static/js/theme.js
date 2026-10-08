@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Giovanni Cerretani
+// SPDX-License-Identifier: GPL-3.0-or-later
 // TermoPilota — toggle tema chiaro/scuro.
 // Applica subito il tema salvato per evitare il flash all'avvio.
 (function () {

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Giovanni Cerretani
+// SPDX-License-Identifier: GPL-3.0-or-later
 // TermoPilota — service worker minimale.
 // Cache-first SOLO per gli asset statici (/static/*): pagine HTML, /api/* e
 // login passano sempre dalla rete, così i dati non risultano mai stantii e i

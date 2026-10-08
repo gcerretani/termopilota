@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Persistenza storica su SQLite: campioni orari di prezzi, temperatura e
 raccomandazione. Alimenta la pagina /storico e il contatore risparmi.
@@ -21,7 +23,8 @@ from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-DB_FILE = os.path.join(os.path.dirname(__file__), "data", "storico.db")
+DATA_DIR = os.environ.get("TERMOPILOTA_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DB_FILE = os.path.join(DATA_DIR, "storico.db")
 
 CONTROLLO_SECONDI = 300      # ogni 5 min controlla se l'ora corrente manca
 RITENZIONE_GIORNI = 730      # ~2 stagioni termiche
