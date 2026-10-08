@@ -29,12 +29,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
+          cache-dependency-path: pyproject.toml
 
       - name: Dipendenze Python
-        run: pip install -r requirements-dev.txt
+        run: pip install -e ".[dev]"
 
       - name: Node 22
         uses: actions/setup-node@v6
@@ -48,7 +46,7 @@ jobs:
           npm run vendor
 
       - name: Sintassi di tutti i moduli
-        run: python -m compileall -q app.py auth.py automazione.py costanti.py pannello.py prezzi.py raccomandazioni.py storico.py providers scripts tests
+        run: python -m compileall -q src scripts tests
 
       - name: Test
         run: python -m pytest tests/ -v --tb=short

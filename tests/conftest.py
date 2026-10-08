@@ -25,7 +25,7 @@ PASSWORD_UTENTE = "password-utente-test"
 
 @pytest.fixture(scope="session")
 def app_flask():
-    import app as modulo_app
+    from termopilota import app as modulo_app
     modulo_app.app.config["TESTING"] = True
     return modulo_app.app
 
@@ -33,10 +33,9 @@ def app_flask():
 @pytest.fixture(autouse=True)
 def stato_pulito(app_flask, monkeypatch):
     """Config e storico puliti e nessuna rete, per ogni test."""
-    import app as modulo_app
-    import pannello
-    import storico
-
+    from termopilota import app as modulo_app
+    from termopilota import pannello
+    from termopilota import storico
     if os.path.exists(modulo_app.CONFIG_FILE):
         os.remove(modulo_app.CONFIG_FILE)
     monkeypatch.setattr(storico, "DB_FILE", os.path.join(_DATI_TEST, "storico-test.db"))
@@ -93,7 +92,7 @@ def admin_client(app_flask):
 
 @pytest.fixture
 def utente_client(app_flask):
-    import auth
+    from termopilota import auth
     auth.create_user("mario", PASSWORD_UTENTE, is_admin=False, email=None)
     c = app_flask.test_client()
     risposta = _accedi(c, "mario", PASSWORD_UTENTE)

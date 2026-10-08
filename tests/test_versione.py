@@ -6,7 +6,7 @@ import json
 import os
 import re
 
-from versione import VERSIONE
+from termopilota.versione import VERSIONE
 
 RADICE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEMVER = r"\d+\.\d+\.\d+"

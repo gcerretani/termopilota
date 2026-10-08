@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from datetime import datetime
 
-from raccomandazioni import calcola_raccomandazioni
+from termopilota.raccomandazioni import calcola_raccomandazioni
 
 CFG = {"efficienza_caldaia": 0.96, "temperatura_minima_ac": -10}
 

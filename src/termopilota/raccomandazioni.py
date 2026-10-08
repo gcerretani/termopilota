@@ -10,7 +10,7 @@ in background).
 from datetime import datetime
 from typing import Optional
 
-from costanti import KWH_PER_SMC, interpola_cop
+from termopilota.costanti import KWH_PER_SMC, interpola_cop
 
 WMO_DESC = {
     0: "Sereno", 1: "Prevalentemente sereno", 2: "Parzialmente nuvoloso", 3: "Coperto",

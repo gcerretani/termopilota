@@ -28,19 +28,15 @@ Sistema di controllo intelligente del riscaldamento domestico. Confronta in temp
 ```bash
 python -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -e ".[dev]"
 
-# Librerie front-end (Bootstrap, Chart.js...) in static/vendor/: richiede Node 22
+# Librerie front-end (Bootstrap, Chart.js...) in src/termopilota/static/vendor/: richiede Node 22
 npm ci && npm run vendor
 
-# Copia e configura
-cp config.example.json config.json
-# Modifica config.json con i tuoi prezzi e credenziali
-
-# Avvia (prima volta, imposta le credenziali admin)
+# Avvia (prima volta, imposta le credenziali admin; la configurazione si modifica da /admin)
 export ADMIN_USER=admin
 export ADMIN_PASSWORD=la_tua_password
-python app.py
+python -m termopilota
 ```
 
 L'app e' disponibile su http://localhost:5001
@@ -65,24 +61,23 @@ docker pull ghcr.io/gcerretani/termopilota:latest
 ## Architettura
 
 ```
-app.py                  # Flask app principale, routes dashboard e API
-auth.py                 # Autenticazione utenti (SQLite + Flask-Login)
-automazione.py          # Thread daemon per controllo automatico zone
-prezzi.py               # Fetch prezzi energia (TTF gas, PUN luce)
-providers/
-  __init__.py           # ABC ThermostatProvider, HeatPumpProvider + registry
-  netatmo.py            # Provider termostati Netatmo (OAuth2)
-  smartthings.py        # Provider AC Samsung SmartThings (PAT)
-templates/
-  base.html             # Layout condiviso (navbar, CSS, JS comuni)
-  login.html            # Pagina login
-  dashboard.html        # Dashboard principale con raccomandazioni
-  admin/
-    settings.html       # Configurazione prezzi e impianto
-    credentials.html    # Credenziali API Netatmo e Samsung
-    zones.html          # Editor zone (stanza -> condizionatore)
-    users.html          # Gestione utenti
-config.json             # Configurazione runtime (gitignored)
+src/termopilota/
+  app.py                # Flask app principale, routes dashboard e API
+  auth.py               # Autenticazione utenti (SQLite + Flask-Login)
+  automazione.py        # Thread daemon per controllo automatico zone
+  prezzi.py             # Fetch prezzi energia (TTF gas, PUN luce)
+  raccomandazioni.py    # Motore di raccomandazione caldaia / pompa di calore
+  storico.py            # Storico orario e stima dei risparmi
+  providers/
+    __init__.py         # ABC ThermostatProvider, HeatPumpProvider + registry
+    netatmo.py          # Provider termostati Netatmo (OAuth2)
+    smartthings.py      # Provider AC Samsung SmartThings
+  templates/            # Pagine HTML (dashboard, storico, admin/...)
+  static/               # CSS, JS, icone, service worker
+tests/                  # pytest
+scripts/                # librerie front-end, icone PWA
+pyproject.toml          # dipendenze Python e metadati
+data/                   # configurazione e database a runtime (gitignored)
 config.example.json     # Template configurazione
 ```
 

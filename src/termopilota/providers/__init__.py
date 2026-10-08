@@ -161,5 +161,5 @@ def available_heatpumps() -> list[str]:
 
 # ── Import provider concreti (si auto-registrano) ────────────────────────────
 
-from providers import netatmo  # noqa: E402, F401
-from providers import smartthings  # noqa: E402, F401
+from termopilota.providers import netatmo  # noqa: E402, F401
+from termopilota.providers import smartthings  # noqa: E402, F401

@@ -20,10 +20,10 @@ import sqlite3
 import threading
 from datetime import date, datetime, timedelta
 from typing import Callable, Optional
+from termopilota.percorsi import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = os.environ.get("TERMOPILOTA_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_FILE = os.path.join(DATA_DIR, "storico.db")
 
 CONTROLLO_SECONDI = 300      # ogni 5 min controlla se l'ora corrente manca

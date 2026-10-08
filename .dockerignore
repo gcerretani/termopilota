@@ -8,6 +8,6 @@ data
 config.json
 *.log
 node_modules
-static/vendor
+src/termopilota/static/vendor
 tests
 .pytest_cache

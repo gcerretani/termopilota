@@ -9,7 +9,7 @@ RADICE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPDX = "SPDX-License-Identifier: GPL-3.0-or-later"
 # SHA-256 del testo ufficiale della GNU GPL v3 (gpl-3.0.txt, 29 giugno 2007)
 SHA256_GPL3 = "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
-CARTELLE_ESCLUSE = {"venv", ".git", "__pycache__", "vendor", "node_modules"}
+CARTELLE_ESCLUSE = {"venv", ".git", "__pycache__", "vendor", "node_modules", "build", "dist"}
 
 
 def _file(estensioni):
@@ -39,7 +39,7 @@ def test_ogni_sorgente_ha_l_identificatore_spdx():
 
 def test_librerie_vendorizzate_mantengono_l_avviso_mit():
     # La MIT impone di conservare l'avviso di copyright insieme al codice
-    vendor = os.path.join(RADICE, "static", "vendor")
+    vendor = os.path.join(RADICE, "src", "termopilota", "static", "vendor")
     for cartella, _, files in os.walk(vendor):
         for nome in files:
             if nome.endswith((".css", ".js")):

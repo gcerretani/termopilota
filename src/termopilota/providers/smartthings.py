@@ -32,7 +32,8 @@ from urllib.parse import urlencode
 
 import requests
 
-from providers import HeatPumpProvider, register_heatpump, aggiorna_config_atomico
+from termopilota.providers import HeatPumpProvider, register_heatpump, aggiorna_config_atomico
+from termopilota.percorsi import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,6 @@ ST_BASE = "https://api.smartthings.com/v1"
 ST_AUTH_URL = "https://api.smartthings.com/oauth/authorize"
 ST_TOKEN_URL = "https://auth-global.api.smartthings.com/oauth/token"
 ST_SCOPES = "r:devices:* x:devices:* r:locations:*"
-
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "config.json")
 
 
 class SmartThingsClient(HeatPumpProvider):

@@ -12,13 +12,13 @@ I file non sono nel repository: si generano da package-lock.json e finiscono
 nell'immagine Docker. Gli avvisi di copyright originali restano nell'intestazione
 di ogni file, come richiesto dalla licenza MIT.
 
-- Bootstrap 5.3.2 (CSS e JS) - MIT
+- Bootstrap 5.3.8 (CSS e JS) - MIT
   Copyright 2011-2023 The Bootstrap Authors
   https://github.com/twbs/bootstrap/blob/main/LICENSE
-- Bootstrap Icons 1.11.3 (CSS e font) - MIT
+- Bootstrap Icons 1.13.1 (CSS e font) - MIT
   Copyright 2019-2024 The Bootstrap Authors
   https://github.com/twbs/icons/blob/main/LICENSE
-- Chart.js 4.4.2 - MIT
+- Chart.js 4.5.1 - MIT
   (c) 2024 Chart.js Contributors
   https://github.com/chartjs/Chart.js/blob/master/LICENSE.md
 

@@ -7,6 +7,31 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.0.1] - 2026-10-08
+
+Manutenzione: nessuna novità per chi usa l'app, ma il progetto è riordinato e le dipendenze sono
+aggiornate.
+
+### Modificato
+- I sorgenti Python, i template e i file statici sono nel pacchetto `src/termopilota/`; nella
+  radice restano `tests/`, `scripts/`, `data/` e i file di progetto. L'avvio locale è
+  `python -m termopilota` (in produzione `gunicorn termopilota.app:app`).
+- Le dipendenze Python sono dichiarate in `pyproject.toml` (al posto di `requirements*.txt`):
+  `pip install -e ".[dev]"` installa app e strumenti di test.
+- Il percorso dei dati (`data/`, o `TERMOPILOTA_DATA_DIR`) è definito in un solo punto
+  (`percorsi.py`); prima era ripetuto in sei file e i provider ignoravano `TERMOPILOTA_DATA_DIR`.
+- Il container usa un solo worker gunicorn con 4 thread, senza `--preload`: con più processi i
+  servizi in background venivano duplicati e lo smoke test della CI andava in timeout a tratti.
+- Dipendenze aggiornate: Bootstrap 5.3.8, Bootstrap Icons 1.13.1, Chart.js 4.5.1, Flask 3.1,
+  gunicorn 26, authlib 1.8, GitHub Actions alle ultime versioni principali.
+
+### Rimosso
+- I moduli di compatibilità `bticino.py` e `samsung.py` (non li importava più nessuno).
+
+### Note per chi aggiorna
+- Chi lancia l'app a mano deve usare `python -m termopilota` invece di `python app.py`.
+- Con Docker non cambia nulla: l'immagine mantiene `/app/data` come cartella dei dati.
+
 ## [1.0.0] - 2026-10-08
 
 Prima versione stabile.
@@ -66,5 +91,6 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.0.0...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/gcerretani/termopilota/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.0
