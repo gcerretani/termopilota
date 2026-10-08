@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Copia in static/vendor/ i file front-end delle librerie dichiarate in
+// Copia in src/termopilota/static/vendor/ i file front-end delle librerie dichiarate in
 // package.json (versioni bloccate da package-lock.json). La cartella non e'
 // nel repository: si genera con `npm ci && npm run vendor` (la fa anche il
 // Dockerfile e la CI). Cosi' Dependabot vede le librerie e le aggiorna.
 //
-// Percorsi di destinazione: sono quelli usati da templates/ e static/sw.js.
+// Percorsi di destinazione: sono quelli usati dai template e da static/sw.js.
 'use strict';
 
 const fs = require('fs');
@@ -14,7 +14,7 @@ const path = require('path');
 
 const radice = path.resolve(__dirname, '..');
 const nodeModules = path.join(radice, 'node_modules');
-const destinazione = path.join(radice, 'static', 'vendor');
+const destinazione = path.join(radice, 'src', 'termopilota', 'static', 'vendor');
 
 // [destinazione relativa a static/vendor, possibili sorgenti in node_modules]
 // Per chart.js si prova prima la build gia' minificata, poi quella UMD (nella

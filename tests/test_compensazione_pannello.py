@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
-from raccomandazioni import (
+from termopilota.raccomandazioni import (
     calcola_raccomandazioni, copertura_pannello, prezzo_luce_effettivo,
 )
 

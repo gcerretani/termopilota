@@ -16,15 +16,14 @@ from urllib.parse import urlencode
 
 import requests
 
-from providers import ThermostatProvider, register_thermostat, aggiorna_config_atomico
+from termopilota.providers import ThermostatProvider, register_thermostat, aggiorna_config_atomico
+from termopilota.percorsi import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
 NETATMO_AUTH_URL = "https://api.netatmo.com/oauth2/authorize"
 NETATMO_TOKEN_URL = "https://api.netatmo.com/oauth2/token"
 NETATMO_BASE = "https://api.netatmo.com/api"
-
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "config.json")
 
 
 class NetatmoClient(ThermostatProvider):

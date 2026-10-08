@@ -29,30 +29,29 @@ from flask import (
     send_from_directory, session, url_for,
 )
 from flask_login import current_user, login_required, login_user, logout_user
-from prezzi import calcola_prezzi
-from automazione import get_servizio, avvia_se_attiva
-import pannello
-import storico
-from versione import VERSIONE
-from auth import (
+from termopilota.prezzi import calcola_prezzi
+from termopilota.automazione import get_servizio, avvia_se_attiva
+from termopilota import pannello
+from termopilota import storico
+from termopilota.versione import VERSIONE
+from termopilota.auth import (
     User, authenticate, change_password, count_admin_attivi, create_user,
     delete_user, link_google_account, list_users, set_active, set_admin,
     set_password, setup_auth, update_user_email,
 )
-from auth_google import google_attivo, oauth, setup_google_oauth
-from providers import (
+from termopilota.auth_google import google_attivo, oauth, setup_google_oauth
+from termopilota.providers import (
     aggiorna_config_atomico, get_heatpump, get_thermostat, scrivi_json_atomico,
 )
 
-from raccomandazioni import calcola_raccomandazioni
+from termopilota.raccomandazioni import calcola_raccomandazioni
+from termopilota.percorsi import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 setup_auth(app)
 
-DATA_DIR = os.environ.get("TERMOPILOTA_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 DEFAULT_CONFIG = {
     "gas_fisso_smc": 0.38,
     "gas_totale_smc_manuale": 0.95,
@@ -1032,13 +1031,3 @@ setup_google_oauth(
     _cfg_iniziale.get("google_client_id", ""),
     _cfg_iniziale.get("google_client_secret", ""),
 )
-
-
-# ─── Main ─────────────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    print("\n  TermoPilota — controllo riscaldamento")
-    print("─" * 42)
-    print("  Apri il browser su:  http://localhost:5001")
-    print("─" * 42)
-    app.run(debug=False, port=5001, host="0.0.0.0")

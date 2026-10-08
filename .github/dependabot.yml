@@ -3,7 +3,7 @@
 # di ogni altra pull request (tests.yml).
 version: 2
 updates:
-  # requirements.txt e requirements-dev.txt
+  # pyproject.toml (dipendenze e extra dev)
   - package-ecosystem: pip
     directory: /
     schedule:
@@ -14,7 +14,7 @@ updates:
         update-types: [minor, patch]
 
   # Librerie front-end (Bootstrap, Bootstrap Icons, Chart.js): package.json e
-  # package-lock.json. I file in static/vendor/ si rigenerano da soli in CI e
+  # package-lock.json. I file in src/termopilota/static/vendor/ si rigenerano da soli in CI e
   # nella build dell'immagine, quindi la PR di Dependabot si prova da sola.
   - package-ecosystem: npm
     directory: /

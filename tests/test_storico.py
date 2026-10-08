@@ -4,9 +4,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-import storico
-
-
+from termopilota import storico
 @pytest.fixture(autouse=True)
 def db_temporaneo(tmp_path, monkeypatch):
     monkeypatch.setattr(storico, "DB_FILE", str(tmp_path / "storico.db"))

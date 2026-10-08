@@ -13,18 +13,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml README.md LICENSE ./
+COPY src ./src
+COPY --from=vendor /build/src/termopilota/static/vendor ./src/termopilota/static/vendor
+RUN pip install --no-cache-dir .
 
-COPY . .
-COPY --from=vendor /build/static/vendor /app/static/vendor
-
+# I dati stanno in /app/data (volume): percorsi.py li cerca li' dalla WORKDIR.
 RUN mkdir -p /app/data
-
-ENV FLASK_APP=app.py
 
 EXPOSE 5001
 
 # Un solo processo: i servizi in background (automazione, campionatore storico)
 # partono all'import e non devono essere duplicati ne' forkati con --preload.
-CMD ["gunicorn", "-b", "0.0.0.0:5001", "-w", "1", "--threads", "4", "--timeout", "60", "app:app"]
+CMD ["gunicorn", "-b", "0.0.0.0:5001", "-w", "1", "--threads", "4", "--timeout", "60", "termopilota.app:app"]

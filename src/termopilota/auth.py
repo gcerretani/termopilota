@@ -15,13 +15,12 @@ from datetime import datetime
 
 from flask_login import LoginManager, UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
+from termopilota.percorsi import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
-# TERMOPILOTA_DATA_DIR sposta tutti i dati persistenti (usato dai test)
-DB_DIR = os.environ.get("TERMOPILOTA_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-DB_PATH = os.path.join(DB_DIR, "users.db")
-SECRET_KEY_FILE = os.path.join(DB_DIR, ".secret_key")
+DB_PATH = os.path.join(DATA_DIR, "users.db")
+SECRET_KEY_FILE = os.path.join(DATA_DIR, ".secret_key")
 
 # Hash dummy per evitare timing attack su username inesistenti.
 _DUMMY_HASH = generate_password_hash("__dummy_password_for_timing_safe_compare__")
@@ -42,7 +41,7 @@ def _get_db() -> sqlite3.Connection:
 
 def init_db():
     """Crea la tabella utenti se non esiste. Crea l'admin da ENV se la tabella e' vuota."""
-    os.makedirs(DB_DIR, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
     conn = _get_db()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -289,7 +288,7 @@ def _carica_o_crea_secret_key() -> str:
     env_secret = os.environ.get("SECRET_KEY", "").strip()
     if env_secret:
         return env_secret
-    os.makedirs(DB_DIR, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
     if os.path.exists(SECRET_KEY_FILE):
         try:
             with open(SECRET_KEY_FILE, encoding="utf-8") as f:

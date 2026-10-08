@@ -7,8 +7,7 @@ import os
 
 import pytest
 
-import storico
-
+from termopilota import storico
 RADICE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 PAGINE_PROTETTE = ["/", "/storico", "/account", "/admin/", "/admin/credentials",
@@ -92,7 +91,7 @@ def test_manifest_pubblico_e_valido(client):
 def test_service_worker_precache_punta_a_file_esistenti(client):
     # Se un solo URL del precache manca, cache.addAll fallisce e il service
     # worker non si installa: la PWA smette di funzionare senza dare errori.
-    sw = open(os.path.join(RADICE, "static", "sw.js"), encoding="utf-8").read()
+    sw = open(os.path.join(os.path.join(RADICE, "src", "termopilota"), "static", "sw.js"), encoding="utf-8").read()
     blocco = sw.split("const PRECACHE = [")[1].split("];")[0]
     percorsi = [riga.strip().strip(",").strip("'") for riga in blocco.splitlines() if "'/static/" in riga]
     assert percorsi, "nessun asset nel precache"
@@ -102,7 +101,7 @@ def test_service_worker_precache_punta_a_file_esistenti(client):
 
 def test_nessuna_dipendenza_da_cdn_nei_template():
     # L'app deve funzionare in LAN senza internet.
-    for cartella, _, files in os.walk(os.path.join(RADICE, "templates")):
+    for cartella, _, files in os.walk(os.path.join(os.path.join(RADICE, "src", "termopilota"), "templates")):
         for nome in files:
             testo = open(os.path.join(cartella, nome), encoding="utf-8").read()
             assert "cdn.jsdelivr.net" not in testo, nome
@@ -121,8 +120,7 @@ def test_api_dashboard_struttura(admin_client):
 
 
 def test_api_dashboard_segnala_errore_meteo(admin_client, monkeypatch):
-    import app as modulo_app
-
+    from termopilota import app as modulo_app
     def guasto(lat, lon):
         raise RuntimeError("meteo non raggiungibile")
     monkeypatch.setattr(modulo_app, "scarica_previsioni", guasto)
@@ -183,7 +181,7 @@ def test_config_tariffa_fissa_accettata(admin_client):
 
 
 def test_config_example_contiene_tutte_le_chiavi_di_default():
-    import app as modulo_app
+    from termopilota import app as modulo_app
     esempio = json.load(open(os.path.join(RADICE, "config.example.json"), encoding="utf-8"))
     mancanti = [k for k in modulo_app.DEFAULT_CONFIG if k not in esempio]
     assert mancanti == [], f"chiavi assenti da config.example.json: {mancanti}"
@@ -238,8 +236,7 @@ def test_api_pannello_restituisce_la_stima(admin_client):
 
 
 def test_api_pannello_503_se_open_meteo_non_risponde(admin_client, monkeypatch):
-    import pannello
-
+    from termopilota import pannello
     def guasto(lat, lon):
         raise RuntimeError("rete assente")
     monkeypatch.setattr(pannello, "_scarica_irraggiamento", guasto)
@@ -247,8 +244,7 @@ def test_api_pannello_503_se_open_meteo_non_risponde(admin_client, monkeypatch):
 
 
 def test_dashboard_funziona_anche_senza_dati_pannello(admin_client, monkeypatch):
-    import pannello
-
+    from termopilota import pannello
     def guasto(lat, lon):
         raise RuntimeError("rete assente")
     monkeypatch.setattr(pannello, "_scarica_irraggiamento", guasto)
@@ -262,14 +258,14 @@ def test_calibra_richiede_un_numero(admin_client):
 
 
 def test_calibra_rifiuta_irraggiamento_basso(admin_client, monkeypatch):
-    import pannello
+    from termopilota import pannello
     monkeypatch.setattr(pannello, "_scarica_irraggiamento", lambda lat, lon: [])
     r = admin_client.post("/api/pannello/calibra", json={"produzione_kw": 0.5})
     assert r.status_code == 409
 
 
 def test_calibra_aggiorna_il_fattore(admin_client, monkeypatch):
-    import pannello
+    from termopilota import pannello
     from datetime import datetime
     ora = datetime.now().strftime("%Y-%m-%dT%H:00")
     monkeypatch.setattr(pannello, "_scarica_irraggiamento", lambda lat, lon: [(ora, 800.0)])

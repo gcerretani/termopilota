@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
-Genera le icone PWA di TermoPilota in static/icons/.
+Genera le icone PWA di TermoPilota in src/termopilota/static/icons/.
 
 Uso (solo in sviluppo, i file generati sono committati):
     pip install cairosvg
@@ -17,7 +17,7 @@ import os
 
 import cairosvg
 
-CARTELLA = os.path.join(os.path.dirname(__file__), "..", "static", "icons")
+CARTELLA = os.path.join(os.path.dirname(__file__), "..", "src", "termopilota", "static", "icons")
 
 NAVY = "#1a1a2e"
 ARANCIO = "#e07b39"

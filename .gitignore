@@ -1,4 +1,7 @@
 venv/
+build/
+dist/
+*.egg-info/
 __pycache__/
 *.pyc
 *.pyo
@@ -10,4 +13,4 @@ data/
 
 # Librerie front-end: si generano con `npm ci && npm run vendor` (vedi package.json)
 node_modules/
-static/vendor/
+src/termopilota/static/vendor/

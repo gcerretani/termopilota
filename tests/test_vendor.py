@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""static/vendor/ non e' nel repository: si genera da package.json con
+"""src/termopilota/static/vendor/ non e' nel repository: si genera da package.json con
 `npm ci && npm run vendor`. Questi test garantiscono che la cartella esista e
 corrisponda esattamente alle versioni bloccate in package-lock.json."""
 
@@ -9,7 +9,7 @@ import os
 import re
 
 RADICE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VENDOR = os.path.join(RADICE, "static", "vendor")
+VENDOR = os.path.join(RADICE, "src", "termopilota", "static", "vendor")
 ISTRUZIONI = "esegui `npm ci && npm run vendor`"
 
 FILE_ATTESI = [
@@ -36,7 +36,7 @@ def _intestazione(percorso):
 
 def test_vendor_generato_con_tutti_i_file():
     mancanti = [f for f in FILE_ATTESI if not os.path.isfile(os.path.join(VENDOR, f))]
-    assert not mancanti, f"file mancanti in static/vendor/: {mancanti}: {ISTRUZIONI}"
+    assert not mancanti, f"file mancanti in src/termopilota/static/vendor/: {mancanti}: {ISTRUZIONI}"
 
 
 def test_versioni_vendor_coincidono_con_il_lock():
@@ -57,7 +57,7 @@ def test_vendor_non_e_nel_repository():
     # La cartella e' generata: committarla rimetterebbe le librerie fuori dalla portata di Dependabot
     with open(os.path.join(RADICE, ".gitignore"), encoding="utf-8") as f:
         righe = [r.strip() for r in f]
-    assert "static/vendor/" in righe and "node_modules/" in righe
+    assert "src/termopilota/static/vendor/" in righe and "node_modules/" in righe
 
 
 def test_package_json_blocca_versioni_esatte():

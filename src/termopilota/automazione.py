@@ -26,12 +26,11 @@ from typing import Optional
 
 import requests
 
-from costanti import KWH_PER_SMC, interpola_cop
+from termopilota.costanti import KWH_PER_SMC, interpola_cop
+from termopilota.percorsi import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = os.environ.get("TERMOPILOTA_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 
 ISTERESI = 0.5  # °C — AC si accende se T < setpoint-0.5, si spegne se T >= setpoint
 
@@ -62,7 +61,7 @@ def _temp_cfr(station_id: str) -> Optional[float]:
 
 def _costo_gas(cfg: dict) -> float:
     """€/kWh termico con la caldaia."""
-    from prezzi import calcola_prezzi
+    from termopilota.prezzi import calcola_prezzi
     try:
         prezzi = calcola_prezzi(cfg)
         gas_smc = prezzi["gas_totale_smc"]
@@ -74,7 +73,7 @@ def _costo_gas(cfg: dict) -> float:
 
 def _costo_ac(t_ext: float, cfg: dict) -> float:
     """€/kWh termico con l'AC (pompa di calore)."""
-    from prezzi import calcola_prezzi
+    from termopilota.prezzi import calcola_prezzi
     try:
         prezzi = calcola_prezzi(cfg)
         luce_kwh = prezzi["luce_totale_kwh"]
@@ -145,7 +144,7 @@ class AutomazioneRiscaldamento:
         t_min_ac  = cfg.get("temperatura_minima_ac", -15)
         home_id   = cfg.get("legrand_plant_id", "")
 
-        from providers import get_thermostat, get_heatpump
+        from termopilota.providers import get_thermostat, get_heatpump
 
         bticino = get_thermostat("netatmo", cfg)
         samsung = get_heatpump("smartthings", cfg)

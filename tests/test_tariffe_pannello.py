@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from unittest.mock import patch
 
-import prezzi
-from pannello import calibra_fattore, stima_giornata, stima_potenza_kw
+from termopilota import prezzi
+from termopilota.pannello import calibra_fattore, stima_giornata, stima_potenza_kw
 
 
 # ─── Tariffe fisse / variabili ────────────────────────────────────────────────

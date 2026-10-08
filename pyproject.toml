@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "termopilota"
+dynamic = ["version"]
+description = "Controllo del riscaldamento: caldaia a gas o pompa di calore, a seconda di cosa conviene."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Giovanni Cerretani" }]
+dependencies = [
+    "flask>=3.1.3",
+    "requests>=2.34.2",
+    "flask-login>=0.6.3",
+    "gunicorn>=26.2.0",
+    "authlib>=1.8.0",
+    "email-validator>=2.3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.1.1"]
+
+[project.scripts]
+termopilota = "termopilota.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# static/vendor e' generato da package.json (npm run vendor) prima dell'installazione
+termopilota = ["templates/**/*", "static/**/*"]
+
+[tool.setuptools.dynamic]
+# Unica fonte della versione: src/termopilota/versione.py
+version = { attr = "termopilota.versione.VERSIONE" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
