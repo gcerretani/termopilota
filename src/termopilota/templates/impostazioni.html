@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Impostazioni{% endblock %}
+
+{% block content %}
+<div class="tp-page tp-page-narrow">
+
+  <!-- Account -->
+  <div class="tp-section-title">Account</div>
+  <div class="tp-card tp-menu">
+    <a class="tp-list-item" href="{{ url_for('account') }}">
+      <span class="tp-avatar" aria-hidden="true">{{ current_user.username[:1]|upper }}</span>
+      <div class="tp-list-body">
+        <div class="tp-list-title">{{ current_user.username }}</div>
+        <div class="tp-list-sub">{% if current_user.is_admin %}Amministratore{% else %}Utente{% endif %} · profilo e password</div>
+      </div>
+      <i class="bi bi-chevron-right"></i>
+    </a>
+  </div>
+
+  <!-- Aspetto -->
+  <div class="tp-section-title">Aspetto</div>
+  <div class="tp-card">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <div class="d-flex align-items-center gap-3">
+        <span class="tp-list-icon"><i class="bi bi-circle-half"></i></span>
+        <div class="tp-list-title">Tema</div>
+      </div>
+      <div class="tp-segmented" role="group" aria-label="Tema">
+        <button type="button" data-tema-scelta="light" onclick="impostaTema('light')"><i class="bi bi-sun"></i>Chiaro</button>
+        <button type="button" data-tema-scelta="dark" onclick="impostaTema('dark')"><i class="bi bi-moon-stars"></i>Scuro</button>
+        <button type="button" data-tema-scelta="auto" onclick="impostaTema('auto')"><i class="bi bi-circle-half"></i>Sistema</button>
+      </div>
+    </div>
+  </div>
+
+  {% if current_user.is_admin %}
+  <!-- Amministrazione -->
+  <div class="tp-section-title">Amministrazione</div>
+  <div class="tp-card tp-menu">
+    <a class="tp-list-item" href="{{ url_for('admin.admin_settings') }}">
+      <span class="tp-list-icon gas"><i class="bi bi-sliders"></i></span>
+      <div class="tp-list-body">
+        <div class="tp-list-title">Prezzi e impianto</div>
+        <div class="tp-list-sub">Tariffe gas e luce, caldaia, pompa, pannello, posizione</div>
+      </div>
+      <i class="bi bi-chevron-right"></i>
+    </a>
+    <a class="tp-list-item" href="{{ url_for('admin.admin_credentials') }}">
+      <span class="tp-list-icon ac"><i class="bi bi-key"></i></span>
+      <div class="tp-list-body">
+        <div class="tp-list-title">Credenziali API</div>
+        <div class="tp-list-sub">Netatmo, SmartThings, ENTSO-E, Google</div>
+      </div>
+      <i class="bi bi-chevron-right"></i>
+    </a>
+    <a class="tp-list-item" href="{{ url_for('admin.admin_zones') }}">
+      <span class="tp-list-icon green"><i class="bi bi-diagram-3"></i></span>
+      <div class="tp-list-body">
+        <div class="tp-list-title">Zone</div>
+        <div class="tp-list-sub">Abbinamento termostati e condizionatori</div>
+      </div>
+      <i class="bi bi-chevron-right"></i>
+    </a>
+    <a class="tp-list-item" href="{{ url_for('admin.admin_users') }}">
+      <span class="tp-list-icon"><i class="bi bi-people"></i></span>
+      <div class="tp-list-body">
+        <div class="tp-list-title">Utenti</div>
+        <div class="tp-list-sub">Accessi e ruoli</div>
+      </div>
+      <i class="bi bi-chevron-right"></i>
+    </a>
+  </div>
+  {% endif %}
+
+  <!-- App -->
+  <div class="tp-section-title">App</div>
+  <div class="tp-card tp-menu">
+    <button type="button" class="tp-list-item d-none" data-installa-app>
+      <span class="tp-list-icon ac"><i class="bi bi-download"></i></span>
+      <div class="tp-list-body">
+        <div class="tp-list-title">Installa TermoPilota</div>
+        <div class="tp-list-sub">Aggiungi l'app alla schermata Home</div>
+      </div>
+    </button>
+    <div class="tp-list-item">
+      <span class="tp-list-icon"><i class="bi bi-info-circle"></i></span>
+      <div class="tp-list-body">
+        <div class="tp-list-title">Versione</div>
+        <div class="tp-list-sub">Meteo: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a></div>
+      </div>
+      <span class="tp-muted">v{{ versione_app }}</span>
+    </div>
+    <a class="tp-list-item" href="/logout">
+      <span class="tp-list-icon danger"><i class="bi bi-box-arrow-right"></i></span>
+      <div class="tp-list-body"><div class="tp-list-title text-danger">Esci</div></div>
+    </a>
+  </div>
+
+</div>
+{% endblock %}

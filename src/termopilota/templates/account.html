@@ -2,12 +2,10 @@
 
 {% block title %}Il mio account{% endblock %}
 
-{% block content %}
-<div class="container-lg py-4" style="max-width: 720px;">
+{% block indietro %}<a href="{{ url_for('pagina_impostazioni') }}" class="tp-icon-btn tp-back" aria-label="Torna a Impostazioni"><i class="bi bi-chevron-left"></i></a>{% endblock %}
 
-  <div class="d-flex align-items-center gap-2 mb-4">
-    <h5 class="fw-bold mb-0"><i class="bi bi-person-circle me-2 text-secondary"></i>Il mio account</h5>
-  </div>
+{% block content %}
+<div class="tp-page tp-page-narrow">
 
   {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}
@@ -20,7 +18,7 @@
   {% endif %}
   {% endwith %}
 
-  <div class="settings-card mb-4">
+  <div class="settings-card">
     <p class="small fw-bold text-muted mb-3 text-uppercase" style="letter-spacing:.5px;">
       <i class="bi bi-info-circle me-1"></i>Dati profilo
     </p>
@@ -50,7 +48,7 @@
     </dl>
   </div>
 
-  <div class="settings-card mb-4">
+  <div class="settings-card">
     <p class="small fw-bold text-muted mb-3 text-uppercase" style="letter-spacing:.5px;">
       <i class="bi bi-key me-1"></i>Cambia password
     </p>

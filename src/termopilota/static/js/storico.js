@@ -4,21 +4,20 @@
 
 (function () {
   const grafici = {};
-  const euro = (v) => v.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
-  const isMobile = window.matchMedia('(max-width: 576px)').matches;
+  const G = TPGrafici;
   const TEMP_MAX_RISCALDAMENTO = 16; // allineato a storico.py
   let potenzaKw = 4.0;               // aggiornata da /api/risparmi
 
   function intervalloDaRange(range) {
     const oggi = new Date();
-    const a = oggi.toISOString().slice(0, 10);
+    const a = giornoLocale(oggi);
     let da;
     let risoluzione;
     if (range === '7g') {
-      da = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+      da = giornoLocale(new Date(Date.now() - 6 * 86400000));
       risoluzione = 'oraria';
     } else if (range === '30g') {
-      da = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+      da = giornoLocale(new Date(Date.now() - 29 * 86400000));
       risoluzione = 'giornaliera';
     } else {
       // Stagione termica: dal 1° ottobre (dell'anno scorso se siamo prima di ottobre)
@@ -29,28 +28,16 @@
     return { da, a, risoluzione };
   }
 
-  function opzioniBase(unitaY) {
-    return {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { maxTicksLimit: isMobile ? 6 : 10, font: { size: 11 } }, grid: { color: 'rgba(127,127,127,.15)' } },
-        y: { title: { display: !isMobile, text: unitaY, font: { size: 11 } }, ticks: { font: { size: 11 } }, grid: { color: 'rgba(127,127,127,.15)' } },
-      },
-    };
-  }
-
-  function creaOAggiornaGrafico(id, config) {
+  function creaOAggiornaGrafico(id, config, legenda) {
     const canvas = document.getElementById(id);
     if (!canvas || typeof Chart === 'undefined') return;
     if (grafici[id]) {
-      grafici[id].data = config.data;
-      grafici[id].update('none');
+      grafici[id].data.labels = config.data.labels;
+      config.data.datasets.forEach((ds, i) => { grafici[id].data.datasets[i].data = ds.data; });
+      grafici[id].update();
     } else {
       grafici[id] = new Chart(canvas, config);
+      if (legenda) G.legenda(legenda, grafici[id]);
     }
   }
 
@@ -61,34 +48,44 @@
     return punti.map(p => `${p.giorno.slice(8, 10)}/${p.giorno.slice(5, 7)}`);
   }
 
+  const serie = (chiave, extra = {}) => ({
+    borderColor: G.colore(chiave),
+    backgroundColor: G.gradiente(chiave, 0.18),
+    pointHoverBackgroundColor: G.colore(chiave),
+    pointHoverBorderColor: G.colore('pannello'),
+    ...extra,
+  });
+
   function aggiornaGrafici(punti, risoluzione) {
     const labels = etichette(punti, risoluzione);
     const oraria = risoluzione === 'oraria';
+    const maxTickX = oraria ? (G.mobile() ? 4 : 7) : undefined;
 
-    const costoGas = punti.map(p => oraria ? p.costo_gas_kwh : p.costo_gas_medio);
-    const costoAc = punti.map(p => oraria ? p.costo_ac_kwh : p.costo_ac_medio);
+    const opzPrezzi = G.opzioniBase({ unitaY: '€/kWh termico', tickY: v => `€${v.toFixed(2)}`, maxTickX });
+    opzPrezzi.plugins.tooltip = { callbacks: { label: ctx => ` ${ctx.dataset.label}: €${ctx.parsed.y.toFixed(3)}` } };
     creaOAggiornaGrafico('graficoPrezzi', {
       type: 'line',
       data: {
         labels,
         datasets: [
-          { label: 'Caldaia (€/kWh_th)', data: costoGas, borderColor: '#e07b39', backgroundColor: 'rgba(224,123,57,.1)', borderWidth: 2, pointRadius: 0, tension: 0.3 },
-          { label: 'Pompa di calore (€/kWh_th)', data: costoAc, borderColor: '#2f80ed', backgroundColor: 'rgba(47,128,237,.1)', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+          { label: 'Caldaia', coloreVar: '--gas-color', data: punti.map(p => oraria ? p.costo_gas_kwh : p.costo_gas_medio), ...serie('gas') },
+          { label: 'Pompa di calore', coloreVar: '--ac-color', data: punti.map(p => oraria ? p.costo_ac_kwh : p.costo_ac_medio), ...serie('ac') },
         ],
       },
-      options: opzioniBase('€/kWh termico'),
-    });
+      options: opzPrezzi,
+    }, 'legendaPrezzi');
 
-    const temp = punti.map(p => oraria ? p.temp_esterna : p.temp_media);
+    const opzTemp = G.opzioniBase({ unitaY: '°C', tickY: v => `${v.toFixed(0)}°`, maxTickX });
+    opzTemp.plugins.tooltip = { callbacks: { label: ctx => ` ${ctx.parsed.y.toFixed(1)}°C` } };
     creaOAggiornaGrafico('graficoTemperature', {
       type: 'line',
       data: {
         labels,
         datasets: [
-          { label: 'Temperatura (°C)', data: temp, borderColor: '#8a8e99', borderDash: [4, 3], backgroundColor: 'rgba(138,142,153,.08)', borderWidth: 1.5, pointRadius: 0, tension: 0.35, fill: true },
+          { label: 'Temperatura', data: punti.map(p => oraria ? p.temp_esterna : p.temp_media), ...serie('neutro', { fill: 'start' }) },
         ],
       },
-      options: opzioniBase('°C'),
+      options: opzTemp,
     });
 
     // Ore per fonte e risparmio cumulativo hanno senso solo per giorno:
@@ -112,39 +109,49 @@
     }
     const labelsGiorni = giorni.map(g => `${g.giorno.slice(8, 10)}/${g.giorno.slice(5, 7)}`);
 
+    const opzOre = G.opzioniBase({ tickY: v => `${v}h` });
+    opzOre.scales.x.stacked = true;
+    opzOre.scales.y.stacked = true;
+    opzOre.scales.y.max = 24;
+    opzOre.plugins.mirino = false;
+    opzOre.plugins.tooltip = { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} h` } };
+    const barra = (chiave) => ({
+      backgroundColor: G.colore(chiave),
+      hoverBackgroundColor: G.colore(chiave),
+      borderColor: G.colore('pannello'),
+      borderWidth: { top: 2 },
+      borderRadius: 4,
+      borderSkipped: false,
+      maxBarThickness: 28,
+    });
     creaOAggiornaGrafico('graficoOreFonte', {
       type: 'bar',
       data: {
         labels: labelsGiorni,
         datasets: [
-          { label: 'Ore caldaia', data: giorni.map(g => g.ore_gas), backgroundColor: '#e07b39' },
-          { label: 'Ore pompa di calore', data: giorni.map(g => g.ore_ac), backgroundColor: '#2f80ed' },
+          { label: 'Caldaia', coloreVar: '--gas-color', data: giorni.map(g => g.ore_gas), ...barra('gas') },
+          { label: 'Pompa di calore', coloreVar: '--ac-color', data: giorni.map(g => g.ore_ac), ...barra('ac') },
         ],
       },
-      options: {
-        ...opzioniBase('ore'),
-        plugins: { legend: { display: true, labels: { font: { size: 11 } } } },
-        scales: {
-          x: { stacked: true, ticks: { maxTicksLimit: isMobile ? 6 : 12, font: { size: 11 } }, grid: { display: false } },
-          y: { stacked: true, max: 24, ticks: { font: { size: 11 } }, grid: { color: 'rgba(127,127,127,.15)' } },
-        },
-      },
-    });
+      options: opzOre,
+    }, 'legendaOre');
 
     let cumulato = 0;
     const serieCumulata = giorni.map(g => {
       cumulato += g.risparmio_eur || 0;
       return Math.round(cumulato * 100) / 100;
     });
+    const opzRisparmio = G.opzioniBase({ tickY: v => formatoEuro(v) });
+    opzRisparmio.plugins.tooltip = { callbacks: { label: ctx => ` ${formatoEuro(ctx.parsed.y)}` } };
     creaOAggiornaGrafico('graficoRisparmio', {
       type: 'line',
       data: {
         labels: labelsGiorni,
         datasets: [
-          { label: 'Risparmio cumulativo (€)', data: serieCumulata, borderColor: '#27ae60', backgroundColor: 'rgba(39,174,96,.12)', borderWidth: 2, pointRadius: 0, tension: 0.25, fill: true },
+          { label: 'Risparmio cumulativo', data: serieCumulata, ...serie('verde', { fill: true, tension: 0.25 }) },
         ],
       },
-      options: opzioniBase('€'),
+      options: opzRisparmio,
     });
   }
 
@@ -156,6 +163,8 @@
       const dati = await res.json();
       const vuoto = document.getElementById('storicoVuoto');
       if (vuoto) vuoto.style.display = dati.punti.length === 0 ? '' : 'none';
+      // La risoluzione cambia la forma dei dati: si ricreano i grafici
+      Object.keys(grafici).forEach(id => { grafici[id].destroy(); delete grafici[id]; });
       aggiornaGrafici(dati.punti, risoluzione);
     } catch (e) {
       console.warn('Storico non disponibile:', e);
@@ -172,18 +181,19 @@
         const el = document.getElementById(id);
         if (el) el.textContent = testo;
       };
-      set('risparmioStagione', euro(r.stagione_eur));
-      set('risparmioOggi', euro(r.oggi_eur));
-      set('risparmioSettimana', euro(r.settimana_eur));
-      set('risparmioOre', `${r.ore_ac_stagione} ore in pompa di calore da ${r.inizio_stagione.slice(8, 10)}/${r.inizio_stagione.slice(5, 7)} · stima con ${r.potenza_kw} kW termici`);
+      set('risparmioStagione', formatoEuro(r.stagione_eur));
+      set('risparmioOggi', formatoEuro(r.oggi_eur));
+      set('risparmioSettimana', formatoEuro(r.settimana_eur));
+      set('risparmioOre', `${r.ore_ac_stagione} ore in pompa di calore dal ${r.inizio_stagione.slice(8, 10)}/${r.inizio_stagione.slice(5, 7)} · stima con ${r.potenza_kw} kW termici`);
     } catch (e) { /* silenzioso */ }
   }
 
   document.querySelectorAll('[data-range]').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.preventDefault();
-      document.querySelectorAll('[data-range]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-range]').forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+      });
       caricaStorico(btn.dataset.range);
     });
   });

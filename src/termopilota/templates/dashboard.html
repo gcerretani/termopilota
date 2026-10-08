@@ -1,300 +1,181 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard{% endblock %}
+{% block title %}Home{% endblock %}
 
-{% block head_extra %}
-<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
+{% block azioni %}
+<span id="aggiornatoAlle" class="aggiornato-chip d-none d-sm-inline-flex"></span>
 {% endblock %}
 
 {% block content %}
-<div class="container-lg py-4">
+<div class="tp-page">
 
   {% if errore_meteo %}
-  <div class="alert alert-danger rounded-3 mb-4">
+  <div class="alert alert-danger mb-0">
     <i class="bi bi-exclamation-triangle-fill me-2"></i>
     <strong>Errore previsioni meteo:</strong> {{ errore_meteo }} — Controlla la connessione internet.
   </div>
   {% endif %}
   {% if errore_cfr %}
-  <div class="alert alert-warning rounded-3 mb-4">
+  <div class="alert alert-warning mb-0">
     <i class="bi bi-wifi-off me-2"></i>
     <strong>Stazione CFR non raggiunta</strong> — uso temperatura da previsione. ({{ errore_cfr }})
   </div>
   {% endif %}
 
-  <!-- Banner prezzi automatici -->
-  <div class="d-flex flex-wrap gap-2 mb-4">
-    <div class="info-chip">
-      <i class="bi bi-fire" style="color:var(--gas-color);"></i>
-      <span class="text-muted">Gas commodity:</span>
-      {% if prezzi.gas_fonte == 'ttf_auto' %}
-        <strong style="color:var(--gas-color);">TTF {{ prezzi.ttf_eur_mwh }} €/MWh</strong>
-        <span class="badge bg-success" style="font-size:.7rem;">auto</span>
-        <span class="text-muted">(= {{ prezzi.gas_commodity_smc }} €/Smc)</span>
-      {% elif prezzi.gas_fonte == 'fisso' %}
-        <strong style="color:var(--gas-color);">{{ prezzi.gas_commodity_smc }} €/Smc</strong>
-        <span class="badge bg-primary" style="font-size:.7rem;">fisso</span>
-      {% else %}
-        <strong style="color:#aaa;">manuale</strong>
-        {% if current_user.is_admin %}<a href="/admin/" class="text-muted" style="font-size:.75rem;">configura →</a>{% endif %}
-      {% endif %}
-    </div>
-    <div class="info-chip">
-      <i class="bi bi-lightning-charge" style="color:var(--ac-color);"></i>
-      <span class="text-muted">Luce commodity:</span>
-      {% if prezzi.luce_fonte == 'entsoe_auto' %}
-        <strong style="color:var(--ac-color);">PUN {{ prezzi.pun_eur_mwh }} €/MWh</strong>
-        <span class="badge bg-success" style="font-size:.7rem;">auto</span>
-        <span class="text-muted">(= {{ prezzi.luce_commodity_kwh }} €/kWh)</span>
-      {% elif prezzi.luce_fonte == 'fisso' %}
-        <strong style="color:var(--ac-color);">{{ prezzi.luce_commodity_kwh }} €/kWh</strong>
-        <span class="badge bg-primary" style="font-size:.7rem;">fisso</span>
-      {% else %}
-        <strong style="color:#aaa;">manuale</strong>
-        {% if current_user.is_admin %}<a href="/admin/" style="font-size:.75rem;color:var(--ac-color);">configura chiave ENTSO-E →</a>{% endif %}
-      {% endif %}
-    </div>
-    <div class="info-chip" id="chipPannello" style="display:none;" title="Stima da irraggiamento (Open-Meteo): non è la lettura ufficiale dell'app del pannello">
-      <i class="bi bi-sun" style="color:#f1c40f;"></i>
-      <span class="text-muted">Pannello Murcia:</span>
-      <strong><span id="chipPannelloKw"></span></strong>
-      <span class="text-muted">· oggi <span id="chipPannelloKwh"></span> <span class="badge bg-secondary" style="font-size:.65rem;">stima</span></span>
-    </div>
-    <div class="info-chip" id="chipRisparmio" style="display:none;">
-      <i class="bi bi-piggy-bank" style="color:var(--green);"></i>
-      <span class="text-muted">Risparmiato questa stagione:</span>
-      <strong style="color:var(--green);"><span id="chipRisparmioVal"></span></strong>
-      <a href="/storico" class="text-muted" style="font-size:.75rem;">storico →</a>
-    </div>
-  </div>
-
   {% if attuale %}
-  <!-- Hero raccomandazione ora -->
-  <div class="row g-3 mb-4">
-    <div class="col-md-7">
-      <div class="hero-card {{ attuale.raccomandazione }} h-100" id="heroCard">
-        <div class="hero-bg-circle"></div>
-        <div class="d-flex justify-content-between align-items-start">
+  <div class="row g-3">
+    <!-- Consiglio per adesso -->
+    <div class="col-lg-7">
+      <section class="tp-hero {{ attuale.raccomandazione }}" id="heroCard" aria-live="polite">
+        <div class="tp-hero-top">
           <div>
-            <div class="hero-title">Consiglio per adesso</div>
-            <div class="hero-device" id="heroDevice">
+            <div class="tp-hero-label">Consiglio per adesso</div>
+            <div class="tp-hero-device" id="heroDevice">
               {% if attuale.raccomandazione == 'gas' %}
                 <i class="bi bi-fire me-1"></i>Usa la Caldaia
               {% else %}
                 <i class="bi bi-snow me-1"></i>Usa il Condizionatore
               {% endif %}
             </div>
-            <div class="hero-reason" id="heroReason">{{ attuale.motivo }}</div>
+            <div class="tp-hero-reason" id="heroReason">{{ attuale.motivo }}</div>
           </div>
-          <div class="text-end">
-            <div class="hero-temp" id="heroTemp">{{ attuale.temp_esterna }}°C</div>
-            <div id="heroExtra">
-              {% if cfr_info %}
-              <div style="font-size:.78rem;opacity:.85;background:rgba(255,255,255,.2);border-radius:6px;padding:2px 7px;display:inline-block;margin-top:2px;">
-                📡 CFR {{ cfr_info.ora }}
-              </div>
-              {% endif %}
-              <div style="font-size:.85rem;opacity:.8;margin-top:4px;">{{ attuale.meteo_icon }} {{ attuale.meteo_desc }}</div>
-              {% if attuale.pioggia_prob > 20 %}
-              <div style="font-size:.8rem;opacity:.7;">🌧 pioggia {{ attuale.pioggia_prob }}%</div>
-              {% endif %}
+          <div>
+            <div class="tp-hero-temp" id="heroTemp">{{ attuale.temp_esterna }}°</div>
+            <div class="tp-hero-meta" id="heroExtra">
+              <div>{{ attuale.meteo_icon }} {{ attuale.meteo_desc }}</div>
+              {% if attuale.pioggia_prob > 20 %}<div>🌧 pioggia {{ attuale.pioggia_prob }}%</div>{% endif %}
+              {% if cfr_info %}<span class="tp-hero-tag"><i class="bi bi-broadcast"></i>CFR {{ cfr_info.ora }}</span>{% endif %}
             </div>
           </div>
         </div>
-        <div class="mt-3 d-flex gap-3 flex-wrap" style="font-size:.82rem;opacity:.85;" id="heroCosti">
-          {% if attuale.raccomandazione == 'gas' %}
-          <span><i class="bi bi-fire me-1"></i>Caldaia: <strong>{{ "%.3f"|format(attuale.costo_gas_kwh) }} €/kWh<sub>th</sub></strong></span>
-          <span><i class="bi bi-snow me-1"></i>AC: <strong>{{ "%.3f"|format(attuale.costo_ac_kwh) }} €/kWh<sub>th</sub></strong></span>
-          {% else %}
-          <span><i class="bi bi-snow me-1"></i>AC: <strong>{{ "%.3f"|format(attuale.costo_ac_kwh) }} €/kWh<sub>th</sub></strong></span>
-          <span><i class="bi bi-fire me-1"></i>Caldaia: <strong>{{ "%.3f"|format(attuale.costo_gas_kwh) }} €/kWh<sub>th</sub></strong></span>
-          {% endif %}
-          <span><i class="bi bi-thermometer me-1"></i>COP AC: <strong>{{ attuale.cop }}</strong></span>
+        <div class="tp-hero-costi" id="heroCosti">
+          <span class="tp-hero-pill{% if attuale.raccomandazione == 'gas' %} vincente{% endif %}"><i class="bi bi-fire"></i>Caldaia <strong>{{ "%.3f"|format(attuale.costo_gas_kwh) }} €/kWh<sub>th</sub></strong></span>
+          <span class="tp-hero-pill{% if attuale.raccomandazione == 'ac' %} vincente{% endif %}"><i class="bi bi-snow"></i>AC <strong>{{ "%.3f"|format(attuale.costo_ac_kwh) }} €/kWh<sub>th</sub></strong></span>
+          <span class="tp-hero-pill"><i class="bi bi-thermometer-half"></i>COP <strong>{{ attuale.cop }}</strong></span>
         </div>
-      </div>
+      </section>
     </div>
 
-    <!-- Schede statistiche -->
-    <div class="col-md-5">
-      <div class="row g-3 h-100">
-        <div class="col-6">
-          <div class="stat-card stat-gas h-100">
-            <div class="stat-label"><i class="bi bi-fire me-1" style="color:var(--gas-color);"></i>Caldaia gas</div>
-            <div class="stat-value" style="color:var(--gas-color);" id="statGasVal">{{ "%.3f"|format(attuale.costo_gas_kwh) }}</div>
-            <div class="stat-sub">€/kWh termico</div>
-            <div class="stat-sub mt-2">{{ prezzi.gas_totale_smc }} €/Smc totale</div>
-            {% if prezzi.gas_fonte == 'ttf_auto' %}
-            <div class="stat-sub"><span class="badge bg-success" style="font-size:.65rem;">TTF auto</span> + {{ prezzi.gas_fisso_smc }} €/Smc fissi</div>
-            {% elif prezzi.gas_fonte == 'fisso' %}
-            <div class="stat-sub"><span class="badge bg-primary" style="font-size:.65rem;">tariffa fissa</span> + {{ prezzi.gas_fisso_smc }} €/Smc fissi</div>
-            {% else %}
-            <div class="stat-sub"><span class="badge bg-secondary" style="font-size:.65rem;">manuale</span></div>
-            {% endif %}
-          </div>
+    <!-- KPI -->
+    <div class="col-lg-5">
+      <div class="tp-kpi-grid">
+        <div class="tp-kpi">
+          <div class="tp-kpi-label"><span class="tp-kpi-dot" style="--dot:var(--gas-color)"></span>Caldaia</div>
+          <div class="tp-kpi-value"><span id="statGasVal">{{ "%.3f"|format(attuale.costo_gas_kwh) }}</span> <small>€/kWh<sub>th</sub></small></div>
+          <div class="tp-kpi-sub">{{ prezzi.gas_totale_smc }} €/Smc totale</div>
         </div>
-        <div class="col-6">
-          <div class="stat-card stat-ac h-100">
-            <div class="stat-label"><i class="bi bi-snow me-1" style="color:var(--ac-color);"></i>Condizionatore</div>
-            <div class="stat-value" style="color:var(--ac-color);" id="statAcVal">{{ "%.3f"|format(attuale.costo_ac_kwh) }}</div>
-            <div class="stat-sub">€/kWh termico</div>
-            <div class="stat-sub mt-2">{{ prezzi.luce_totale_kwh }} €/kWh ÷ COP {{ attuale.cop }}</div>
-            {% if prezzi.luce_fonte == 'entsoe_auto' %}
-            <div class="stat-sub"><span class="badge bg-success" style="font-size:.65rem;">PUN auto</span> + {{ prezzi.luce_fisso_kwh }} €/kWh fissi</div>
-            {% elif prezzi.luce_fonte == 'fisso' %}
-            <div class="stat-sub"><span class="badge bg-primary" style="font-size:.65rem;">tariffa fissa</span> + {{ prezzi.luce_fisso_kwh }} €/kWh fissi</div>
-            {% else %}
-            <div class="stat-sub"><span class="badge bg-secondary" style="font-size:.65rem;">manuale</span></div>
-            {% endif %}
-          </div>
+        <div class="tp-kpi">
+          <div class="tp-kpi-label"><span class="tp-kpi-dot" style="--dot:var(--ac-color)"></span>Pompa di calore</div>
+          <div class="tp-kpi-value"><span id="statAcVal">{{ "%.3f"|format(attuale.costo_ac_kwh) }}</span> <small>€/kWh<sub>th</sub></small></div>
+          <div class="tp-kpi-sub">{{ prezzi.luce_totale_kwh }} €/kWh ÷ COP {{ attuale.cop }}</div>
         </div>
-        <div class="col-6">
-          <div class="stat-card stat-vs h-100">
-            <div class="stat-label"><i class="bi bi-calendar-day me-1" style="color:var(--green);"></i>Oggi</div>
-            <div class="stat-value" style="color:var(--green);" id="statOreVal">{{ ore_gas_oggi }}h / {{ ore_ac_oggi }}h</div>
-            <div class="stat-sub">caldaia / condizionatore</div>
-          </div>
+        <div class="tp-kpi">
+          <div class="tp-kpi-label"><i class="bi bi-calendar-day"></i>Oggi</div>
+          <div class="tp-kpi-value" id="statOreVal">{{ ore_gas_oggi }}h / {{ ore_ac_oggi }}h</div>
+          <div class="tp-kpi-sub">caldaia / pompa</div>
         </div>
-        <div class="col-6">
-          <div class="stat-card h-100" style="border-left:4px solid #9b59b6;">
-            <div class="stat-label"><i class="bi bi-lightning-charge me-1" style="color:#9b59b6;"></i>Prezzi totali</div>
-            <div class="stat-value" style="color:#9b59b6;font-size:1.1rem;" id="statTotaliVal">
-              ⛽ {{ prezzi.gas_totale_smc }}€/Smc<br>
-              ⚡ {{ prezzi.luce_totale_kwh }}€/kWh
-            </div>
-            <div class="stat-sub">Commodity + fissi</div>
-          </div>
-        </div>
+        <a class="tp-kpi text-decoration-none" href="{{ url_for('pagina_storico') }}" id="kpiRisparmio">
+          <div class="tp-kpi-label"><span class="tp-kpi-dot" style="--dot:var(--green)"></span>Risparmio</div>
+          <div class="tp-kpi-value" id="chipRisparmioVal">—</div>
+          <div class="tp-kpi-sub">questa stagione <i class="bi bi-chevron-right"></i></div>
+        </a>
       </div>
     </div>
   </div>
   {% endif %}
 
-  <!-- Grafico 48h -->
-  <div class="chart-card mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h6 class="fw-bold mb-0"><i class="bi bi-graph-up me-2 text-primary"></i>Confronto costo energetico prossime 48 ore</h6>
-      <span id="aggiornatoAlle" class="aggiornato-chip"></span>
+  <!-- Prossime ore -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <h2 class="tp-card-title"><i class="bi bi-clock"></i>Prossime ore</h2>
+      <a class="tp-card-link" href="{{ url_for('pagina_previsioni') }}">Previsioni 48h <i class="bi bi-chevron-right"></i></a>
     </div>
-    <div style="height: 260px;">
-      <canvas id="graficoComparazione"></canvas>
-    </div>
-    <div class="mt-2 d-flex gap-4 justify-content-center" style="font-size:.78rem;color:#888;">
-      <span><span style="background:var(--gas-color);display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:4px;"></span>Caldaia (€/kWh termico)</span>
-      <span><span style="background:var(--ac-color);display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:4px;"></span>Condizionatore (€/kWh termico)</span>
-      <span><span style="background:#bbb;display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:4px;"></span>Temperatura esterna (°C)</span>
-    </div>
-  </div>
+    <div class="tp-ore-strip" id="striscaOre" role="list"></div>
+  </section>
 
-  <!-- Tabella oraria -->
-  <div class="mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h6 class="fw-bold mb-0"><i class="bi bi-table me-2 text-secondary"></i>Dettaglio orario</h6>
-      <ul class="nav nav-pills" id="tabGiorni">
-        <li class="nav-item"><a class="nav-link active" href="#" data-giorno="oggi">Oggi</a></li>
-        <li class="nav-item"><a class="nav-link" href="#" data-giorno="domani">Domani</a></li>
-      </ul>
+  <div class="row g-3">
+    <!-- Prezzi energia -->
+    <div class="col-lg-6">
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <h2 class="tp-card-title"><i class="bi bi-currency-euro"></i>Prezzi energia</h2>
+          {% if current_user.is_admin %}<a class="tp-card-link" href="/admin/">Modifica <i class="bi bi-chevron-right"></i></a>{% endif %}
+        </div>
+        <div class="tp-list">
+          <div class="tp-list-item">
+            <span class="tp-list-icon gas"><i class="bi bi-fire"></i></span>
+            <div class="tp-list-body">
+              <div class="tp-list-title">Gas
+                {% if prezzi.gas_fonte == 'ttf_auto' %}<span class="badge text-bg-success">auto</span>
+                {% elif prezzi.gas_fonte == 'fisso' %}<span class="badge text-bg-primary">fisso</span>
+                {% else %}<span class="badge text-bg-secondary">manuale</span>{% endif %}
+              </div>
+              <div class="tp-list-sub">
+                {% if prezzi.gas_fonte == 'ttf_auto' %}TTF {{ prezzi.ttf_eur_mwh }} €/MWh = {{ prezzi.gas_commodity_smc }} €/Smc + {{ prezzi.gas_fisso_smc }} fissi
+                {% elif prezzi.gas_fonte == 'fisso' %}Tariffa fissa {{ prezzi.gas_commodity_smc }} €/Smc + {{ prezzi.gas_fisso_smc }} fissi
+                {% else %}Prezzo manuale{% endif %}
+              </div>
+            </div>
+            <div class="tp-list-end"><span id="prezzoGasTot">{{ prezzi.gas_totale_smc }}</span> <small class="tp-muted fw-normal">€/Smc</small></div>
+          </div>
+          <div class="tp-list-item">
+            <span class="tp-list-icon ac"><i class="bi bi-lightning-charge"></i></span>
+            <div class="tp-list-body">
+              <div class="tp-list-title">Luce
+                {% if prezzi.luce_fonte == 'entsoe_auto' %}<span class="badge text-bg-success">auto</span>
+                {% elif prezzi.luce_fonte == 'fisso' %}<span class="badge text-bg-primary">fisso</span>
+                {% else %}<span class="badge text-bg-secondary">manuale</span>{% endif %}
+              </div>
+              <div class="tp-list-sub">
+                {% if prezzi.luce_fonte == 'entsoe_auto' %}PUN {{ prezzi.pun_eur_mwh }} €/MWh = {{ prezzi.luce_commodity_kwh }} €/kWh + {{ prezzi.luce_fisso_kwh }} fissi
+                {% elif prezzi.luce_fonte == 'fisso' %}Tariffa fissa {{ prezzi.luce_commodity_kwh }} €/kWh + {{ prezzi.luce_fisso_kwh }} fissi
+                {% else %}Prezzo manuale{% if current_user.is_admin %} · <a href="/admin/credentials">configura ENTSO-E</a>{% endif %}{% endif %}
+              </div>
+            </div>
+            <div class="tp-list-end"><span id="prezzoLuceTot">{{ prezzi.luce_totale_kwh }}</span> <small class="tp-muted fw-normal">€/kWh</small></div>
+          </div>
+          <div class="tp-list-item" id="chipPannello" style="display:none;" title="Stima da irraggiamento (Open-Meteo): non è la lettura ufficiale dell'app del pannello">
+            <span class="tp-list-icon sun"><i class="bi bi-sun"></i></span>
+            <div class="tp-list-body">
+              <div class="tp-list-title">Pannello Murcia <span class="badge text-bg-secondary">stima</span></div>
+              <div class="tp-list-sub">oggi <span id="chipPannelloKwh"></span></div>
+            </div>
+            <div class="tp-list-end" id="chipPannelloKw"></div>
+          </div>
+        </div>
+      </section>
     </div>
-    <div class="rec-table">
-      <table class="table table-sm table-hover mb-0">
-        <thead>
-          <tr>
-            <th class="ps-3">Ora</th><th>Meteo</th><th>T. est.</th><th>COP AC</th>
-            <th>€/kWh caldaia</th><th>€/kWh AC</th><th>Consiglio</th><th class="pe-3">Risparmio</th>
-          </tr>
-        </thead>
-        <tbody id="tabellaOraria"></tbody>
-      </table>
-    </div>
-  </div>
 
-  <!-- Spiegazione metodo + stato stanze -->
-  <div class="row g-3 mb-4">
-    <div class="col-md-6">
-      <div class="stat-card">
-        <h6 class="fw-bold mb-2"><i class="bi bi-question-circle me-2 text-muted"></i>Come funziona il calcolo</h6>
-        <p class="small text-muted mb-2">Il sistema confronta il <strong>costo per produrre 1 kWh di calore</strong> con le due fonti:</p>
-        <ul class="small text-muted mb-2">
-          <li><strong>Caldaia Vaillant condensazione:</strong><br>
-              costo = prezzo_gas / (10,691 kWh/Smc × efficienza 96%) = <strong>€/kWh<sub>th</sub></strong></li>
-          <li class="mt-1"><strong>Samsung inverter (pompa di calore):</strong><br>
-              costo = prezzo_luce / COP(T<sub>esterna</sub>) = <strong>€/kWh<sub>th</sub></strong><br>
-              Il COP varia con la temperatura: più fa freddo, meno è efficiente.</li>
-        </ul>
-        <p class="small text-muted mb-0">Vince chi ha il costo minore. In genere sopra ~5°C il condizionatore è più economico; sotto ~0°C dipende molto dai prezzi.</p>
-      </div>
-    </div>
-    <div class="col-md-6">
-      <div class="stat-card">
-        <h6 class="fw-bold mb-2"><i class="bi bi-house-check me-2 text-primary"></i>Stato stanze configurate</h6>
+    <!-- Stato stanze -->
+    <div class="col-lg-6">
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <h2 class="tp-card-title"><i class="bi bi-house-check"></i>Stanze</h2>
+          <a class="tp-card-link" href="{{ url_for('pagina_automazione') }}">Automazione <i class="bi bi-chevron-right"></i></a>
+        </div>
         {% if stato_stanze_dashboard.errore %}
         <div class="alert alert-warning py-2 small mb-2">{{ stato_stanze_dashboard.errore }}</div>
         {% endif %}
         {% if stato_stanze_dashboard.zone and stato_stanze_dashboard.zone|length > 0 %}
-        <div class="table-responsive">
-          <table class="table table-sm small mb-0">
-            <thead>
-              <tr>
-                <th>Zona</th>
-                <th>T stanza</th>
-                <th>Setpoint</th>
-                <th>Modalità</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for z in stato_stanze_dashboard.zone %}
-              <tr>
-                <td class="fw-semibold">{{ z.nome }}</td>
-                <td>{% if z.t_stanza is not none %}{{ "%.1f"|format(z.t_stanza) }}°C{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                <td>{% if z.setpoint is not none %}{{ "%.1f"|format(z.setpoint) }}°C{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                <td>
-                  {% if z.modalita %}
-                    {% if z.modalita == 'manual' %}Manuale
-                    {% elif z.modalita == 'schedule' %}Automatico
-                    {% else %}{{ z.modalita }}{% endif %}
-                  {% else %}
-                    <span class="text-muted">—</span>
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+        <div class="tp-list">
+          {% for z in stato_stanze_dashboard.zone %}
+          <div class="tp-list-item">
+            <span class="tp-list-icon"><i class="bi bi-door-open"></i></span>
+            <div class="tp-list-body">
+              <div class="tp-list-title text-truncate">{{ z.nome }}</div>
+              <div class="tp-list-sub">
+                {% if z.setpoint is not none %}setpoint {{ "%.1f"|format(z.setpoint) }}°C{% else %}setpoint —{% endif %}
+                {% if z.modalita %} · {% if z.modalita == 'manual' %}Manuale{% elif z.modalita == 'schedule' %}Automatico{% else %}{{ z.modalita }}{% endif %}{% endif %}
+              </div>
+            </div>
+            <div class="tp-list-end fs-5 fw-light">{% if z.t_stanza is not none %}{{ "%.1f"|format(z.t_stanza) }}°{% else %}<span class="tp-muted">—</span>{% endif %}</div>
+          </div>
+          {% endfor %}
         </div>
         {% else %}
-        <div class="text-muted small">Nessuna zona configurata in Admin → Zone.</div>
+        <div class="tp-muted small">Nessuna zona configurata{% if current_user.is_admin %} — <a href="/admin/zones">aggiungine una</a>{% endif %}.</div>
         {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <!-- Automazione -->
-  <div class="auto-card mb-4" id="automazione">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h6 class="fw-bold mb-0"><i class="bi bi-robot me-2 text-primary"></i>Automazione riscaldamento</h6>
-      <div class="d-flex align-items-center gap-3">
-        <span id="autoStatusBadge" class="badge bg-secondary">caricamento...</span>
-        <div class="form-check form-switch mb-0">
-          <input class="form-check-input" type="checkbox" id="autoToggle" onchange="toggleAutomazione(this)">
-          <label class="form-check-label fw-semibold" for="autoToggle">Attiva</label>
-        </div>
-      </div>
-    </div>
-
-    <p class="text-muted small mb-3">
-      Quando attiva, ogni <strong>{{ cfg.intervallo_controllo_minuti }} minuti</strong> controlla la temperatura esterna
-      e i prezzi energia: se il condizionatore è più economico spegne il termostato BTicino e accende il Samsung
-      corrispondente, e viceversa.
-    </p>
-
-    <!-- Stato zone -->
-    <div id="zoneStatus" class="row g-3 mb-3"></div>
-
-    <!-- Log eventi -->
-    <div id="logEventiWrap" style="display:none;">
-      <h6 class="fw-semibold mb-2 mt-3" style="font-size:.85rem;color:#555;text-transform:uppercase;letter-spacing:.4px;">
-        <i class="bi bi-journal-text me-1"></i>Ultimi eventi
-      </h6>
-      <div id="logEventi" style="max-height:200px;overflow-y:auto;"></div>
+      </section>
     </div>
   </div>
 
@@ -304,6 +185,7 @@
 {% block scripts %}
 <script>
   window.datiOrari = {{ raccomandazioni_json | safe }};
+  window.generatoAlle = {{ generato_alle | tojson }};
 </script>
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/home.js') }}"></script>
 {% endblock %}

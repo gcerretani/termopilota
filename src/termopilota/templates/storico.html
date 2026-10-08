@@ -7,77 +7,106 @@
 {% endblock %}
 
 {% block content %}
-<div class="container-lg py-4">
+<div class="tp-page">
 
-  <!-- Hero risparmio -->
-  <div class="hero-card risparmio mb-4">
-    <div class="hero-bg-circle"></div>
-    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-      <div>
-        <div class="hero-title"><i class="bi bi-piggy-bank me-1"></i>Risparmiato questa stagione</div>
-        <div class="hero-device" id="risparmioStagione">€ —</div>
-        <div class="hero-reason" id="risparmioDettaglio">Stima basata sulle ore in cui la pompa di calore era la scelta più economica.</div>
+  <!-- Risparmi -->
+  <div class="row g-3">
+    <div class="col-12 col-md-6">
+      <div class="tp-kpi tp-kpi-lg h-100">
+        <div class="tp-kpi-label"><span class="tp-kpi-dot" style="--dot:var(--green)"></span>Risparmiato questa stagione</div>
+        <div class="tp-kpi-value tp-green" id="risparmioStagione">€ —</div>
+        <div class="tp-kpi-sub" id="risparmioOre">Stima basata sulle ore in cui la pompa di calore era la scelta più economica.</div>
       </div>
-      <div class="text-end" style="font-size:.9rem;opacity:.9;">
-        <div>Oggi: <strong id="risparmioOggi">€ —</strong></div>
-        <div>Ultimi 7 giorni: <strong id="risparmioSettimana">€ —</strong></div>
-        <div style="font-size:.78rem;opacity:.8;margin-top:4px;" id="risparmioOre"></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="tp-kpi h-100">
+        <div class="tp-kpi-label">Oggi</div>
+        <div class="tp-kpi-value" id="risparmioOggi">€ —</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="tp-kpi h-100">
+        <div class="tp-kpi-label">Ultimi 7 giorni</div>
+        <div class="tp-kpi-value" id="risparmioSettimana">€ —</div>
       </div>
     </div>
   </div>
 
-  <!-- Selettore range -->
-  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h6 class="fw-bold mb-0"><i class="bi bi-clock-history me-2 text-secondary"></i>Andamento storico</h6>
-    <ul class="nav nav-pills" id="tabRange">
-      <li class="nav-item"><a class="nav-link active" href="#" data-range="7g">7 giorni</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" data-range="30g">30 giorni</a></li>
-      <li class="nav-item"><a class="nav-link" href="#" data-range="stagione">Stagione</a></li>
-    </ul>
+  <!-- Selettore intervallo -->
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="tp-section-title m-0">Andamento</div>
+    <div class="tp-segmented" role="group" aria-label="Intervallo">
+      <button type="button" class="active" data-range="7g" aria-pressed="true">7 giorni</button>
+      <button type="button" data-range="30g" aria-pressed="false">30 giorni</button>
+      <button type="button" data-range="stagione" aria-pressed="false">Stagione</button>
+    </div>
   </div>
 
-  <div id="storicoVuoto" class="alert alert-prezzi rounded-3 mb-4" style="display:none;">
+  <div id="storicoVuoto" class="alert alert-prezzi mb-0" style="display:none;">
     <i class="bi bi-hourglass-split me-2"></i>
     Nessun dato ancora per questo intervallo — lo storico si popola automaticamente con l'uso, un campione all'ora.
   </div>
 
-  <div class="row g-3 mb-4">
+  <div class="row g-3">
     <div class="col-lg-6">
-      <div class="chart-card h-100">
-        <h6 class="fw-bold mb-3"><i class="bi bi-graph-up me-2" style="color:var(--gas-color);"></i>Costo del calore: caldaia vs pompa di calore</h6>
-        <div style="height:240px;"><canvas id="graficoPrezzi"></canvas></div>
-      </div>
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <div>
+            <h2 class="tp-card-title"><i class="bi bi-graph-up"></i>Costo del calore</h2>
+            <div class="tp-card-sub">€ per kWh termico</div>
+          </div>
+          <div class="tp-legend" id="legendaPrezzi"></div>
+        </div>
+        <div class="tp-chart"><canvas id="graficoPrezzi" role="img" aria-label="Costo del calore storico"></canvas></div>
+      </section>
     </div>
     <div class="col-lg-6">
-      <div class="chart-card h-100">
-        <h6 class="fw-bold mb-3"><i class="bi bi-thermometer-half me-2 text-secondary"></i>Temperatura esterna</h6>
-        <div style="height:240px;"><canvas id="graficoTemperature"></canvas></div>
-      </div>
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <div>
+            <h2 class="tp-card-title"><i class="bi bi-thermometer-half"></i>Temperatura esterna</h2>
+            <div class="tp-card-sub">°C</div>
+          </div>
+        </div>
+        <div class="tp-chart"><canvas id="graficoTemperature" role="img" aria-label="Temperatura esterna storica"></canvas></div>
+      </section>
     </div>
     <div class="col-lg-6">
-      <div class="chart-card h-100">
-        <h6 class="fw-bold mb-3"><i class="bi bi-bar-chart-steps me-2 text-primary"></i>Ore consigliate per fonte, per giorno</h6>
-        <div style="height:240px;"><canvas id="graficoOreFonte"></canvas></div>
-      </div>
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <div>
+            <h2 class="tp-card-title"><i class="bi bi-bar-chart-steps"></i>Ore consigliate per fonte</h2>
+            <div class="tp-card-sub">ore al giorno</div>
+          </div>
+          <div class="tp-legend" id="legendaOre"></div>
+        </div>
+        <div class="tp-chart"><canvas id="graficoOreFonte" role="img" aria-label="Ore consigliate per fonte, per giorno"></canvas></div>
+      </section>
     </div>
     <div class="col-lg-6">
-      <div class="chart-card h-100">
-        <h6 class="fw-bold mb-3"><i class="bi bi-piggy-bank me-2" style="color:var(--green);"></i>Risparmio cumulativo stimato</h6>
-        <div style="height:240px;"><canvas id="graficoRisparmio"></canvas></div>
-      </div>
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <div>
+            <h2 class="tp-card-title"><i class="bi bi-piggy-bank"></i>Risparmio cumulativo</h2>
+            <div class="tp-card-sub">€, stima</div>
+          </div>
+        </div>
+        <div class="tp-chart"><canvas id="graficoRisparmio" role="img" aria-label="Risparmio cumulativo stimato"></canvas></div>
+      </section>
     </div>
   </div>
 
-  <p class="small text-muted">
+  <p class="small tp-muted mb-0">
     <i class="bi bi-info-circle me-1"></i>
     Il risparmio è una <strong>stima</strong>: per ogni ora con riscaldamento attivo in cui la pompa di calore era
     più conveniente si conta (costo caldaia − costo pompa) × potenza termica media configurata in
-    <a href="/admin/">Admin → Impostazioni</a>.
+    {% if current_user.is_admin %}<a href="/admin/">Impostazioni → Prezzi e impianto</a>{% else %}Impostazioni{% endif %}.
   </p>
 
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/grafici.js') }}"></script>
 <script src="{{ url_for('static', filename='js/storico.js') }}"></script>
 {% endblock %}

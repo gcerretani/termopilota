@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Accedi — TermoPilota</title>
   <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
-  <meta name="theme-color" content="#1a1a2e">
+  <meta name="theme-color" content="#f4f6f9">
   <link rel="icon" href="{{ url_for('static', filename='icons/favicon.svg') }}" type="image/svg+xml">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="TermoPilota">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
   <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
@@ -17,7 +19,7 @@
 
 <div class="login-card">
   <div class="text-center">
-    <i class="bi bi-house-heart-fill" style="font-size: 2.5rem; color: #e07b39;"></i>
+    <span class="tp-brand-logo"><i class="bi bi-house-heart-fill"></i></span>
     <div class="login-title">TermoPilota</div>
     <div class="login-subtitle">Controllo intelligente del riscaldamento</div>
   </div>

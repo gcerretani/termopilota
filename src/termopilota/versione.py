@@ -6,4 +6,4 @@ Unica fonte di verita' per il codice: va tenuta uguale a package.json e
 all'ultima voce di CHANGELOG.md (lo verifica tests/test_versione.py).
 """
 
-VERSIONE = "1.0.3"
+VERSIONE = "1.1.0"

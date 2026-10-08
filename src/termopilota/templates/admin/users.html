@@ -2,21 +2,14 @@
 
 {% block title %}Utenti{% endblock %}
 
+{% block indietro %}<a href="{{ url_for('pagina_impostazioni') }}" class="tp-icon-btn tp-back" aria-label="Torna a Impostazioni"><i class="bi bi-chevron-left"></i></a>{% endblock %}
+
 {% block content %}
-<div class="container-lg py-4">
+<div class="tp-page">
 
-  <div class="d-flex align-items-center gap-2 mb-4">
-    <h5 class="fw-bold mb-0"><i class="bi bi-gear me-2 text-secondary"></i>Impostazioni</h5>
-  </div>
+  {% include "admin/_nav.html" %}
 
-  <ul class="nav nav-tabs mb-4">
-    <li class="nav-item"><a class="nav-link" href="/admin/">Prezzi e impianto</a></li>
-    <li class="nav-item"><a class="nav-link" href="/admin/credentials">Credenziali API</a></li>
-    <li class="nav-item"><a class="nav-link" href="/admin/zones">Zone</a></li>
-    <li class="nav-item"><a class="nav-link active" href="/admin/users">Utenti</a></li>
-  </ul>
-
-  <div class="settings-card mb-4">
+  <div class="settings-card">
 
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
