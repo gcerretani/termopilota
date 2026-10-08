@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Provider pompe di calore Samsung via SmartThings REST API.
 

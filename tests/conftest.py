@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Configurazione pytest condivisa.
 
 Le variabili d'ambiente vanno impostate PRIMA di importare l'app: i moduli

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 from raccomandazioni import (
     calcola_raccomandazioni, copertura_pannello, prezzo_luce_effettivo,
 )

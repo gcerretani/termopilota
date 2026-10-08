@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Costanti fisiche condivise tra app.py e automazione.py.
 

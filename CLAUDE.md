@@ -60,6 +60,7 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 - **Lingua**: UI e commenti in italiano, identificatori codice in italiano (snake_case)
 - **Config**: `data/config.json` e' gitignored (tramite `data/`), contiene credenziali. `config.example.json` e' il template
 - **Provider pattern**: per aggiungere un nuovo tipo di termostato/pompa di calore, creare un modulo in `providers/` che implementi l'ABC e si registri nel registry
+- **Licenza**: GPL v3 o successiva (`LICENSE`). Ogni nuovo `.py`, `.js` o `.css` proprio deve iniziare con `SPDX-License-Identifier: GPL-3.0-or-later` (dopo l'eventuale shebang), altrimenti `tests/test_licenza.py` fallisce. Le librerie in `static/vendor/` sono MIT e vanno elencate in `THIRD_PARTY_NOTICES.txt`
 - **COP_TABELLA**: definita una sola volta in `costanti.py`, importata da `app.py` e `automazione.py`
 
 ## File sensibili (mai committare)

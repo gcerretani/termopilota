@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 from datetime import datetime
 
 from raccomandazioni import calcola_raccomandazioni

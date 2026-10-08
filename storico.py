@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Persistenza storica su SQLite: campioni orari di prezzi, temperatura e
 raccomandazione. Alimenta la pagina /storico e il contatore risparmi.

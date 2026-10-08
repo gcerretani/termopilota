@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Sistema di raccomandazione energetica per riscaldamento domestico.
 Confronta costo riscaldamento: caldaia a condensazione (gas) vs pompa di calore (AC).

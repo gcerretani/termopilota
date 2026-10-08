@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // TermoPilota — helper condivisi dalle pagine admin.
 
 async function apiPostJson(url, payload) {

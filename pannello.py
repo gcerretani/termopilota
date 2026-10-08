@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Stima della produzione del pannello adottato (Plenitude "Adotta un Pannello",
 impianto di Cerrillares, Jumilla/Yecla, Murcia).

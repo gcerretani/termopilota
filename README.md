@@ -120,3 +120,17 @@ Temperatura di break-even (gas = AC): circa **-6C** con prezzi tipici.
 | Yahoo Finance | Prezzo TTF gas | Nessuna |
 | CFR Toscana | Temperatura esterna | Nessuna |
 | Open-Meteo / Met.no | Previsioni meteo | Nessuna |
+
+## Licenza
+
+TermoPilota e' software libero: puoi ridistribuirlo e/o modificarlo secondo i termini della
+[GNU General Public License](LICENSE) pubblicata dalla Free Software Foundation, versione 3
+della Licenza o (a tua scelta) qualsiasi versione successiva.
+
+Il programma e' distribuito nella speranza che sia utile, ma SENZA ALCUNA GARANZIA, nemmeno
+quella implicita di COMMERCIABILITA' o IDONEITA' PER UNO SCOPO PARTICOLARE. Si veda la GNU
+General Public License per maggiori dettagli.
+
+Ogni file sorgente riporta l'identificatore `SPDX-License-Identifier: GPL-3.0-or-later`.
+Le librerie di terze parti incluse in `static/vendor/` hanno licenza MIT compatibile con la
+GPL v3: vedi [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
