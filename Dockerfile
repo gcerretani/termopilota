@@ -25,4 +25,6 @@ ENV FLASK_APP=app.py
 
 EXPOSE 5001
 
-CMD ["gunicorn", "-b", "0.0.0.0:5001", "-w", "2", "--preload", "app:app"]
+# Un solo processo: i servizi in background (automazione, campionatore storico)
+# partono all'import e non devono essere duplicati ne' forkati con --preload.
+CMD ["gunicorn", "-b", "0.0.0.0:5001", "-w", "1", "--threads", "4", "--timeout", "60", "app:app"]
