@@ -7,6 +7,14 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.0.3] - 2026-10-08
+
+### Modificato
+- Il messaggio "Dati Netatmo non disponibili" dice ora il motivo (Netatmo non collegato, Plant ID
+  mancante, stanza non presente nella risposta, temperatura o setpoint non forniti, con i campi
+  ricevuti) e viene scritto anche nel log del container.
+- I log dei moduli (livello INFO) compaiono nel log del container: prima gunicorn li scartava.
+
 ## [1.0.2] - 2026-10-08
 
 ### Aggiunto
@@ -99,7 +107,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.0.2...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.3
 [1.0.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.2
 [1.0.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.1
 [1.0.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.0

@@ -48,6 +48,10 @@ from termopilota.providers import (
 from termopilota.raccomandazioni import calcola_raccomandazioni
 from termopilota.percorsi import CONFIG_FILE
 
+# Senza handler i messaggi INFO/WARNING dei moduli non arrivano al log del container.
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
 logger = logging.getLogger(__name__)
 
 def configura_proxy(flask_app: Flask) -> None:

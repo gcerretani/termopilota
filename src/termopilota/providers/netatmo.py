@@ -143,6 +143,7 @@ class NetatmoClient(ThermostatProvider):
                 "setpoint": r.get("therm_setpoint_temperature"),
                 "modalita": r.get("therm_setpoint_mode"),
                 "sta_riscaldando": r.get("heating_power_request", 0) > 0,
+                "_campi": sorted(r.keys()),
             }
         return risultato
 
