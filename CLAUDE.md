@@ -36,6 +36,12 @@ pip install cairosvg && python scripts/genera_icone.py
 - `.github/workflows/tests.yml` — su ogni pull request: pytest + build e smoke test del container. Richiamato da `docker.yml`: un push su `main` pubblica l'immagine solo se i test passano
 - Per bloccare il merge in caso di test rossi, impostare `pytest` e `build e avvio del container` come controlli obbligatori nelle regole di protezione del branch `main` (Settings → Branches)
 
+## Versioni e release
+
+- Versionamento Semantico. La versione e' in `versione.py` (`VERSIONE`), `package.json` e `package-lock.json` (`npm version X.Y.Z --no-git-tag-version`) e nell'ultima voce di `CHANGELOG.md`; `tests/test_versione.py` fallisce se non coincidono
+- Ogni modifica visibile all'utente va annotata in `CHANGELOG.md` sotto `## [Non rilasciato]` (formato Keep a Changelog, in italiano)
+- Per rilasciare: spostare le voci sotto la nuova versione con la data, aggiornare i numeri di versione e i link in fondo al changelog, merge su `main`, poi tag `vX.Y.Z` sul commit di `main` e release su GitHub. Il push del tag fa pubblicare all'immagine anche i tag `X.Y.Z` e `X.Y` (`docker.yml`, solo se i test passano)
+
 ## Porta
 
 L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).

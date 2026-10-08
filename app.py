@@ -33,6 +33,7 @@ from prezzi import calcola_prezzi
 from automazione import get_servizio, avvia_se_attiva
 import pannello
 import storico
+from versione import VERSIONE
 from auth import (
     User, authenticate, change_password, count_admin_attivi, create_user,
     delete_user, link_google_account, list_users, set_active, set_admin,
@@ -94,6 +95,11 @@ DEFAULT_CONFIG = {
     "lat": 0.0,
     "lon": 0.0,
 }
+
+
+@app.context_processor
+def _contesto_template():
+    return {"versione_app": VERSIONE}
 
 
 # ─── Config ───────────────────────────────────────────────────────────────────
