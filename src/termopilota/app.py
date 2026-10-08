@@ -92,10 +92,15 @@ DEFAULT_CONFIG = {
     "gas_commodity_fisso_smc": 0.0,      # €/Smc, solo materia prima gas se tariffa fissa
     "luce_tariffa": "variabile",         # "variabile" (PUN) | "fissa"
     "luce_commodity_fisso_kwh": 0.0,     # €/kWh, solo materia prima energia se fissa
-    "pannello_potenza_kw": 0.9,          # pannello adottato (Plenitude, Cerrillares)
+    "pannello_potenza_kw": 0.9,          # potenza di picco (kWp) del pannello adottato
     "pannello_lat": 38.5,
     "pannello_lon": -1.2,
-    "pannello_fattore": 0.9,
+    # Modello di produzione: "monoasse" (inseguitore, predefinito) | "orizzontale".
+    # Ogni modello ha il suo fattore: quello orizzontale assorbe il guadagno
+    # dell'inseguitore e non vale per il monoasse (qui e' un rendimento di sistema).
+    "pannello_modello": "monoasse",
+    "pannello_fattore": 0.9,             # modello orizzontale
+    "pannello_fattore_monoasse": 0.85,   # modello monoasse
     # Compensazione nel quarto d'ora: "totale" | "materia_prima" | "nessuna"
     "pannello_compensazione": "totale",
     "pompa_potenza_elettrica_kw": 1.2,   # assorbimento elettrico della pompa quando riscalda
@@ -544,6 +549,36 @@ def scopri_termostati(cfg: dict) -> dict:
     return risultato
 
 
+def scopri_impianti(cfg: dict) -> dict:
+    """Elenco degli impianti (home) Netatmo: serve a scegliere il Plant ID."""
+    risultato = {"impianti": [], "errori": []}
+    bt = get_thermostat("netatmo", cfg)
+    if bt and bt.autenticato:
+        try:
+            risultato["impianti"] = bt.lista_impianti()
+        except Exception as e:
+            risultato["errori"].append(f"Netatmo: {e}")
+    elif not cfg.get("legrand_client_id"):
+        risultato["errori"].append("Netatmo: credenziali non configurate")
+    else:
+        risultato["errori"].append("Netatmo: autorizzazione OAuth2 non completata")
+    return risultato
+
+
+def imposta_plant_id_se_unico(bt) -> Optional[str]:
+    """Dopo l'autorizzazione: se Netatmo ha un solo impianto e il Plant ID e'
+    vuoto, lo imposta. Restituisce l'ID impostato, altrimenti None."""
+    cfg = carica_config()
+    if cfg.get("legrand_plant_id"):
+        return None
+    impianti = bt.lista_impianti()
+    if len(impianti) != 1:
+        return None
+    cfg["legrand_plant_id"] = impianti[0]["id"]
+    salva_config(cfg)
+    return cfg["legrand_plant_id"]
+
+
 def scopri_condizionatori(cfg: dict) -> dict:
     risultato = {"samsung": [], "errori": []}
     st = get_heatpump("smartthings", cfg)
@@ -575,7 +610,7 @@ def api_pannello():
 @app.route("/api/pannello/calibra", methods=["POST"])
 @login_required
 def api_pannello_calibra():
-    """Imposta pannello_fattore dalla produzione letta nell'app Plenitude."""
+    """Calibra il fattore del modello attivo dalla produzione letta nell'app del pannello."""
     if not current_user.is_admin:
         return jsonify({"errore": "Solo gli amministratori possono calibrare"}), 403
     dati = request.get_json(silent=True) or {}
@@ -588,15 +623,16 @@ def api_pannello_calibra():
         stima = pannello.produzione_pannello(cfg)
     except Exception:
         return jsonify({"errore": "Dati di irraggiamento non disponibili"}), 503
-    fattore = pannello.calibra_fattore(
-        lettura_kw, stima["irraggiamento_wm2"], stima["potenza_kw"])
+    fattore = pannello.calibra(stima, lettura_kw)
     if fattore is None:
         return jsonify({"errore": "Irraggiamento troppo basso per calibrare: riprova "
                                   "nelle ore centrali di una giornata soleggiata"}), 409
     fattore = max(0.1, min(2.0, fattore))
-    cfg["pannello_fattore"] = fattore
+    modello = stima["modello"]
+    cfg["pannello_fattore" if modello == "orizzontale" else "pannello_fattore_monoasse"] = fattore
     salva_config(cfg)
-    return jsonify({"status": "ok", "pannello_fattore": fattore})
+    return jsonify({"status": "ok", "modello": modello, "pannello_fattore": fattore,
+                    "avviso": pannello.avviso_calibrazione(modello, fattore)})
 
 
 @app.route("/api/storico")
@@ -677,7 +713,7 @@ def api_config():
                        "potenza_termica_kw", "lat", "lon",
                        "gas_commodity_fisso_smc", "luce_commodity_fisso_kwh",
                        "pannello_potenza_kw", "pannello_lat", "pannello_lon",
-                       "pannello_fattore", "pompa_potenza_elettrica_kw",
+                       "pannello_fattore", "pannello_fattore_monoasse", "pompa_potenza_elettrica_kw",
                        "consumo_base_kw")
         campi_str = ("entsoe_token", "note_bolletta",
                      "smartthings_token",
@@ -700,6 +736,8 @@ def api_config():
                 cfg[campo] = dati[campo]
         if dati.get("pannello_compensazione") in ("totale", "materia_prima", "nessuna"):
             cfg["pannello_compensazione"] = dati["pannello_compensazione"]
+        if dati.get("pannello_modello") in pannello.MODELLI:
+            cfg["pannello_modello"] = dati["pannello_modello"]
         if "zone" in dati and isinstance(dati["zone"], list):
             cfg["zone"] = dati["zone"]
 
@@ -713,6 +751,7 @@ def api_config():
         cfg["luce_commodity_fisso_kwh"] = max(0.0, float(cfg.get("luce_commodity_fisso_kwh") or 0.0))
         cfg["pannello_potenza_kw"] = max(0.1, min(100.0, float(cfg.get("pannello_potenza_kw") or 0.9)))
         cfg["pannello_fattore"] = max(0.1, min(2.0, float(cfg.get("pannello_fattore") or 0.9)))
+        cfg["pannello_fattore_monoasse"] = max(0.1, min(2.0, float(cfg.get("pannello_fattore_monoasse") or 0.85)))
         cfg["pompa_potenza_elettrica_kw"] = max(0.1, min(10.0, float(cfg.get("pompa_potenza_elettrica_kw") or 1.2)))
         base_kw = cfg.get("consumo_base_kw")
         cfg["consumo_base_kw"] = max(0.0, min(10.0, float(0.3 if base_kw is None else base_kw)))
@@ -763,6 +802,12 @@ def api_dispositivi():
     return jsonify(risultato)
 
 
+@app.route("/api/dispositivi/impianti")
+@login_required
+def api_dispositivi_impianti():
+    return jsonify(scopri_impianti(carica_config()))
+
+
 @app.route("/api/dispositivi/termostati")
 @login_required
 def api_dispositivi_termostati():
@@ -801,6 +846,12 @@ def api_oauth_callback():
         redirect_uri = request.url_root.rstrip("/") + "/api/automazione/oauth-callback"
         bt.scambia_codice(code, redirect_uri)
         flash("Autorizzazione Netatmo completata.", "success")
+        try:
+            plant_id = imposta_plant_id_se_unico(bt)
+            if plant_id:
+                flash("Impianto Netatmo selezionato automaticamente.", "success")
+        except Exception as e:
+            logger.warning("Plant ID Netatmo non impostato automaticamente: %s", e)
     except Exception as e:
         logger.warning("Errore OAuth Netatmo: %s", e)
         flash(f"Errore autorizzazione Netatmo: {e}", "error")

@@ -18,6 +18,7 @@ import logging
 import os
 import sqlite3
 import threading
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from typing import Callable, Optional
 from termopilota.percorsi import DATA_DIR
@@ -45,12 +46,22 @@ CREATE TABLE IF NOT EXISTS campioni (
 """
 
 
-def _connetti() -> sqlite3.Connection:
+@contextmanager
+def _connetti():
+    """Connessione con commit/rollback a fine blocco e chiusura garantita.
+
+    `with sqlite3.connect()` da solo non chiude: il file resta aperto (su Windows
+    non si puo' nemmeno cancellare) finche' il garbage collector non interviene.
+    """
     os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
     conn = sqlite3.connect(DB_FILE, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.row_factory = sqlite3.Row
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def inizializza_db() -> None:

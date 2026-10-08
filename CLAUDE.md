@@ -57,7 +57,7 @@ Pacchetto `src/termopilota/` (layout `src`: si installa con `pip install -e .`, 
 - `auth.py`, `auth_google.py` — Autenticazione, gestione utenti SQLite, Flask-Login, accesso con Google
 - `automazione.py` — Thread daemon, ciclo di controllo zone (ogni 15 min default)
 - `prezzi.py` — Prezzi gas/luce: tariffa variabile (TTF Yahoo Finance, PUN ENTSO-E, cache in memoria) oppure fissa (prezzo bloccato da config), per gas e luce indipendentemente
-- `pannello.py` — Stima produzione del pannello adottato Plenitude (Murcia) da irraggiamento Open-Meteo, con calibrazione del fattore di resa; la produzione di ogni quarto d'ora compensa il consumo di casa (`copertura_pannello` in `raccomandazioni.py`) e abbassa il costo marginale della pompa di calore
+- `pannello.py` — Stima produzione del pannello adottato (Murcia, inseguitori monoassiali) da irraggiamento Open-Meteo: modello monoasse (posizione solare, backtracking, Hay-Davies, temperatura celle; il fattore e' un rendimento 0,7-0,95) oppure orizzontale; ogni modello ha il suo fattore, calibrabile; la produzione di ogni quarto d'ora compensa il consumo di casa (`copertura_pannello` in `raccomandazioni.py`) e abbassa il costo marginale della pompa di calore
 - `versione.py` — `VERSIONE`, unica fonte della versione (la legge anche `pyproject.toml`)
 - `providers/` — Architettura modulare per dispositivi
   - `__init__.py` — ABC `ThermostatProvider`, `HeatPumpProvider`, registry

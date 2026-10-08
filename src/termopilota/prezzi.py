@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
-Fetching automatico prezzi energia per Edison World Luce + World Gas Plus
+Fetching automatico prezzi energia (gas e luce)
 
 GAS:  TTF (Title Transfer Facility) da Yahoo Finance → proxy del PSV italiano
       PSV ≈ TTF con piccolo spread. Fonte: https://finance.yahoo.com (TTF=F)

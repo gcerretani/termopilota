@@ -9,10 +9,34 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [1.0.3] - 2026-10-08
 
+### Aggiunto
+- **Modello monoasse del pannello**: l'impianto usa inseguitori solari a un asse, e il modello
+  originale (potenza × irraggiamento orizzontale × fattore) costringeva il fattore ad assorbirne il
+  guadagno, che cambia con ora e stagione (di mattina e sera la luce sul pannello è fino a 2,5 volte
+  quella orizzontale, a mezzogiorno è uguale): un fattore calibrato in un momento era sbagliato
+  negli altri. Ora si calcolano posizione del sole, inclinazione dell'inseguitore (con
+  backtracking), luce diretta e diffusa sul piano del pannello (Hay-Davies) e perdita per la
+  temperatura delle celle. Il fattore diventa un rendimento di sistema (atteso 0,7-0,95), costante
+  tutto l'anno; la calibrazione avvisa se il valore è fuori range, segno di una potenza di picco
+  sbagliata. Si sceglie in Impostazioni (modello monoasse o orizzontale).
+- Il Plant ID di Netatmo si sceglie da un menu a tendina (Credenziali API) che si riempie da solo
+  dopo l'autorizzazione; se l'account ha un solo impianto viene impostato automaticamente.
+
 ### Modificato
+- La ricerca di termostati e condizionatori è solo nella scheda Zone: parte da sola all'apertura
+  e ha un unico pulsante "Aggiorna elenco dispositivi". Nelle Credenziali API non c'è più.
+- L'autorizzazione Netatmo e SmartThings si apre nella stessa scheda e, al ritorno, si vede subito
+  l'esito: prima il popup atterrava sulla pagina dentro il popup stesso.
 - Il messaggio "Dati Netatmo non disponibili" dice ora il motivo (Netatmo non collegato, Plant ID
   mancante, stanza non presente nella risposta, temperatura o setpoint non forniti, con i campi
   ricevuti) e viene scritto anche nel log del container.
+- La stima del pannello riferisce i dati di Open-Meteo, che sono medie dell'ora precedente,
+  all'inizio dell'ora (prima erano sfalsati di un'ora) e il valore "adesso" è interpolato fra
+  due ore.
+- Il fattore di resa è ora per modello (`pannello_fattore_monoasse`, nuovo, e `pannello_fattore`,
+  del modello orizzontale): il valore già calibrato resta com'è e non vale per il monoasse, che
+  parte da 0,85 e va ricalibrato.
+- Tolti dall'interfaccia e dal repository i nomi del fornitore di luce e gas.
 - I log dei moduli (livello INFO) compaiono nel log del container: prima gunicorn li scartava.
 
 ## [1.0.2] - 2026-10-08
@@ -72,7 +96,7 @@ Prima versione stabile.
 - **Tariffe fisse o variabili**, indipendenti per luce e gas: con la tariffa fissa si usa il prezzo
   bloccato di contratto e non si interrogano TTF e PUN. La componente fissa (distribuzione, oneri,
   tasse) si somma in entrambi i casi.
-- **Pannello adottato (Plenitude, Murcia)**: stima della produzione da irraggiamento (Open-Meteo)
+- **Pannello adottato (Murcia)**: stima della produzione da irraggiamento (Open-Meteo)
   con fattore di resa calibrabile sulla lettura dell'app. La produzione di ogni quarto d'ora
   compensa il consumo di casa e riduce il costo marginale della pompa di calore; la modalità di
   compensazione (tutto il costo, solo la materia prima, nessuna) è configurabile.
