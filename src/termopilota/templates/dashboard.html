@@ -54,7 +54,7 @@
         {% if current_user.is_admin %}<a href="/admin/" style="font-size:.75rem;color:var(--ac-color);">configura chiave ENTSO-E →</a>{% endif %}
       {% endif %}
     </div>
-    <div class="info-chip" id="chipPannello" style="display:none;" title="Stima da irraggiamento (Open-Meteo): non è la lettura ufficiale dell'app Plenitude">
+    <div class="info-chip" id="chipPannello" style="display:none;" title="Stima da irraggiamento (Open-Meteo): non è la lettura ufficiale dell'app del pannello">
       <i class="bi bi-sun" style="color:#f1c40f;"></i>
       <span class="text-muted">Pannello Murcia:</span>
       <strong><span id="chipPannelloKw"></span></strong>
@@ -161,7 +161,7 @@
               ⛽ {{ prezzi.gas_totale_smc }}€/Smc<br>
               ⚡ {{ prezzi.luce_totale_kwh }}€/kWh
             </div>
-            <div class="stat-sub">Edison World (commodity + fissi)</div>
+            <div class="stat-sub">Commodity + fissi</div>
           </div>
         </div>
       </div>

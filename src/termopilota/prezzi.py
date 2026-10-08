@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
-Fetching automatico prezzi energia per Edison World Luce + World Gas Plus
+Fetching automatico prezzi energia (gas e luce)
 
 GAS:  TTF (Title Transfer Facility) da Yahoo Finance → proxy del PSV italiano
       PSV ≈ TTF con piccolo spread. Fonte: https://finance.yahoo.com (TTF=F)
@@ -10,7 +10,8 @@ LUCE: PUN (Prezzo Unico Nazionale) da ENTSO-E Transparency Platform
       Chiave API gratuita: https://transparency.entsoe.eu/usrm/user/createPublicUser
       Se non configurata, usa prezzo manuale.
 
-Prezzi restituiti = commodity (auto) + componente_fissa (distribuzione+tasse, config 1 volta)
+Prezzi restituiti = (commodity + altre voci al consumo) × (1 + IVA): la commodity e' automatica
+o bloccata da contratto, le altre voci (rete, oneri, accise) si configurano una volta.
 """
 
 import json
@@ -166,6 +167,16 @@ def ottieni_pun_eur_per_kwh(token: str) -> Optional[float]:
 
 # ─── Calcolo prezzi finali ────────────────────────────────────────────────────
 
+def _iva(cfg: dict, chiave: str) -> float:
+    """Aliquota IVA come frazione (22 -> 0.22); valori non validi valgono 0."""
+    try:
+        pct = float(cfg.get(chiave) or 0.0)
+    except (TypeError, ValueError):
+        pct = 0.0
+    return max(0.0, min(pct, 100.0)) / 100
+
+
+
 def calcola_prezzi(cfg: dict) -> dict:
     """
     Calcola i prezzi totali per gas e luce a partire da commodity + fisso.
@@ -173,7 +184,7 @@ def calcola_prezzi(cfg: dict) -> dict:
     Restituisce un dict con:
       gas_commodity_smc   - EUR/Smc (commodity TTF, auto)
       gas_fisso_smc       - EUR/Smc (distribuzione+tasse, config)
-      gas_totale_smc      - EUR/Smc (usato per confronto)
+      gas_totale_smc      - EUR/Smc, IVA compresa (usato per confronto; il prezzo manuale e' gia' lordo)
       luce_commodity_kwh  - EUR/kWh (PUN auto o None)
       luce_fisso_kwh      - EUR/kWh (distribuzione+tasse, config)
       luce_totale_kwh     - EUR/kWh (usato per confronto)
@@ -189,19 +200,20 @@ def calcola_prezzi(cfg: dict) -> dict:
     """
     # ── Gas ──
     gas_fisso = cfg.get("gas_fisso_smc", 0.35)
+    gas_iva = _iva(cfg, "gas_iva_pct")
 
     if cfg.get("gas_tariffa") == "fissa" and cfg.get("gas_commodity_fisso_smc"):
         # Tariffa a prezzo bloccato: niente chiamata a Yahoo Finance
         ttf_smc = ttf_mwh = None
         gas_commodity = float(cfg["gas_commodity_fisso_smc"])
-        gas_totale = round(gas_commodity + gas_fisso, 4)
+        gas_totale = round((gas_commodity + gas_fisso) * (1 + gas_iva), 4)
         gas_fonte = "fisso"
     else:
         ttf_smc = ottieni_ttf_eur_per_smc()
         ttf_mwh = ottieni_ttf_eur_per_mwh_raw()
         if ttf_smc is not None:
             gas_commodity = ttf_smc
-            gas_totale = round(gas_commodity + gas_fisso, 4)
+            gas_totale = round((gas_commodity + gas_fisso) * (1 + gas_iva), 4)
             gas_fonte = "ttf_auto"
         else:
             gas_commodity = None
@@ -210,11 +222,12 @@ def calcola_prezzi(cfg: dict) -> dict:
 
     # ── Luce ──
     luce_fisso = cfg.get("luce_fisso_kwh", 0.14)
+    luce_iva = _iva(cfg, "luce_iva_pct")
 
     if cfg.get("luce_tariffa") == "fissa" and cfg.get("luce_commodity_fisso_kwh"):
         pun_kwh = pun_mwh = None
         luce_commodity = float(cfg["luce_commodity_fisso_kwh"])
-        luce_totale = round(luce_commodity + luce_fisso, 4)
+        luce_totale = round((luce_commodity + luce_fisso) * (1 + luce_iva), 4)
         luce_fonte = "fisso"
     else:
         entsoe_token = cfg.get("entsoe_token", "").strip()
@@ -222,7 +235,7 @@ def calcola_prezzi(cfg: dict) -> dict:
         pun_mwh = round(pun_kwh * 1000, 2) if pun_kwh else None
         if pun_kwh is not None:
             luce_commodity = pun_kwh
-            luce_totale = round(luce_commodity + luce_fisso, 4)
+            luce_totale = round((luce_commodity + luce_fisso) * (1 + luce_iva), 4)
             luce_fonte = "entsoe_auto"
         else:
             luce_commodity = None
@@ -232,9 +245,11 @@ def calcola_prezzi(cfg: dict) -> dict:
     return {
         "gas_commodity_smc":  round(gas_commodity, 4) if gas_commodity else None,
         "gas_fisso_smc":      gas_fisso,
+        "gas_iva_pct":        round(gas_iva * 100, 2),
         "gas_totale_smc":     gas_totale,
         "luce_commodity_kwh": round(luce_commodity, 5) if luce_commodity else None,
         "luce_fisso_kwh":     luce_fisso,
+        "luce_iva_pct":       round(luce_iva * 100, 2),
         "luce_totale_kwh":    luce_totale,
         "gas_fonte":          gas_fonte,
         "luce_fonte":         luce_fonte,

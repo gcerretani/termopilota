@@ -13,7 +13,8 @@ RADICE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAGINE_PROTETTE = ["/", "/storico", "/account", "/admin/", "/admin/credentials",
                    "/admin/zones", "/admin/users"]
 API_PROTETTE = ["/api/dashboard", "/api/prezzi", "/api/dati", "/api/config",
-                "/api/automazione", "/api/storico", "/api/risparmi", "/api/pannello"]
+                "/api/automazione", "/api/storico", "/api/risparmi", "/api/pannello",
+                "/api/dispositivi/impianti"]
 
 
 # ─── Accesso e autorizzazioni ────────────────────────────────────────────────
@@ -269,6 +270,7 @@ def test_calibra_aggiorna_il_fattore(admin_client, monkeypatch):
     from datetime import datetime
     ora = datetime.now().strftime("%Y-%m-%dT%H:00")
     monkeypatch.setattr(pannello, "_scarica_irraggiamento", lambda lat, lon: [(ora, 800.0)])
+    admin_client.post("/api/config", json={"pannello_modello": "orizzontale"})
     r = admin_client.post("/api/pannello/calibra", json={"produzione_kw": 0.54})
     assert r.status_code == 200
     # 0.54 = 0.9 kW * 0.8 * fattore  ->  fattore 0.75

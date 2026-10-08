@@ -83,6 +83,25 @@ def _costo_ac(t_ext: float, cfg: dict) -> float:
     return luce_kwh / cop
 
 
+def _motivo_dati_mancanti(bticino, home_id: str, room_id: str, stati: dict) -> str:
+    """Perche' mancano temperatura/setpoint di una stanza (per il log eventi)."""
+    if not bticino:
+        return "Netatmo non configurato (client ID/secret mancanti)"
+    if not bticino.autenticato:
+        return "Netatmo non collegato: rifare il collegamento da Credenziali"
+    if not home_id:
+        return "ID impianto Netatmo (Plant ID) non configurato"
+    if not stati:
+        return "Netatmo non ha restituito nessuna stanza per questo impianto"
+    stanza = stati.get(room_id)
+    if stanza is None:
+        return f"Stanza {room_id or '(vuota)'} non presente nella risposta Netatmo (stanze: {', '.join(stati)})"
+    mancanti = [nome for nome, chiave in (("temperatura", "temperatura_attuale"), ("setpoint", "setpoint"))
+                if stanza.get(chiave) is None]
+    campi = ", ".join(stanza.get("_campi", [])) or "nessuno"
+    return f"Netatmo non fornisce {' e '.join(mancanti)} (campi ricevuti: {campi})"
+
+
 class AutomazioneRiscaldamento:
     """Loop di controllo automatico. Avviato come thread separato."""
 
@@ -251,7 +270,8 @@ class AutomazioneRiscaldamento:
                     else:
                         motivo = f"T={t_ext:.1f}°C sotto limite AC ({t_min_ac}°C)"
                 else:
-                    motivo = "Dati Netatmo non disponibili"
+                    motivo = "Dati Netatmo non disponibili: " + _motivo_dati_mancanti(bticino, home_id, room_id, stati_netatmo)
+                    logger.warning("Zona %s: %s", nome, motivo)
                 self._log_evento(nome, "→ Gas", motivo)
 
             nuovi_stati.append(stato_zona)
