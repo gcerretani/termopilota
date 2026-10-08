@@ -1,6 +1,6 @@
 # --- Fase 1: librerie front-end (Bootstrap, Bootstrap Icons, Chart.js) ---
 # Versioni bloccate da package-lock.json, che Dependabot tiene aggiornato.
-FROM node:22-slim AS vendor
+FROM node:25-slim AS vendor
 
 WORKDIR /build
 COPY package.json package-lock.json ./
