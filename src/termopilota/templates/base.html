@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{% block title %}TermoPilota{% endblock %}</title>
+  <title>{% block title %}TermoPilota{% endblock %} · TermoPilota</title>
   <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
-  <meta name="theme-color" content="#1a1a2e">
+  <meta name="theme-color" content="#f4f6f9">
   <link rel="icon" href="{{ url_for('static', filename='icons/favicon.svg') }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="TermoPilota">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
   <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='vendor/bootstrap-icons/bootstrap-icons.min.css') }}" rel="stylesheet">
@@ -17,56 +19,78 @@
   {% block head_extra %}{% endblock %}
   {% block extra_css %}{% endblock %}
 </head>
-<body>
+{%- set ep = request.endpoint or '' -%}
+{%- set sezione_impostazioni = ep in ('pagina_impostazioni', 'account') or ep.startswith('admin.') -%}
+{%- macro voce_nav(attiva, url, icona, etichetta) -%}
+  <a href="{{ url }}" class="tp-nav-item{% if attiva %} active{% endif %}"{% if attiva %} aria-current="page"{% endif %}>
+    <i class="bi bi-{{ icona }}{% if attiva %}-fill{% endif %}" aria-hidden="true"></i>
+    <span>{{ etichetta }}</span>
+  </a>
+{%- endmacro -%}
+{%- macro voci_nav() -%}
+  {{ voce_nav(ep == 'index', url_for('index'), 'house', 'Home') }}
+  {{ voce_nav(ep == 'pagina_previsioni', url_for('pagina_previsioni'), 'bar-chart', 'Previsioni') }}
+  {{ voce_nav(ep == 'pagina_automazione', url_for('pagina_automazione'), 'lightning-charge', 'Automazione') }}
+  {{ voce_nav(ep == 'pagina_storico', url_for('pagina_storico'), 'calendar3-week', 'Storico') }}
+  {{ voce_nav(sezione_impostazioni, url_for('pagina_impostazioni'), 'gear', 'Impostazioni') }}
+{%- endmacro -%}
+<body class="tp-app">
 
-<!-- Navbar -->
-<nav class="navbar navbar-dark">
-  <div class="container-lg d-flex justify-content-between align-items-center">
-    <div class="d-flex align-items-center gap-3">
-      <a class="navbar-brand mb-0" href="/">
-        <i class="bi bi-house-heart-fill me-2" style="color:#e07b39;"></i>
-        TermoPilota
-      </a>
-      <a href="/" class="text-decoration-none small top-nav-link {% if request.endpoint == 'index' %}active{% endif %}">
-        <i class="bi bi-speedometer2 me-1"></i>Dashboard
-      </a>
-      <a href="/storico" class="text-decoration-none small top-nav-link {% if request.endpoint == 'pagina_storico' %}active{% endif %}">
-        <i class="bi bi-clock-history me-1"></i>Storico
-      </a>
-      {% if current_user.is_admin %}
-      <a href="/admin/" class="text-decoration-none small top-nav-link {% if request.endpoint and request.endpoint.startswith('admin.') %}active{% endif %}">
-        <i class="bi bi-gear me-1"></i>Admin
-      </a>
-      {% endif %}
-    </div>
-    <div class="d-flex align-items-center gap-2">
-      <button type="button" class="theme-toggle" onclick="toggleTema()" aria-label="Cambia tema">
-        <i id="themeIcon" class="bi bi-moon-fill"></i>
-      </button>
-      <a href="{{ url_for('account') }}" class="text-decoration-none small top-nav-link {% if request.endpoint == 'account' %}active{% endif %}">
-        <i class="bi bi-person me-1"></i>{{ current_user.username }}
-      </a>
-      <a href="/logout" class="top-nav-link small text-decoration-none" title="Esci">
-        <i class="bi bi-box-arrow-right"></i>
-      </a>
+<a class="visually-hidden-focusable tp-skip" href="#contenuto">Vai al contenuto</a>
+
+<!-- Barra laterale (desktop) -->
+<aside class="tp-sidebar" aria-label="Navigazione principale">
+  <a class="tp-brand" href="{{ url_for('index') }}">
+    <span class="tp-brand-logo"><i class="bi bi-house-heart-fill" aria-hidden="true"></i></span>
+    <span>TermoPilota</span>
+  </a>
+  <nav class="tp-sidebar-nav">
+    {{ voci_nav() }}
+  </nav>
+  <div class="tp-sidebar-footer">
+    <a href="{{ url_for('account') }}" class="tp-utente">
+      <span class="tp-avatar" aria-hidden="true">{{ current_user.username[:1]|upper }}</span>
+      <span class="text-truncate">
+        <span class="d-block fw-semibold text-truncate">{{ current_user.username }}</span>
+        <span class="d-block tp-muted small">{% if current_user.is_admin %}Amministratore{% else %}Utente{% endif %}</span>
+      </span>
+    </a>
+    <div class="d-flex align-items-center justify-content-between mt-2">
+      <span class="tp-muted small">v{{ versione_app }}</span>
+      <a href="/logout" class="tp-icon-btn" title="Esci" aria-label="Esci"><i class="bi bi-box-arrow-right"></i></a>
     </div>
   </div>
+</aside>
+
+<div class="tp-main">
+  <!-- Barra superiore -->
+  <header class="tp-topbar">
+    <div class="tp-topbar-inner">
+      {% block indietro %}{% endblock %}
+      <a class="tp-topbar-logo" href="{{ url_for('index') }}" aria-label="Home"><i class="bi bi-house-heart-fill"></i></a>
+      <h1 class="tp-topbar-title">{% block titolo_pagina %}{{ self.title() }}{% endblock %}</h1>
+      <div class="tp-topbar-actions">
+        {% block azioni %}{% endblock %}
+        <button type="button" class="tp-icon-btn" onclick="toggleTema()" aria-label="Cambia tema" title="Cambia tema">
+          <i id="themeIcon" class="bi bi-moon-stars"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="contenuto" class="tp-content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<!-- Barra di navigazione inferiore (mobile) -->
+<nav class="tp-bottomnav" aria-label="Navigazione principale">
+  {{ voci_nav() }}
 </nav>
-
-{% block content %}{% endblock %}
-
-<footer class="tp-footer py-3 mt-2">
-  <div class="container-lg d-flex justify-content-between align-items-center" style="font-size:.8rem;">
-    <span><i class="bi bi-thermometer-half me-1"></i>TermoPilota <span title="Versione">v{{ versione_app }}</span></span>
-    <span>Meteo: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a></span>
-  </div>
-</footer>
 
 <script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
-<script>
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
-</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

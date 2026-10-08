@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Previsioni{% endblock %}
+
+{% block head_extra %}
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
+{% endblock %}
+
+{% block azioni %}
+<span id="aggiornatoAlle" class="aggiornato-chip d-none d-sm-inline-flex"></span>
+{% endblock %}
+
+{% block content %}
+<div class="tp-page">
+
+  {% if errore_meteo %}
+  <div class="alert alert-danger mb-0">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <strong>Errore previsioni meteo:</strong> {{ errore_meteo }} — Controlla la connessione internet.
+  </div>
+  {% endif %}
+  {% if errore_cfr %}
+  <div class="alert alert-warning mb-0">
+    <i class="bi bi-wifi-off me-2"></i>
+    <strong>Stazione CFR non raggiunta</strong> — uso temperatura da previsione. ({{ errore_cfr }})
+  </div>
+  {% endif %}
+
+  <!-- Grafico costo 48h + temperatura -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <div>
+        <h2 class="tp-card-title"><i class="bi bi-graph-up"></i>Costo del calore</h2>
+        <div class="tp-card-sub">€ per kWh termico, prossime 48 ore</div>
+      </div>
+      <div class="tp-legend" id="legendaCosti"></div>
+    </div>
+    <div class="tp-chart tp-chart-lg"><canvas id="graficoComparazione" aria-label="Costo del calore di caldaia e pompa di calore nelle prossime 48 ore" role="img"></canvas></div>
+    <div class="d-flex flex-wrap gap-3 mt-2">
+      <span class="tp-legend-note"><span class="tp-legend-swatch fascia" style="--sw:var(--gas-color)"></span>caldaia consigliata</span>
+      <span class="tp-legend-note"><span class="tp-legend-swatch fascia" style="--sw:var(--ac-color)"></span>pompa di calore consigliata</span>
+    </div>
+
+    <div class="d-flex align-items-baseline justify-content-between mt-4 mb-1">
+      <h3 class="tp-card-title fs-6"><i class="bi bi-thermometer-half"></i>Temperatura esterna</h3>
+      <span class="tp-card-sub">°C</span>
+    </div>
+    <div class="tp-chart tp-chart-sm"><canvas id="graficoTemperatura" aria-label="Temperatura esterna prevista" role="img"></canvas></div>
+  </section>
+
+  <!-- Dettaglio orario -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <h2 class="tp-card-title"><i class="bi bi-list-ul"></i>Dettaglio orario</h2>
+      <div class="tp-segmented" role="group" aria-label="Giorno">
+        <button type="button" class="active" data-giorno="oggi" aria-pressed="true">Oggi</button>
+        <button type="button" data-giorno="domani" aria-pressed="false">Domani</button>
+      </div>
+    </div>
+
+    <!-- Mobile: lista espandibile -->
+    <div class="tp-ore-list d-md-none" id="listaOraria"></div>
+
+    <!-- Desktop: tabella -->
+    <div class="tp-ore-table table-responsive d-none d-md-block">
+      <table class="table table-sm table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Ora</th><th>Meteo</th><th>T. est.</th><th>COP</th>
+            <th>Caldaia €/kWh</th><th>Pompa €/kWh</th><th>Consiglio</th><th>Risparmio</th>
+          </tr>
+        </thead>
+        <tbody id="tabellaOraria"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Come funziona -->
+  <details class="tp-card">
+    <summary class="tp-card-title"><i class="bi bi-question-circle"></i>Come funziona il calcolo<i class="bi bi-chevron-down ms-auto"></i></summary>
+    <div class="mt-3 small tp-muted">
+      <p class="mb-2">Il sistema confronta il <strong>costo per produrre 1 kWh di calore</strong> con le due fonti:</p>
+      <ul class="mb-2">
+        <li><strong>Caldaia Vaillant condensazione:</strong><br>
+            costo = prezzo_gas / (10,691 kWh/Smc × efficienza 96%) = <strong>€/kWh<sub>th</sub></strong></li>
+        <li class="mt-1"><strong>Samsung inverter (pompa di calore):</strong><br>
+            costo = prezzo_luce / COP(T<sub>esterna</sub>) = <strong>€/kWh<sub>th</sub></strong><br>
+            Il COP varia con la temperatura: più fa freddo, meno è efficiente.</li>
+      </ul>
+      <p class="mb-0">Vince chi ha il costo minore. In genere sopra ~5°C il condizionatore è più economico; sotto ~0°C dipende molto dai prezzi.</p>
+    </div>
+  </details>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.datiOrari = {{ raccomandazioni_json | safe }};
+  window.generatoAlle = {{ generato_alle | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/grafici.js') }}"></script>
+<script src="{{ url_for('static', filename='js/previsioni.js') }}"></script>
+{% endblock %}

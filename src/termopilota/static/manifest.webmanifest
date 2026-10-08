@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "TermoPilota",
   "short_name": "TermoPilota",
   "description": "Caldaia o pompa di calore? Il confronto in tempo reale su prezzi energia e temperatura.",
@@ -6,11 +7,18 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#1a1a2e",
-  "theme_color": "#1a1a2e",
+  "orientation": "any",
+  "background_color": "#f4f6f9",
+  "theme_color": "#f4f6f9",
+  "categories": ["utilities", "lifestyle"],
   "icons": [
     { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "/static/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Previsioni", "short_name": "Previsioni", "url": "/previsioni", "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Automazione", "short_name": "Automazione", "url": "/automazione", "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Storico", "short_name": "Storico", "url": "/storico", "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

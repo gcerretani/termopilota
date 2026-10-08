@@ -10,7 +10,7 @@ import pytest
 from termopilota import storico
 RADICE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-PAGINE_PROTETTE = ["/", "/storico", "/account", "/admin/", "/admin/credentials",
+PAGINE_PROTETTE = ["/", "/previsioni", "/automazione", "/storico", "/impostazioni", "/account", "/admin/", "/admin/credentials",
                    "/admin/zones", "/admin/users"]
 API_PROTETTE = ["/api/dashboard", "/api/prezzi", "/api/dati", "/api/config",
                 "/api/automazione", "/api/storico", "/api/risparmi", "/api/pannello",
@@ -128,6 +128,30 @@ def test_api_dashboard_segnala_errore_meteo(admin_client, monkeypatch):
     dati = admin_client.get("/api/dashboard").get_json()
     assert "meteo non raggiungibile" in dati["errori"]["meteo"]
     assert dati["raccomandazioni"] == []
+
+
+@pytest.mark.parametrize("url", ["/", "/previsioni", "/automazione", "/storico",
+                                 "/impostazioni", "/account"])
+def test_pagine_principali_si_aprono_con_la_navigazione(utente_client, url):
+    r = utente_client.get(url)
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    # Barra laterale (desktop) e barra in basso (mobile) con la voce attiva
+    assert 'class="tp-sidebar"' in html and 'class="tp-bottomnav"' in html
+    assert html.count('aria-current="page"') == 2
+
+
+def test_impostazioni_mostra_amministrazione_solo_agli_admin(admin_client, utente_client):
+    assert "/admin/credentials" in admin_client.get("/impostazioni").get_data(as_text=True)
+    assert "/admin/" not in utente_client.get("/impostazioni").get_data(as_text=True)
+
+
+@pytest.mark.parametrize("url", ["/admin/", "/admin/credentials", "/admin/zones", "/admin/users"])
+def test_pagine_admin_hanno_sottonavigazione(admin_client, url):
+    html = admin_client.get(url).get_data(as_text=True)
+    assert 'class="tp-segmented tp-admin-nav"' in html
+    # voce attiva nella sottonavigazione + "Impostazioni" nelle due barre principali
+    assert html.count('aria-current="page"') == 3
 
 
 def test_dashboard_mostra_badge_tariffa_fissa(admin_client):

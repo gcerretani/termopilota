@@ -7,6 +7,28 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Modificato
+- **Interfaccia rinnovata**, pensata per il telefono (anche come app installata) e per il desktop:
+  barra di navigazione in basso su mobile e barra laterale su desktop, con cinque sezioni sempre a
+  portata di pollice — **Home**, **Previsioni**, **Automazione**, **Storico**, **Impostazioni** —
+  al posto dell'unica pagina lunga di prima. Nessuna funzione rimossa.
+  - Home: consiglio per adesso, costi caldaia/pompa, ore di oggi, risparmio della stagione, striscia
+    delle prossime 12 ore, prezzi energia e pannello, temperatura delle stanze.
+  - Previsioni (`/previsioni`): grafico del costo del calore a 48 ore con fasce della fonte
+    consigliata, linea "adesso" e separatore di giorno, temperatura in un grafico a parte allineato
+    (niente più doppio asse); dettaglio orario come lista espandibile su mobile e tabella su desktop.
+  - Automazione (`/automazione`): interruttore, schede delle zone e registro eventi.
+  - Impostazioni (`/impostazioni`): account, tema chiaro/scuro/automatico, voci di amministrazione
+    (solo admin), installazione dell'app, versione ed uscita. Le pagine admin hanno una
+    sotto-navigazione comune e il pulsante per tornare indietro.
+- Grafici moderni e coerenti col tema: colori presi dal tema chiaro/scuro (si aggiornano al cambio
+  senza ricaricare), gradienti, mirino e tooltip al tocco, legenda cliccabile per nascondere le serie.
+- Il manifest della PWA ha le scorciatoie per Previsioni, Automazione e Storico.
+
+### Corretto
+- L'ora "adesso" evidenziata nel dettaglio orario e gli intervalli dello Storico usavano l'ora UTC
+  del browser invece di quella locale.
+
 ## [1.0.3] - 2026-10-08
 
 ### Aggiunto

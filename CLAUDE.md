@@ -64,6 +64,10 @@ Pacchetto `src/termopilota/` (layout `src`: si installa con `pip install -e .`, 
   - `netatmo.py` — Client Netatmo OAuth2 per termostati BTicino Smarther
   - `smartthings.py` — Client SmartThings OAuth2 (consigliato) + PAT fallback per AC Samsung
 - `templates/`, `static/` — HTML (Jinja) e asset; `static/vendor/` e' generato, non e' nel repository
+  - `templates/base.html` — app shell: barra laterale (desktop, `lg`+) e barra di navigazione in basso (mobile) con le 5 sezioni; blocchi `title`, `azioni` (barra superiore), `indietro`; `admin/_nav.html` e' la sotto-navigazione admin
+  - `static/css/theme.css` — token di design (CSS variable, tema chiaro e `html[data-theme="dark"]`) e componenti `tp-*`
+  - `static/js/` — `theme.js` (tema, nel `<head>`), `app.js` (comune: service worker, installazione, `ogni()`, `oraLocale()`), `grafici.js` (stile Chart.js condiviso: colori dal tema, plugin adesso/fasce/giorni/mirino, legenda a chip), uno script per pagina (`home.js`, `previsioni.js`, `automazione.js`, `storico.js`), `admin.js`
+  - Quando cambia un asset statico, aggiornare `CACHE` in `static/sw.js` (cache-first) e la lista `PRECACHE`
 
 Nella radice:
 
@@ -89,8 +93,11 @@ Nella radice:
 
 ## Route principali
 
-- `GET /` — Dashboard (richiede login, refresh live ogni 5 min via `/api/dashboard`)
+- `GET /` — Home (richiede login, refresh live ogni 5 min via `/api/dashboard`)
+- `GET /previsioni` — Grafico costo 48h, temperatura e dettaglio orario (richiede login)
+- `GET /automazione` — Interruttore automazione, zone, log eventi (richiede login)
 - `GET /storico` — Grafici storici e contatore risparmi (richiede login)
+- `GET /impostazioni` — Hub: account, tema, link alle pagine admin (richiede login)
 - `GET /sw.js` — Service worker PWA (pubblico, servito dalla root per lo scope)
 - `GET /login`, `POST /login`, `GET /logout` — Autenticazione
 - `GET /admin/` — Impostazioni (admin)

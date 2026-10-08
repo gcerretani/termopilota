@@ -472,14 +472,42 @@ def index():
         stato_stanze_dashboard=stato_stanze_dashboard,
         errore_meteo=dati["errori"]["meteo"],
         errore_cfr=dati["errori"]["cfr"],
-        ora_aggiornamento=datetime.now().strftime("%d/%m/%Y %H:%M"),
+        generato_alle=dati["generato_alle"],
     )
+
+
+@app.route("/previsioni")
+@login_required
+def pagina_previsioni():
+    cfg = carica_config()
+    dati = dati_dashboard(cfg)
+    return render_template(
+        "previsioni.html",
+        cfg=cfg,
+        raccomandazioni_json=json.dumps(dati["raccomandazioni"]),
+        errore_meteo=dati["errori"]["meteo"],
+        errore_cfr=dati["errori"]["cfr"],
+        generato_alle=dati["generato_alle"],
+    )
+
+
+@app.route("/automazione")
+@login_required
+def pagina_automazione():
+    cfg = carica_config()
+    return render_template("automazione.html", cfg=cfg)
 
 
 @app.route("/storico")
 @login_required
 def pagina_storico():
     return render_template("storico.html")
+
+
+@app.route("/impostazioni")
+@login_required
+def pagina_impostazioni():
+    return render_template("impostazioni.html")
 
 
 @app.route("/sw.js")

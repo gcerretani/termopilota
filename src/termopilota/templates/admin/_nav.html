@@ -1,0 +1,12 @@
+{# Sotto-navigazione delle pagine di amministrazione (inclusa in ogni pagina admin) #}
+{%- set voci_admin = [
+  ('admin.admin_settings', 'Prezzi e impianto', 'sliders'),
+  ('admin.admin_credentials', 'Credenziali API', 'key'),
+  ('admin.admin_zones', 'Zone', 'diagram-3'),
+  ('admin.admin_users', 'Utenti', 'people'),
+] -%}
+<nav class="tp-segmented tp-admin-nav" aria-label="Sezioni di amministrazione">
+  {% for endpoint, etichetta, icona in voci_admin %}
+  <a href="{{ url_for(endpoint) }}"{% if request.endpoint == endpoint %} class="active" aria-current="page"{% endif %}><i class="bi bi-{{ icona }}"></i>{{ etichetta }}</a>
+  {% endfor %}
+</nav>
