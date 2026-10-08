@@ -35,3 +35,8 @@ Dipendenze Python (installate con pip, non incluse)
 - gunicorn - MIT
 
 Le licenze esatte e aggiornate sono quelle dei pacchetti installati.
+
+Nota di manutenzione: Dependabot aggiorna le dipendenze Python, l'immagine Docker e le
+action, ma NON i file in static/vendor/, che vanno aggiornati a mano (insieme alle
+versioni indicate in questo file e in CLAUDE.md; il precache di static/sw.js
+elenca i percorsi, quindi cambia solo se cambiano i nomi dei file).

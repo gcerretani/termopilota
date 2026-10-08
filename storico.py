@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
 Persistenza storica su SQLite: campioni orari di prezzi, temperatura e

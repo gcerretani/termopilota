@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
 Login con Google OAuth2 / OpenID Connect via Authlib.

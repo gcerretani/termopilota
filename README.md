@@ -123,6 +123,8 @@ Temperatura di break-even (gas = AC): circa **-6C** con prezzi tipici.
 
 ## Licenza
 
+Copyright (C) 2026 Giovanni Cerretani
+
 TermoPilota e' software libero: puoi ridistribuirlo e/o modificarlo secondo i termini della
 [GNU General Public License](LICENSE) pubblicata dalla Free Software Foundation, versione 3
 della Licenza o (a tua scelta) qualsiasi versione successiva.

@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
 Motore di raccomandazione: per ogni ora delle previsioni decide se conviene

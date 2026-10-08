@@ -1,3 +1,4 @@
+// SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 // SPDX-License-Identifier: GPL-3.0-or-later
 // TermoPilota — pagina Storico: grafici storici e contatore risparmi.
 

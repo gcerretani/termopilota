@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
 Costanti fisiche condivise tra app.py e automazione.py.

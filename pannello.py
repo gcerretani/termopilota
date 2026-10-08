@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
 Stima della produzione del pannello adottato (Plenitude "Adotta un Pannello",

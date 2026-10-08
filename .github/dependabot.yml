@@ -1,0 +1,29 @@
+# Aggiornamenti automatici delle dipendenze.
+# Le PR di Dependabot eseguono gli stessi test e lo smoke test del container
+# di ogni altra pull request (tests.yml).
+version: 2
+updates:
+  # requirements.txt e requirements-dev.txt
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+
+  # Immagine base del Dockerfile (python:3.12-slim)
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Versioni delle action nei workflow
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
