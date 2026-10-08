@@ -38,14 +38,14 @@
       <div class="col-md-4">
         <label class="form-label">IVA gas (%)</label>
         <input type="number" step="0.1" min="0" max="100" class="form-control" id="gasIva" value="{{ cfg.gas_iva_pct }}" oninput="aggiornaTotali()">
-        <div class="form-text">Di solito 22 (il 10% vale solo per i primi 480 Smc/anno: in inverno il gas in più paga il 22%). Se i valori qui sotto includono già l'IVA, lascia 0.</div>
+        <div class="form-text">Di solito 22. Il 10% vale per i primi 480 Smc di ogni anno solare (da gennaio): il gas che risparmi con la pompa è l'ultimo consumato, quindi quello al 22%. Metti 10 solo se prevedi meno di 480 Smc/anno. Se i valori qui sotto includono già l'IVA, lascia 0.</div>
       </div>
     </div>
     <div class="row g-3 mb-3">
       <div class="col-md-4">
         <label class="form-label">Altre voci al consumo gas, senza IVA (€/Smc)</label>
         <input type="number" step="0.001" class="form-control" id="gasFisso" value="{{ cfg.gas_fisso_smc }}" oninput="aggiornaTotali()">
-        <div class="form-text">Rete, oneri di sistema e accise: la parte variabile in bolletta. Le quote fisse annue non vanno incluse (non cambiano scegliendo caldaia o pompa).</div>
+        <div class="form-text">Somma delle voci al €/Smc dello scaglione in cui cadi (per consumi annui 481-1560 Smc): rete (quota energia), oneri di sistema (quota energia), accisa e addizionale regionale. Le quote fisse non vanno incluse.</div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Prezzo manuale gas (€/Smc)</label>
@@ -80,7 +80,7 @@
       <div class="col-md-4">
         <label class="form-label">Altre voci al consumo luce, senza IVA (€/kWh)</label>
         <input type="number" step="0.001" class="form-control" id="luceFissa" value="{{ cfg.luce_fisso_kwh }}" oninput="aggiornaTotali()">
-        <div class="form-text">Rete, dispacciamento, oneri di sistema e accisa: la parte variabile in bolletta. Le quote fisse annue e per kW di potenza non vanno incluse.</div>
+        <div class="form-text">Somma delle voci al €/kWh: rete (quota energia), oneri di sistema (ASOS e ARIM), dispacciamento (CdispD, cambia ogni mese) e accisa. Le quote fisse e la quota potenza non vanno incluse.</div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Prezzo manuale luce (€/kWh)</label>
