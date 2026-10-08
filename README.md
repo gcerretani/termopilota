@@ -51,6 +51,8 @@ ADMIN_PASSWORD=la_tua_password docker compose up -d
 ADMIN_USER=giovanni ADMIN_PASSWORD=secret SECRET_KEY=chiave_segreta docker compose up -d
 ```
 
+Dietro un reverse proxy (Traefik, nginx) impostare `TERMOPILOTA_PROXY=1`, altrimenti i callback OAuth usano `http`.
+
 L'immagine Docker viene costruita automaticamente su push a `main` e pubblicata su `ghcr.io/gcerretani/termopilota`.
 
 ```bash

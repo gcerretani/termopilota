@@ -28,6 +28,7 @@ from flask import (
     Blueprint, Flask, abort, flash, jsonify, redirect, render_template, request,
     send_from_directory, session, url_for,
 )
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import current_user, login_required, login_user, logout_user
 from termopilota.prezzi import calcola_prezzi
 from termopilota.automazione import get_servizio, avvia_se_attiva
@@ -49,7 +50,23 @@ from termopilota.percorsi import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
+def configura_proxy(flask_app: Flask) -> None:
+    """Fidati degli header X-Forwarded-* di N reverse proxy (TERMOPILOTA_PROXY=N).
+
+    Dietro Traefik/nginx serve perche' url_for(_external=True), per esempio il
+    callback di Google OAuth, usi https e l'host pubblico. Di default e' spento:
+    con la porta esposta direttamente un client potrebbe falsificare gli header.
+    """
+    try:
+        n = int(os.environ.get("TERMOPILOTA_PROXY", "0"))
+    except ValueError:
+        n = 0
+    if n > 0:
+        flask_app.wsgi_app = ProxyFix(flask_app.wsgi_app, x_for=n, x_proto=n, x_host=n)
+
+
 app = Flask(__name__)
+configura_proxy(app)
 setup_auth(app)
 
 DEFAULT_CONFIG = {
