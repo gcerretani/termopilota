@@ -88,6 +88,8 @@ DEFAULT_CONFIG = {
     "intervallo_controllo_minuti": 15.0,
     "soglia_delta_risparmio": 0.01,
     "potenza_termica_kw": 4.0,
+    "gas_iva_pct": 0.0,                  # % IVA sul gas; 0 se le voci sopra sono gia' lorde
+    "luce_iva_pct": 0.0,                 # % IVA sulla luce
     "gas_tariffa": "variabile",          # "variabile" (TTF) | "fissa" (prezzo bloccato)
     "gas_commodity_fisso_smc": 0.0,      # €/Smc, solo materia prima gas se tariffa fissa
     "luce_tariffa": "variabile",         # "variabile" (PUN) | "fissa"
@@ -712,6 +714,7 @@ def api_config():
                        "intervallo_controllo_minuti", "soglia_delta_risparmio",
                        "potenza_termica_kw", "lat", "lon",
                        "gas_commodity_fisso_smc", "luce_commodity_fisso_kwh",
+                       "gas_iva_pct", "luce_iva_pct",
                        "pannello_potenza_kw", "pannello_lat", "pannello_lon",
                        "pannello_fattore", "pannello_fattore_monoasse", "pompa_potenza_elettrica_kw",
                        "consumo_base_kw")
@@ -747,6 +750,8 @@ def api_config():
             float(cfg.get("intervallo_controllo_minuti") or 15.0)))
         cfg["soglia_delta_risparmio"] = max(0.0, float(cfg.get("soglia_delta_risparmio") or 0.01))
         cfg["potenza_termica_kw"] = max(0.5, min(30.0, float(cfg.get("potenza_termica_kw") or 4.0)))
+        cfg["gas_iva_pct"] = max(0.0, min(100.0, float(cfg.get("gas_iva_pct") or 0.0)))
+        cfg["luce_iva_pct"] = max(0.0, min(100.0, float(cfg.get("luce_iva_pct") or 0.0)))
         cfg["gas_commodity_fisso_smc"] = max(0.0, float(cfg.get("gas_commodity_fisso_smc") or 0.0))
         cfg["luce_commodity_fisso_kwh"] = max(0.0, float(cfg.get("luce_commodity_fisso_kwh") or 0.0))
         cfg["pannello_potenza_kw"] = max(0.1, min(100.0, float(cfg.get("pannello_potenza_kw") or 0.9)))

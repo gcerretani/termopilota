@@ -29,6 +29,8 @@
   "pannello_potenza_kw": 0.9,
   "pannello_lat": 38.5,
   "pannello_lon": -1.2,
+  "gas_iva_pct": 0.0,
+  "luce_iva_pct": 0.0,
   "pannello_modello": "monoasse",
   "pannello_fattore": 0.9,
   "pannello_fattore_monoasse": 0.85,

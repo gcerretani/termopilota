@@ -19,6 +19,13 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
   temperatura delle celle. Il fattore diventa un rendimento di sistema (atteso 0,7-0,95), costante
   tutto l'anno; la calibrazione avvisa se il valore è fuori range, segno di una potenza di picco
   sbagliata. Si sceglie in Impostazioni (modello monoasse o orizzontale).
+- **IVA per gas e luce** (campi `gas_iva_pct` e `luce_iva_pct`): il prezzo usato nel confronto è
+  `(energia + altre voci al consumo) × (1 + IVA)`. Conta perché le due IVA sono diverse (luce 10%,
+  gas 22% oltre i primi 480 Smc/anno) e quindi cambiano il rapporto fra il costo del gas e quello
+  della pompa di calore. In Impostazioni si vede il costo marginale lordo calcolato, da confrontare
+  con la bolletta. Il valore predefinito è 0, così le configurazioni esistenti (che di solito
+  includevano già l'IVA nelle voci fisse) non cambiano da sole. Con la compensazione "solo materia
+  prima" anche l'IVA sulla materia prima viene azzerata.
 - Il Plant ID di Netatmo si sceglie da un menu a tendina (Credenziali API) che si riempie da solo
   dopo l'autorizzazione; se l'account ha un solo impianto viene impostato automaticamente.
 

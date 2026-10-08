@@ -58,7 +58,8 @@ def prezzo_luce_effettivo(prezzi: dict, copertura: float, modo: str) -> float:
     """
     totale = prezzi["luce_totale_kwh"]
     if modo == "materia_prima":
-        energia = max(0.0, totale - prezzi.get("luce_fisso_kwh", 0.0))
+        iva = 1.0 + prezzi.get("luce_iva_pct", 0.0) / 100
+        energia = max(0.0, totale - prezzi.get("luce_fisso_kwh", 0.0) * iva)
         return totale - copertura * energia
     return totale * (1.0 - copertura)
 

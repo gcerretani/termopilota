@@ -32,21 +32,27 @@
       </div>
       <div class="col-md-4" id="gasFissoBox">
         <label class="form-label">Prezzo materia prima gas bloccato (€/Smc)</label>
-        <input type="number" step="0.0001" class="form-control" id="gasCommodityFisso" value="{{ cfg.gas_commodity_fisso_smc }}">
-        <div class="form-text">Solo la materia prima del contratto (es. Fixa Time 24 Gas Smart), IVA e oneri esclusi: si sommano alla componente fissa.</div>
+        <input type="number" step="0.0001" class="form-control" id="gasCommodityFisso" value="{{ cfg.gas_commodity_fisso_smc }}" oninput="aggiornaTotali()">
+        <div class="form-text">Solo il prezzo dell'energia del contratto, con eventuali sconti (es. domiciliazione), IVA e oneri esclusi.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">IVA gas (%)</label>
+        <input type="number" step="0.1" min="0" max="100" class="form-control" id="gasIva" value="{{ cfg.gas_iva_pct }}" oninput="aggiornaTotali()">
+        <div class="form-text">Di solito 22 (il 10% vale solo per i primi 480 Smc/anno: in inverno il gas in più paga il 22%). Se i valori qui sotto includono già l'IVA, lascia 0.</div>
       </div>
     </div>
     <div class="row g-3 mb-3">
       <div class="col-md-4">
-        <label class="form-label">Componente fissa gas (€/Smc)</label>
-        <input type="number" step="0.001" class="form-control" id="gasFisso" value="{{ cfg.gas_fisso_smc }}">
-        <div class="form-text">Distribuzione + oneri + accisa + IVA — cambia ogni trimestre.</div>
+        <label class="form-label">Altre voci al consumo gas, senza IVA (€/Smc)</label>
+        <input type="number" step="0.001" class="form-control" id="gasFisso" value="{{ cfg.gas_fisso_smc }}" oninput="aggiornaTotali()">
+        <div class="form-text">Rete, oneri di sistema e accise: la parte variabile in bolletta. Le quote fisse annue non vanno incluse (non cambiano scegliendo caldaia o pompa).</div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Prezzo manuale gas (€/Smc)</label>
         <input type="number" step="0.001" class="form-control" id="gasManualeTotal" value="{{ cfg.gas_totale_smc_manuale }}">
-        <div class="form-text">Usato solo se TTF non disponibile.</div>
+        <div class="form-text">Usato solo se TTF non disponibile. È già un prezzo finale, IVA compresa.</div>
       </div>
+      <div class="col-12 form-text" id="gasTotaleRiga"></div>
     </div>
 
     <!-- Luce -->
@@ -61,20 +67,25 @@
       </div>
       <div class="col-md-4" id="luceFissoBox">
         <label class="form-label">Prezzo energia bloccato (€/kWh)</label>
-        <input type="number" step="0.0001" class="form-control" id="luceCommodityFisso" value="{{ cfg.luce_commodity_fisso_kwh }}">
-        <div class="form-text">Solo la materia prima del contratto (es. Fixa Time 24 Luce Smart), oneri e tasse esclusi: si sommano alla componente fissa.</div>
+        <input type="number" step="0.0001" class="form-control" id="luceCommodityFisso" value="{{ cfg.luce_commodity_fisso_kwh }}" oninput="aggiornaTotali()">
+        <div class="form-text">Solo il prezzo dell'energia del contratto (comprese le perdite di rete), con eventuali sconti, IVA e oneri esclusi.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">IVA luce (%)</label>
+        <input type="number" step="0.1" min="0" max="100" class="form-control" id="luceIva" value="{{ cfg.luce_iva_pct }}" oninput="aggiornaTotali()">
+        <div class="form-text">Di solito 10 per le abitazioni. Se i valori qui sotto includono già l'IVA, lascia 0.</div>
       </div>
     </div>
     <div class="row g-3 mb-3">
       <div class="col-md-4">
-        <label class="form-label">Componente fissa luce (€/kWh)</label>
-        <input type="number" step="0.001" class="form-control" id="luceFissa" value="{{ cfg.luce_fisso_kwh }}">
-        <div class="form-text">Distribuzione + oneri + accisa + IVA — cambia ogni trimestre.</div>
+        <label class="form-label">Altre voci al consumo luce, senza IVA (€/kWh)</label>
+        <input type="number" step="0.001" class="form-control" id="luceFissa" value="{{ cfg.luce_fisso_kwh }}" oninput="aggiornaTotali()">
+        <div class="form-text">Rete, dispacciamento, oneri di sistema e accisa: la parte variabile in bolletta. Le quote fisse annue e per kW di potenza non vanno incluse.</div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Prezzo manuale luce (€/kWh)</label>
         <input type="number" step="0.001" class="form-control" id="luceManualeTotal" value="{{ cfg.luce_totale_kwh_manuale }}">
-        <div class="form-text">Usato se non hai la chiave ENTSO-E.</div>
+        <div class="form-text">Usato se non hai la chiave ENTSO-E. È già un prezzo finale, IVA compresa.</div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Chiave API ENTSO-E (opzionale)</label>
@@ -84,6 +95,7 @@
           <a href="https://transparency.entsoe.eu/usrm/user/createPublicUser" target="_blank">transparency.entsoe.eu</a>
         </div>
       </div>
+      <div class="col-12 form-text" id="luceTotaleRiga"></div>
     </div>
 
     <!-- Impianto -->
@@ -242,6 +254,8 @@ async function salvaImpostazioni() {
     potenza_termica_kw:         parseFloat(document.getElementById('potenzaTermica').value),
     gas_tariffa:                document.getElementById('gasTariffa').value,
     gas_commodity_fisso_smc:    parseFloat(document.getElementById('gasCommodityFisso').value) || 0,
+    gas_iva_pct:                parseFloat(document.getElementById('gasIva').value) || 0,
+    luce_iva_pct:               parseFloat(document.getElementById('luceIva').value) || 0,
     luce_tariffa:               document.getElementById('luceTariffa').value,
     luce_commodity_fisso_kwh:   parseFloat(document.getElementById('luceCommodityFisso').value) || 0,
     pannello_potenza_kw:        parseFloat(document.getElementById('pannelloPotenza').value),
@@ -291,6 +305,24 @@ async function salvaImpostazioni() {
 }
 
 // Con tariffa fissa si chiede il prezzo bloccato; con variabile i campi manuali/TTF restano il fallback.
+// Costo marginale lordo che l'app usera' nel confronto: si confronta con la bolletta
+// (somma delle voci variabili per kWh o Smc, IVA compresa).
+function aggiornaTotali() {
+  const numero = id => parseFloat(document.getElementById(id).value) || 0;
+  [['gas', 'gasCommodityFisso', 'gasFisso', 'gasIva', 'gasTariffa', 'gasTotaleRiga', '€/Smc'],
+   ['luce', 'luceCommodityFisso', 'luceFissa', 'luceIva', 'luceTariffa', 'luceTotaleRiga', '€/kWh']].forEach(([_, c, f, i, t, out, unita]) => {
+    const el = document.getElementById(out);
+    if (!el) return;
+    const iva = 1 + numero(i) / 100;
+    if (document.getElementById(t).value === 'fissa') {
+      const totale = (numero(c) + numero(f)) * iva;
+      el.innerHTML = `Costo marginale lordo usato nel confronto: <strong>${totale.toFixed(4)} ${unita}</strong> = (${numero(c)} + ${numero(f)}) × ${iva.toFixed(2)}`;
+    } else {
+      el.innerHTML = `Costo marginale lordo: (prezzo di mercato del giorno + ${numero(f)}) × ${iva.toFixed(2)} ${unita}`;
+    }
+  });
+}
+
 function aggiornaVisibilitaTariffe() {
   document.getElementById('gasFissoBox').style.display =
     document.getElementById('gasTariffa').value === 'fissa' ? '' : 'none';
@@ -298,6 +330,7 @@ function aggiornaVisibilitaTariffe() {
     document.getElementById('luceTariffa').value === 'fissa' ? '' : 'none';
 }
 aggiornaVisibilitaTariffe();
+aggiornaTotali();
 
 // Ogni modello del pannello ha il suo fattore di resa: il campo mostra quello del modello scelto.
 const fattoriPannello = {
