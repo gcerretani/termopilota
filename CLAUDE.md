@@ -3,8 +3,8 @@
 ## Stack
 
 - **Backend**: Flask (Python 3.12), gunicorn in produzione
-- **Frontend**: Bootstrap 5.3.2, Chart.js 4.4.2, vanilla JS (no bundler)
-- **Database**: SQLite per utenti (`data/users.db`), JSON per configurazione (`data/config.json`)
+- **Frontend**: Bootstrap 5.3.2, Chart.js 4.4.2, vanilla JS (no bundler) — asset vendorizzati in `static/vendor/` (nessuna CDN), PWA installabile (manifest + service worker)
+- **Database**: SQLite per utenti (`data/users.db`) e storico (`data/storico.db`), JSON per configurazione (`data/config.json`)
 - **Auth**: Flask-Login con sessioni, admin iniziale da variabili d'ambiente
 
 ## Comandi
@@ -19,6 +19,13 @@ ADMIN_PASSWORD=test docker compose up --build
 
 # Installare dipendenze
 pip install -r requirements.txt
+
+# Test
+pip install -r requirements-dev.txt
+python -m pytest tests/
+
+# Rigenerare le icone PWA (solo se cambia il design)
+pip install cairosvg && python scripts/genera_icone.py
 ```
 
 ## Porta
@@ -27,10 +34,15 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 
 ## Struttura
 
-- `app.py` — Routes Flask, Blueprint admin (`/admin/*`), calcolo raccomandazioni
+- `app.py` — Routes Flask, Blueprint admin (`/admin/*`), avvio servizi in background
+- `costanti.py` — COP_TABELLA, `interpola_cop`, KWH_PER_SMC (fonte unica, condivisa)
+- `raccomandazioni.py` — Motore `calcola_raccomandazioni` (importabile senza avviare Flask, testabile)
+- `storico.py` — Persistenza SQLite (`data/storico.db`): campionatore orario in thread daemon, query per grafici e stima risparmi
 - `auth.py` — Autenticazione, gestione utenti SQLite, Flask-Login setup
 - `automazione.py` — Thread daemon, ciclo di controllo zone (ogni 15 min default)
-- `prezzi.py` — Fetch TTF (Yahoo Finance) e PUN (ENTSO-E), cache in memoria
+- `prezzi.py` — Prezzi gas/luce: tariffa variabile (TTF Yahoo Finance, PUN ENTSO-E, cache in memoria) oppure fissa (prezzo bloccato da config), per gas e luce indipendentemente
+- `pannello.py` — Stima produzione del pannello adottato Plenitude (Murcia) da irraggiamento Open-Meteo, con calibrazione del fattore di resa; la produzione di ogni quarto d'ora compensa il consumo di casa (`copertura_pannello` in `raccomandazioni.py`) e abbassa il costo marginale della pompa di calore
+- `tests/` — pytest per motore raccomandazioni, COP e storico
 - `providers/` — Architettura modulare per dispositivi
   - `__init__.py` — ABC `ThermostatProvider`, `HeatPumpProvider`, registry
   - `netatmo.py` — Client Netatmo OAuth2 per termostati BTicino Smarther
@@ -42,7 +54,7 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 - **Lingua**: UI e commenti in italiano, identificatori codice in italiano (snake_case)
 - **Config**: `data/config.json` e' gitignored (tramite `data/`), contiene credenziali. `config.example.json` e' il template
 - **Provider pattern**: per aggiungere un nuovo tipo di termostato/pompa di calore, creare un modulo in `providers/` che implementi l'ABC e si registri nel registry
-- **COP_TABELLA**: duplicata in `app.py` e `automazione.py` — aggiornare entrambi se cambia
+- **COP_TABELLA**: definita una sola volta in `costanti.py`, importata da `app.py` e `automazione.py`
 
 ## File sensibili (mai committare)
 
@@ -52,7 +64,9 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 
 ## Route principali
 
-- `GET /` — Dashboard (richiede login)
+- `GET /` — Dashboard (richiede login, refresh live ogni 5 min via `/api/dashboard`)
+- `GET /storico` — Grafici storici e contatore risparmi (richiede login)
+- `GET /sw.js` — Service worker PWA (pubblico, servito dalla root per lo scope)
 - `GET /login`, `POST /login`, `GET /logout` — Autenticazione
 - `GET /admin/` — Impostazioni (admin)
 - `GET /admin/credentials` — Credenziali API
@@ -60,4 +74,4 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 - `GET /admin/users` — Gestione utenti
 - `GET /api/automazione/oauth-callback` — Callback OAuth Netatmo (pubblico)
 - `GET /api/automazione/smartthings-callback` — Callback OAuth SmartThings (pubblico)
-- API JSON: `/api/prezzi`, `/api/dati`, `/api/temp-cfr`, `/api/config`, `/api/automazione`, `/api/dispositivi`
+- API JSON: `/api/prezzi`, `/api/dati`, `/api/temp-cfr`, `/api/config`, `/api/automazione`, `/api/dispositivi`, `/api/dashboard`, `/api/pannello`, `POST /api/pannello/calibra`, `/api/storico?da=&a=&risoluzione=oraria|giornaliera`, `/api/risparmi`
