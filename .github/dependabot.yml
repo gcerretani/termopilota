@@ -13,7 +13,18 @@ updates:
       python-minor-patch:
         update-types: [minor, patch]
 
-  # Immagine base del Dockerfile (python:3.12-slim)
+  # Librerie front-end (Bootstrap, Bootstrap Icons, Chart.js): package.json e
+  # package-lock.json. I file in static/vendor/ si rigenerano da soli in CI e
+  # nella build dell'immagine, quindi la PR di Dependabot si prova da sola.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      frontend:
+        patterns: ["*"]
+
+  # Immagini base del Dockerfile (node:22-slim, python:3.12-slim)
   - package-ecosystem: docker
     directory: /
     schedule:

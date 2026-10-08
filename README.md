@@ -30,6 +30,9 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
+# Librerie front-end (Bootstrap, Chart.js...) in static/vendor/: richiede Node 22
+npm ci && npm run vendor
+
 # Copia e configura
 cp config.example.json config.json
 # Modifica config.json con i tuoi prezzi e credenziali
@@ -134,5 +137,5 @@ quella implicita di COMMERCIABILITA' o IDONEITA' PER UNO SCOPO PARTICOLARE. Si v
 General Public License per maggiori dettagli.
 
 Ogni file sorgente riporta l'identificatore `SPDX-License-Identifier: GPL-3.0-or-later`.
-Le librerie di terze parti incluse in `static/vendor/` hanno licenza MIT compatibile con la
+Le librerie front-end (Bootstrap, Bootstrap Icons, Chart.js) hanno licenza MIT compatibile con la
 GPL v3: vedi [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).

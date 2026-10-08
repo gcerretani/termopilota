@@ -3,7 +3,7 @@
 ## Stack
 
 - **Backend**: Flask (Python 3.12), gunicorn in produzione
-- **Frontend**: Bootstrap 5.3.2, Chart.js 4.4.2, vanilla JS (no bundler) — asset vendorizzati in `static/vendor/` (nessuna CDN), PWA installabile (manifest + service worker)
+- **Frontend**: Bootstrap 5.3.2, Chart.js 4.4.2, vanilla JS (no bundler) — nessuna CDN: le librerie sono dichiarate in `package.json`/`package-lock.json` (Dependabot le aggiorna) e copiate in `static/vendor/` (non committata) con `npm run vendor`; PWA installabile (manifest + service worker)
 - **Database**: SQLite per utenti (`data/users.db`) e storico (`data/storico.db`), JSON per configurazione (`data/config.json`)
 - **Auth**: Flask-Login con sessioni, admin iniziale da variabili d'ambiente
 
@@ -17,8 +17,9 @@ ADMIN_USER=admin ADMIN_PASSWORD=test python app.py
 # Docker
 ADMIN_PASSWORD=test docker compose up --build
 
-# Installare dipendenze
+# Installare dipendenze (Python + librerie front-end in static/vendor/, richiede Node 22)
 pip install -r requirements.txt
+npm ci && npm run vendor
 
 # Test
 pip install -r requirements-dev.txt
@@ -30,6 +31,7 @@ pip install cairosvg && python scripts/genera_icone.py
 
 ## Test e CI
 
+- `static/vendor/` non e' nel repository: senza `npm ci && npm run vendor` i test falliscono con questa istruzione (`tests/test_vendor.py` controlla anche che le versioni coincidano con `package-lock.json`)
 - `python -m pytest tests/` — i test usano una cartella dati temporanea (`TERMOPILOTA_DATA_DIR`) e non avviano thread in background né chiamate di rete (`TERMOPILOTA_SENZA_SERVIZI=1`); impostate da `tests/conftest.py`, non servono a mano
 - `.github/workflows/tests.yml` — su ogni pull request: pytest + build e smoke test del container. Richiamato da `docker.yml`: un push su `main` pubblica l'immagine solo se i test passano
 - Per bloccare il merge in caso di test rossi, impostare `pytest` e `build e avvio del container` come controlli obbligatori nelle regole di protezione del branch `main` (Settings → Branches)
@@ -53,6 +55,8 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
   - `__init__.py` — ABC `ThermostatProvider`, `HeatPumpProvider`, registry
   - `netatmo.py` — Client Netatmo OAuth2 per termostati BTicino Smarther
   - `smartthings.py` — Client SmartThings OAuth2 (consigliato) + PAT fallback per AC Samsung
+- `package.json`, `package-lock.json` — Bootstrap, Bootstrap Icons, Chart.js a versioni esatte; `scripts/vendor.js` le copia in `static/vendor/`. Per aggiornarle: merge della PR di Dependabot (la CI rigenera i file da sola); a mano: `npm install --save-exact <pacchetto>@<versione>`
+- `Dockerfile` — multi-stage: una fase Node esegue `npm ci` e `npm run vendor`, la fase Python copia il risultato; `.dockerignore` tiene fuori dati locali e segreti
 - `bticino.py`, `samsung.py` — Shim di compatibilita', importano da providers/
 
 ## Convenzioni
@@ -60,7 +64,7 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 - **Lingua**: UI e commenti in italiano, identificatori codice in italiano (snake_case)
 - **Config**: `data/config.json` e' gitignored (tramite `data/`), contiene credenziali. `config.example.json` e' il template
 - **Provider pattern**: per aggiungere un nuovo tipo di termostato/pompa di calore, creare un modulo in `providers/` che implementi l'ABC e si registri nel registry
-- **Licenza**: GPL v3 o successiva (`LICENSE`). Ogni nuovo `.py`, `.js` o `.css` proprio deve iniziare con `SPDX-License-Identifier: GPL-3.0-or-later` (dopo l'eventuale shebang), altrimenti `tests/test_licenza.py` fallisce. Le librerie in `static/vendor/` sono MIT e vanno elencate in `THIRD_PARTY_NOTICES.txt`
+- **Licenza**: GPL v3 o successiva (`LICENSE`). Ogni nuovo `.py`, `.js` o `.css` proprio deve iniziare con `SPDX-License-Identifier: GPL-3.0-or-later` (dopo l'eventuale shebang), altrimenti `tests/test_licenza.py` fallisce. Le librerie front-end sono MIT e vanno elencate in `THIRD_PARTY_NOTICES.txt`
 - **COP_TABELLA**: definita una sola volta in `costanti.py`, importata da `app.py` e `automazione.py`
 
 ## File sensibili (mai committare)

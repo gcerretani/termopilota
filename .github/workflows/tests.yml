@@ -33,8 +33,19 @@ jobs:
             requirements.txt
             requirements-dev.txt
 
-      - name: Dipendenze
+      - name: Dipendenze Python
         run: pip install -r requirements-dev.txt
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Librerie front-end (static/vendor)
+        run: |
+          npm ci --ignore-scripts
+          npm run vendor
 
       - name: Sintassi di tutti i moduli
         run: python -m compileall -q app.py auth.py automazione.py costanti.py pannello.py prezzi.py raccomandazioni.py storico.py providers scripts tests

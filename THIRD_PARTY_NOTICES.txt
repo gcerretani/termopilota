@@ -5,11 +5,12 @@ TermoPilota e' distribuito con licenza GNU GPL v3 o successiva (vedi LICENSE).
 Questo elenco riguarda i componenti di terze parti inclusi nel repository o
 usati a runtime; tutte le licenze sono compatibili con la GPL v3.
 
-Incluse nel repository (static/vendor/)
----------------------------------------
+Librerie front-end (package.json, copiate in static/vendor/ da npm run vendor)
+------------------------------------------------------------------------------
 
-Gli avvisi di copyright originali sono mantenuti nell'intestazione di ogni
-file, come richiesto dalla licenza MIT.
+I file non sono nel repository: si generano da package-lock.json e finiscono
+nell'immagine Docker. Gli avvisi di copyright originali restano nell'intestazione
+di ogni file, come richiesto dalla licenza MIT.
 
 - Bootstrap 5.3.2 (CSS e JS) - MIT
   Copyright 2011-2023 The Bootstrap Authors
@@ -20,6 +21,10 @@ file, come richiesto dalla licenza MIT.
 - Chart.js 4.4.2 - MIT
   (c) 2024 Chart.js Contributors
   https://github.com/chartjs/Chart.js/blob/master/LICENSE.md
+
+Incorporate nei file sopra (stessa licenza MIT): Popper 2.11.8 in bootstrap.bundle
+(Copyright (c) 2019 Federico Zivolo) e @kurkle/color 0.3.4 in chart.umd
+(Copyright (c) 2018-2024 Jukka Kurkela).
 
 Le icone dell'applicazione (static/icons/) sono ricavate dai glifi "fire" e
 "snow" di Bootstrap Icons (MIT), ricolorati e composti.
@@ -36,7 +41,6 @@ Dipendenze Python (installate con pip, non incluse)
 
 Le licenze esatte e aggiornate sono quelle dei pacchetti installati.
 
-Nota di manutenzione: Dependabot aggiorna le dipendenze Python, l'immagine Docker e le
-action, ma NON i file in static/vendor/, che vanno aggiornati a mano (insieme alle
-versioni indicate in questo file e in CLAUDE.md; il precache di static/sw.js
-elenca i percorsi, quindi cambia solo se cambiano i nomi dei file).
+Manutenzione: Dependabot aggiorna dipendenze Python, librerie npm, immagini Docker e
+action. Le versioni delle librerie front-end sono quelle di package.json; se cambia
+il nome di un file in static/vendor/ va aggiornato anche il precache di static/sw.js.
