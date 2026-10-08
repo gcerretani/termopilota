@@ -48,7 +48,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 setup_auth(app)
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "data", "config.json")
+DATA_DIR = os.environ.get("TERMOPILOTA_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 DEFAULT_CONFIG = {
     "gas_fisso_smc": 0.38,
     "gas_totale_smc_manuale": 0.95,
@@ -1006,8 +1007,10 @@ def _avvia_servizi():
     if not _servizi_avviati:
         if not os.path.exists(CONFIG_FILE):
             salva_config(DEFAULT_CONFIG)
-        avvia_se_attiva()
-        storico.avvia_campionatore(_campione_corrente)
+        # I test importano l'app senza thread in background ne' chiamate di rete
+        if os.environ.get("TERMOPILOTA_SENZA_SERVIZI") != "1":
+            avvia_se_attiva()
+            storico.avvia_campionatore(_campione_corrente)
         _servizi_avviati = True
 
 

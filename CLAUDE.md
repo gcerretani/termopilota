@@ -28,6 +28,12 @@ python -m pytest tests/
 pip install cairosvg && python scripts/genera_icone.py
 ```
 
+## Test e CI
+
+- `python -m pytest tests/` — i test usano una cartella dati temporanea (`TERMOPILOTA_DATA_DIR`) e non avviano thread in background né chiamate di rete (`TERMOPILOTA_SENZA_SERVIZI=1`); impostate da `tests/conftest.py`, non servono a mano
+- `.github/workflows/tests.yml` — su ogni pull request: pytest + build e smoke test del container. Richiamato da `docker.yml`: un push su `main` pubblica l'immagine solo se i test passano
+- Per bloccare il merge in caso di test rossi, impostare `pytest` e `build e avvio del container` come controlli obbligatori nelle regole di protezione del branch `main` (Settings → Branches)
+
 ## Porta
 
 L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
@@ -42,7 +48,7 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 - `automazione.py` — Thread daemon, ciclo di controllo zone (ogni 15 min default)
 - `prezzi.py` — Prezzi gas/luce: tariffa variabile (TTF Yahoo Finance, PUN ENTSO-E, cache in memoria) oppure fissa (prezzo bloccato da config), per gas e luce indipendentemente
 - `pannello.py` — Stima produzione del pannello adottato Plenitude (Murcia) da irraggiamento Open-Meteo, con calibrazione del fattore di resa; la produzione di ogni quarto d'ora compensa il consumo di casa (`copertura_pannello` in `raccomandazioni.py`) e abbassa il costo marginale della pompa di calore
-- `tests/` — pytest per motore raccomandazioni, COP e storico
+- `tests/` — pytest: unit test (motore, COP, storico, tariffe, pannello) e test di integrazione delle route Flask (`test_app.py`); `conftest.py` isola dati e rete
 - `providers/` — Architettura modulare per dispositivi
   - `__init__.py` — ABC `ThermostatProvider`, `HeatPumpProvider`, registry
   - `netatmo.py` — Client Netatmo OAuth2 per termostati BTicino Smarther
