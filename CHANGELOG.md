@@ -7,6 +7,14 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.0.2] - 2026-10-08
+
+### Aggiunto
+- Supporto ai reverse proxy: con `TERMOPILOTA_PROXY=1` l'app si fida degli header
+  `X-Forwarded-*` di un proxy (Traefik, nginx). Serve perché il callback di Google OAuth venga
+  composto con `https` e con l'indirizzo pubblico. È spento di default: con la porta esposta
+  direttamente un client potrebbe falsificare quegli header.
+
 ## [1.0.1] - 2026-10-08
 
 Manutenzione: nessuna novità per chi usa l'app, ma il progetto è riordinato e le dipendenze sono
@@ -91,6 +99,7 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.0.1...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.2
 [1.0.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.1
 [1.0.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.0
