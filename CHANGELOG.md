@@ -92,5 +92,5 @@ Prima versione stabile.
   senza compensazione, mentre la dashboard sì.
 
 [Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.0.1...HEAD
-[1.0.1]: https://github.com/gcerretani/termopilota/compare/v1.0.0...v1.0.1
+[1.0.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.1
 [1.0.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.0
