@@ -7,6 +7,8 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.1.0] - 2026-10-08
+
 ### Modificato
 - **Interfaccia rinnovata**, pensata per il telefono (anche come app installata) e per il desktop:
   barra di navigazione in basso su mobile e barra laterale su desktop, con cinque sezioni sempre a
@@ -160,7 +162,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.0.3...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.1.0
 [1.0.3]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.3
 [1.0.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.2
 [1.0.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.1
