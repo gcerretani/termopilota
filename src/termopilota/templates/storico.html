@@ -15,7 +15,7 @@
       <div class="tp-kpi tp-kpi-lg h-100">
         <div class="tp-kpi-label"><span class="tp-kpi-dot" style="--dot:var(--green)"></span>Risparmiato questa stagione</div>
         <div class="tp-kpi-value tp-green" id="risparmioStagione">€ —</div>
-        <div class="tp-kpi-sub" id="risparmioOre">Stima basata sulle ore in cui la pompa di calore era la scelta più economica.</div>
+        <div class="tp-kpi-sub" id="risparmioOre">Calore prodotto dai condizionatori al posto della caldaia.</div>
         <div class="tp-kpi-sub" id="risparmioMisurato"></div>
       </div>
     </div>
@@ -112,11 +112,14 @@
 
   <p class="small tp-muted mb-0">
     <i class="bi bi-info-circle me-1"></i>
-    Il risparmio <strong>stimato</strong> conta, per ogni ora con riscaldamento attivo in cui la pompa di calore era
-    più conveniente, (costo caldaia − costo pompa) × potenza termica media configurata in
+    Si risparmia solo quando un condizionatore scalda davvero: ogni kWh di calore che produce è un kWh che la
+    caldaia non deve dare, e vale (costo caldaia − costo pompa) di quell'ora. Se è tutto spento il risparmio è
+    zero, qualunque fosse il consiglio; se l'AC scalda quando conviene il gas, il risparmio è negativo.
+    Il conto è lo stesso in modalità esclusiva e affiancata: il gas bruciato non si misura, conta il calore dell'AC.
+    Quello <strong>misurato</strong> parte dai kWh del contatore dei condizionatori in riscaldamento (× COP di tabella);
+    quello <strong>stimato</strong> dalle ore con un AC acceso × la potenza termica configurata in
     {% if current_user.is_admin %}<a href="/admin/">Impostazioni → Prezzi e impianto</a>{% else %}Impostazioni{% endif %}.
-    Quello <strong>misurato</strong> parte dai kWh letti dal contatore dei condizionatori: calore prodotto
-    (kWh × COP di tabella) × (costo caldaia − costo pompa) di quell'ora.
+    Il grafico «Ore consigliate» mostra invece il consiglio, non quello che è stato acceso.
   </p>
 
 </div>

@@ -78,6 +78,9 @@ html[data-theme="dark"] {
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
 html, body { background: var(--bg); }
+/* Niente "effetto molla" a inizio e fine pagina: con la barra in basso fissa
+   il rimbalzo la faceva sembrare staccata dalla pagina */
+html, body { overscroll-behavior-y: none; }
 body {
   font-family: var(--font-sans);
   color: var(--text);
@@ -748,6 +751,8 @@ details.tp-card[open] > summary::after { transform: rotate(180deg); }
 .zona-card.ac .zona-progress > div { background: var(--ac-color); }
 
 .tp-log-item { display: flex; gap: .75rem; padding: .6rem 0; border-bottom: 1px solid var(--border-soft); font-size: .84rem; }
+/* Messaggi lunghi (URL, errori) vanno a capo invece di allargare la pagina */
+.tp-log-item > .min-w-0, .tp-registro-riga .min-w-0 { overflow-wrap: anywhere; }
 .tp-log-item:last-child { border-bottom: 0; }
 .tp-log-ts { color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tp-log-list { max-height: 360px; overflow-y: auto; }
@@ -887,3 +892,13 @@ html[data-theme="dark"] .tp-mappa .leaflet-tile-pane { filter: brightness(.8) co
 .tp-stanza-blocchi { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .75rem; }
 .tp-stanza-blocco { padding: .75rem .9rem; border-radius: var(--radius-sm); background: var(--panel-2); display: flex; flex-direction: column; gap: .2rem; }
 .tp-stanza-valore { font-size: 2rem; font-weight: 300; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tp-stanza-blocco .tp-dato-label { display: flex; align-items: center; gap: .3rem; min-width: 0; white-space: nowrap; }
+.tp-stanza-comandi { gap: .6rem; }
+.tp-comando { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; }
+.tp-comando-label { flex: 0 0 6.5rem; font-size: .84rem; font-weight: 600; color: var(--text-soft); }
+.tp-comando-input { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; flex: 1 1 auto; min-width: 0; }
+@media (max-width: 575.98px) { .tp-comando-label { flex-basis: 100%; } }   /* stessa disposizione per tutti i comandi */
+
+/* Ora dell'ultima lettura di un dispositivo (rossa se vecchia) */
+.tp-letto { font-size: .74rem; color: var(--text-muted); white-space: nowrap; display: inline-flex; align-items: center; gap: .3rem; }
+.tp-letto.vecchio { color: var(--danger); }

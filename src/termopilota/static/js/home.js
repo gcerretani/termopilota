@@ -150,7 +150,7 @@
       if (!res.ok) return;
       const r = await res.json();
       const val = document.getElementById('chipRisparmioVal');
-      if (val) val.textContent = formatoEuro(r.stagione_eur || 0);
+      if (val) val.textContent = formatoEuro(r.stagione_principale_eur || 0);
     } catch (e) { /* silenzioso: lo storico può essere vuoto */ }
   }
 

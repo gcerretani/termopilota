@@ -28,7 +28,8 @@
     <p class="tp-muted small mb-0 mt-3">
       Ogni <strong>{{ cfg.intervallo_controllo_minuti|round|int }} minuti</strong> confronta il costo di caldaia e pompa di calore
       per le stanze incluse. Se conviene il condizionatore, lo accende al target del programma Netatmo e chiude il termostato
-      (modalità <em>esclusiva</em>) oppure lo abbassa lasciando la caldaia di riserva (modalità <em>affiancata</em>).
+      (modalità <em>esclusiva</em>) oppure li tiene accesi insieme, con il termostato qualche grado sotto il target:
+      la caldaia scalda solo se il condizionatore da solo non basta (modalità <em>affiancata</em>).
       Un comando manuale dalla pagina Dispositivi mette in pausa la stanza per {{ '%g'|format(cfg.pausa_manuale_ore|default(3)) }} h.
       Spegnendo l'automazione i termostati tornano al programma e i condizionatori accesi da TermoPilota si spengono.
     </p>

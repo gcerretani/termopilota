@@ -9,17 +9,19 @@ ogni CONTROLLO_SECONDI verifica se l'ora corrente e' gia' stata registrata
 e in caso contrario chiede un campione alla callback passata da app.py
 (cosi' questo modulo non importa app.py e non ci sono import circolari).
 
-I risparmi sono una STIMA: per ogni ora in cui la pompa di calore era
-consigliata (e faceva abbastanza freddo da riscaldare) si conta
-(costo_gas - costo_ac) €/kWh_th × potenza_termica_kw configurata.
+Lo stesso thread registra ogni LETTURE_SECONDI anche le letture dei
+dispositivi (tabella letture_dispositivi): temperature, umidita', setpoint e
+il contatore di energia cumulativo dei condizionatori.
 
-Dalla 1.2 lo stesso thread registra ogni LETTURE_SECONDI anche le letture
-dei dispositivi (tabella letture_dispositivi): temperature, umidita',
-setpoint e il contatore di energia cumulativo dei condizionatori. Dalle
-differenze del contatore si ricavano i kWh elettrici realmente consumati e
-un risparmio MISURATO: kWh_el × COP × (costo_gas - costo_ac) per ogni ora.
-Il COP resta quello di tabella (il calore prodotto non e' misurabile), ma
-il consumo non dipende piu' dalla potenza termica configurata.
+Il risparmio conta solo il calore che i condizionatori hanno davvero prodotto
+in riscaldamento: ogni kWh termico dell'AC e' un kWh che la caldaia non ha
+dovuto dare, quindi vale (costo_gas - costo_ac) di quell'ora (negativo se
+l'AC era acceso quando conveniva il gas). Se tutto e' spento non si risparmia
+nulla, qualunque fosse il consiglio. Vale uguale in modalita' esclusiva e
+affiancata: il gas bruciato non si misura, conta solo il calore dell'AC.
+- MISURATO: calore = kWh elettrici dal contatore × COP di tabella;
+- STIMATO (AC senza contatore): calore = potenza termica configurata × quota
+  dell'ora con almeno un AC acceso in riscaldamento (dalle letture).
 """
 
 import json
@@ -40,7 +42,6 @@ DB_FILE = os.path.join(DATA_DIR, "storico.db")
 CONTROLLO_SECONDI = 300      # ogni 5 min controlla se l'ora corrente manca
 LETTURE_SECONDI = 900        # letture dei dispositivi ogni 15 min
 RITENZIONE_GIORNI = 730      # ~2 stagioni termiche
-TEMP_MAX_RISCALDAMENTO = 16.0  # sopra questa T esterna il riscaldamento è considerato spento
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS campioni (
@@ -146,22 +147,20 @@ def leggi_campioni(da: str, a: str, risoluzione: str = "oraria",
                           ROUND(AVG(costo_gas_kwh), 4) AS costo_gas_medio,
                           ROUND(AVG(costo_ac_kwh), 4) AS costo_ac_medio,
                           SUM(CASE WHEN raccomandazione = 'gas' THEN 1 ELSE 0 END) AS ore_gas,
-                          SUM(CASE WHEN raccomandazione = 'ac' THEN 1 ELSE 0 END) AS ore_ac,
-                          SUM(CASE WHEN raccomandazione = 'ac'
-                                        AND temp_esterna < :t_max
-                                        AND costo_gas_kwh > costo_ac_kwh
-                                   THEN costo_gas_kwh - costo_ac_kwh ELSE 0 END)
-                              AS risparmio_kwh
+                          SUM(CASE WHEN raccomandazione = 'ac' THEN 1 ELSE 0 END) AS ore_ac
                    FROM campioni
                    WHERE ora BETWEEN :inizio AND :fine
                    GROUP BY giorno ORDER BY giorno""",
-                {"inizio": inizio, "fine": fine, "t_max": TEMP_MAX_RISCALDAMENTO},
+                {"inizio": inizio, "fine": fine},
             ).fetchall()
+            stime: dict = {}
+            for ora, s in _stime_orarie(conn, inizio, fine, potenza_kw).items():
+                stime[ora[:10]] = stime.get(ora[:10], 0.0) + s["eur"]
             misurati = consumi_misurati(da, a)
             punti = []
             for r in righe:
                 punto = dict(r)
-                punto["risparmio_eur"] = round(punto.pop("risparmio_kwh") * potenza_kw, 2)
+                punto["risparmio_eur"] = round(stime.get(punto["giorno"], 0.0), 2)
                 m = misurati.get(punto["giorno"])
                 punto["energia_ac_kwh"] = m["kwh"] if m else None
                 punto["costo_ac_eur"] = round(m["costo_eur"], 2) if m else None
@@ -176,7 +175,38 @@ def leggi_campioni(da: str, a: str, risoluzione: str = "oraria",
                    WHERE ora BETWEEN ? AND ? ORDER BY ora""",
                 (inizio, fine),
             ).fetchall()
-        return [dict(r) for r in righe]
+            stime = _stime_orarie(conn, inizio, fine, potenza_kw)
+        return [{**dict(r), "risparmio_eur": round(stime.get(r["ora"], {}).get("eur", 0.0), 3)} for r in righe]
+
+
+def _quote_ac_riscaldamento(conn, inizio: str, fine: str) -> dict:
+    """{ora: quota 0-1 delle letture dell'ora con almeno un AC acceso in riscaldamento}."""
+    righe = conn.execute(
+        """SELECT substr(ts, 1, 13) || ':00' AS ora, COUNT(DISTINCT ts) AS letture,
+                  COUNT(DISTINCT CASE WHEN attivo = 1 AND modalita = 'heat' THEN ts END) AS accese
+           FROM letture_dispositivi
+           WHERE tipo = 'ac' AND ts BETWEEN ? AND ?
+           GROUP BY ora""",
+        (inizio, fine),
+    ).fetchall()
+    return {r["ora"]: r["accese"] / r["letture"] for r in righe if r["letture"] and r["accese"]}
+
+
+def _stime_orarie(conn, inizio: str, fine: str, potenza_kw: float) -> dict:
+    """{ora: {eur, quota}}: risparmio STIMATO delle ore con un AC acceso in
+    riscaldamento (potenza termica configurata × quota dell'ora × differenza
+    di costo). Le ore con tutto spento non contano."""
+    quote = _quote_ac_riscaldamento(conn, inizio, fine)
+    if not quote:
+        return {}
+    prezzi = conn.execute(
+        """SELECT ora, costo_gas_kwh, costo_ac_kwh FROM campioni
+           WHERE ora BETWEEN ? AND ? AND costo_gas_kwh IS NOT NULL AND costo_ac_kwh IS NOT NULL""",
+        (inizio, fine),
+    ).fetchall()
+    return {p["ora"]: {"eur": (p["costo_gas_kwh"] - p["costo_ac_kwh"]) * potenza_kw * quote[p["ora"]],
+                       "quota": quote[p["ora"]]}
+            for p in prezzi if p["ora"] in quote}
 
 
 def _inizio_stagione(oggi: date) -> date:
@@ -187,40 +217,38 @@ def _inizio_stagione(oggi: date) -> date:
 
 
 def calcola_risparmi(potenza_kw: float) -> dict:
-    """Stima dei risparmi in € ottenuti seguendo i consigli (oggi/7gg/stagione).
-
-    Conta solo le ore con riscaldamento plausibilmente acceso
-    (temp < TEMP_MAX_RISCALDAMENTO) in cui la pompa di calore era consigliata.
-    """
+    """Risparmi in € (oggi/7gg/stagione) dal calore prodotto dai condizionatori
+    in riscaldamento: misurati dal contatore e stimati dalla potenza configurata.
+    `*_principale_eur` e' il misurato se ci sono letture del contatore, altrimenti
+    la stima: e' il numero da mostrare."""
     oggi = date.today()
     inizio_stagione = _inizio_stagione(oggi)
 
-    def _somma(conn, da: date) -> tuple[float, int]:
-        row = conn.execute(
-            """SELECT COALESCE(SUM(costo_gas_kwh - costo_ac_kwh), 0) AS delta,
-                      COUNT(*) AS ore
-               FROM campioni
-               WHERE ora >= ? AND raccomandazione = 'ac'
-                     AND temp_esterna < ? AND costo_gas_kwh > costo_ac_kwh""",
-            (f"{da.isoformat()}T00:00", TEMP_MAX_RISCALDAMENTO),
-        ).fetchone()
-        return row["delta"] * potenza_kw, row["ore"]
-
     with _connetti() as conn:
-        eur_oggi, _ = _somma(conn, oggi)
-        eur_settimana, _ = _somma(conn, oggi - timedelta(days=6))
-        eur_stagione, ore_ac = _somma(conn, inizio_stagione)
+        stime = _stime_orarie(conn, f"{inizio_stagione.isoformat()}T00:00", f"{oggi.isoformat()}T23:59", potenza_kw)
+
+    def _somma(da: date, campo: str = "eur") -> float:
+        return sum(s[campo] for ora, s in stime.items() if ora >= da.isoformat())
+
+    eur_oggi, eur_settimana, eur_stagione = _somma(oggi), _somma(oggi - timedelta(days=6)), _somma(inizio_stagione)
+    ore_ac = _somma(inizio_stagione, "quota")
 
     misurati = consumi_misurati(inizio_stagione.isoformat(), oggi.isoformat())
 
     def _somma_misurati(da: date, campo: str) -> float:
         return round(sum(g[campo] for giorno, g in misurati.items() if giorno >= da.isoformat()), 2)
 
+    principale = ((lambda da: _somma_misurati(da, "risparmio_eur")) if misurati
+                  else (lambda da: round(_somma(da), 2)))
     return {
+        "fonte": "misurato" if misurati else "stimato",
+        "oggi_principale_eur": principale(oggi),
+        "settimana_principale_eur": principale(oggi - timedelta(days=6)),
+        "stagione_principale_eur": principale(inizio_stagione),
         "oggi_eur": round(eur_oggi, 2),
         "settimana_eur": round(eur_settimana, 2),
         "stagione_eur": round(eur_stagione, 2),
-        "ore_ac_stagione": ore_ac,
+        "ore_ac_stagione": round(ore_ac, 1),
         "potenza_kw": potenza_kw,
         "inizio_stagione": inizio_stagione.isoformat(),
         # Dal contatore dei condizionatori (None finche' non ci sono letture)
@@ -307,12 +335,15 @@ def leggi_letture(tipo: str, ident: str, da: str, a: str, risoluzione: str = "gr
     return punti
 
 
-def _delta_energia(conn, da: str, a: str, ident: Optional[str] = None) -> list[tuple]:
+def _delta_energia(conn, da: str, a: str, ident: Optional[str] = None,
+                   solo_riscaldamento: bool = False) -> list[tuple]:
     """[(ts, id, nome, kWh)] dalle differenze del contatore tra letture consecutive.
 
     Il consumo tra due letture si attribuisce all'istante della seconda; un
     contatore che cala (sostituzione, reset) non produce consumo. La lettura
     precedente a `da` (fino a un giorno prima) da' il consumo del primo periodo.
+    `solo_riscaldamento`: solo i tratti con l'AC in riscaldamento in una delle
+    due letture (il raffrescamento non sostituisce la caldaia).
     """
     prima = (datetime.strptime(da, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%dT00:00")
     inizio, fine = f"{da}T00:00", f"{a}T23:59"
@@ -320,17 +351,22 @@ def _delta_energia(conn, da: str, a: str, ident: Optional[str] = None) -> list[t
     if ident:
         filtro, parametri = " AND id = ?", [prima, fine, ident]
     righe = conn.execute(
-        f"""SELECT ts, id, nome, energia_wh FROM letture_dispositivi
+        f"""SELECT ts, id, nome, energia_wh, attivo, modalita FROM letture_dispositivi
             WHERE tipo = 'ac' AND energia_wh IS NOT NULL AND ts BETWEEN ? AND ?{filtro}
             ORDER BY id, ts""",
         parametri,
     ).fetchall()
     delta, precedente = [], {}
+
+    def scalda(r) -> bool:
+        return bool(r["attivo"]) and r["modalita"] == "heat"
+
     for r in righe:
         ultimo = precedente.get(r["id"])
-        if ultimo is not None and r["ts"] >= inizio and r["energia_wh"] > ultimo:
-            delta.append((r["ts"], r["id"], r["nome"], (r["energia_wh"] - ultimo) / 1000.0))
-        precedente[r["id"]] = r["energia_wh"]
+        if (ultimo is not None and r["ts"] >= inizio and r["energia_wh"] > ultimo["energia_wh"]
+                and (not solo_riscaldamento or scalda(r) or scalda(ultimo))):
+            delta.append((r["ts"], r["id"], r["nome"], (r["energia_wh"] - ultimo["energia_wh"]) / 1000.0))
+        precedente[r["id"]] = r
     return delta
 
 
@@ -349,7 +385,8 @@ def energia_ac(da: str, a: str, risoluzione: str = "giornaliera",
 
 
 def consumi_misurati(da: str, a: str) -> dict:
-    """{giorno: {kwh, costo_eur, risparmio_eur}} dal contatore di tutti gli AC.
+    """{giorno: {kwh, costo_eur, risparmio_eur}} dal contatore di tutti gli AC,
+    solo in riscaldamento.
 
     Per ogni ora: costo = kWh × prezzo effettivo della luce (costo_ac_kwh × COP,
     cioe' con lo stesso sconto del pannello del motore); risparmio = calore
@@ -358,7 +395,7 @@ def consumi_misurati(da: str, a: str) -> dict:
     """
     with _connetti() as conn:
         per_ora: dict = {}
-        for ts, _, _, kwh in _delta_energia(conn, da, a):
+        for ts, _, _, kwh in _delta_energia(conn, da, a, solo_riscaldamento=True):
             ora = ts[:13] + ":00"
             per_ora[ora] = per_ora.get(ora, 0.0) + kwh
         if not per_ora:

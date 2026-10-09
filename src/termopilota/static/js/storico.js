@@ -5,8 +5,6 @@
 (function () {
   const grafici = {};
   const G = TPGrafici;
-  const TEMP_MAX_RISCALDAMENTO = 16; // allineato a storico.py
-  let potenzaKw = 4.0;               // aggiornata da /api/risparmi
 
   function intervalloDaRange(range) {
     const oggi = new Date();
@@ -148,10 +146,7 @@
         if (!mappa.has(g)) mappa.set(g, { giorno: g, ore_gas: 0, ore_ac: 0, risparmio_eur: 0 });
         const agg = mappa.get(g);
         if (p.raccomandazione === 'ac') agg.ore_ac += 1; else agg.ore_gas += 1;
-        if (p.raccomandazione === 'ac' && p.temp_esterna < TEMP_MAX_RISCALDAMENTO
-            && p.costo_gas_kwh > p.costo_ac_kwh) {
-          agg.risparmio_eur += (p.costo_gas_kwh - p.costo_ac_kwh) * potenzaKw;
-        }
+        agg.risparmio_eur += p.risparmio_eur || 0;     // dal server: solo le ore con l'AC acceso
       });
       giorni = [...mappa.values()];
     } else {
@@ -236,18 +231,20 @@
       const res = await fetch('/api/risparmi');
       if (!res.ok) return;
       const r = await res.json();
-      potenzaKw = r.potenza_kw || potenzaKw;
       const set = (id, testo) => {
         const el = document.getElementById(id);
         if (el) el.textContent = testo;
       };
-      set('risparmioStagione', formatoEuro(r.stagione_eur));
-      set('risparmioOggi', formatoEuro(r.oggi_eur));
-      set('risparmioSettimana', formatoEuro(r.settimana_eur));
-      set('risparmioOre', `${r.ore_ac_stagione} ore in pompa di calore dal ${r.inizio_stagione.slice(8, 10)}/${r.inizio_stagione.slice(5, 7)} · stima con ${r.potenza_kw} kW termici`);
-      if (r.misure_disponibili) {
-        set('risparmioMisurato', `Misurato dal contatore dei condizionatori: ${formatoEuro(r.stagione_reale_eur)} · `
-          + `${r.kwh_ac_stagione.toFixed(1)} kWh, ${formatoEuro(r.costo_ac_stagione_eur)} di elettricità`);
+      const dal = `dal ${r.inizio_stagione.slice(8, 10)}/${r.inizio_stagione.slice(5, 7)}`;
+      set('risparmioStagione', formatoEuro(r.stagione_principale_eur));
+      set('risparmioOggi', formatoEuro(r.oggi_principale_eur));
+      set('risparmioSettimana', formatoEuro(r.settimana_principale_eur));
+      if (r.fonte === 'misurato') {
+        set('risparmioOre', `Misurato dal contatore dei condizionatori ${dal}: ${r.kwh_ac_stagione.toFixed(1).replace('.', ',')} kWh in riscaldamento, `
+          + `${formatoEuro(r.costo_ac_stagione_eur)} di elettricità al posto del gas.`);
+        set('risparmioMisurato', `Stima con ${r.potenza_kw} kW termici: ${formatoEuro(r.stagione_eur)} in ${String(r.ore_ac_stagione).replace('.', ',')} ore di AC acceso.`);
+      } else {
+        set('risparmioOre', `Stima ${dal}: ${String(r.ore_ac_stagione).replace('.', ',')} ore di AC acceso in riscaldamento × ${r.potenza_kw} kW termici.`);
       }
     } catch (e) { /* silenzioso */ }
   }
@@ -262,6 +259,6 @@
     });
   });
 
-  // Prima i risparmi (fissa potenzaKw), poi i grafici che la usano.
-  caricaRisparmi().then(() => caricaStorico('7g'));
+  caricaRisparmi();
+  caricaStorico('7g');
 })();

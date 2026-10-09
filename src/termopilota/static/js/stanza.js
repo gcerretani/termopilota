@@ -24,9 +24,11 @@
   }
 
   // ── Stato ──────────────────────────────────────────────────────────────
-  function blocco(titolo, icona, colore, righe) {
+  // Termostato e condizionatore hanno blocchi con la stessa struttura:
+  // intestazione (tipo e nome), valore, stato, umidita', ora dell'ultima lettura.
+  function blocco(titolo, nome, icona, colore, righe) {
     return `<div class="tp-stanza-blocco">
-      <div class="tp-dato-label"><i class="bi bi-${icona} tp-${colore}"></i> ${titolo}</div>
+      <div class="tp-dato-label"><i class="bi bi-${icona} tp-${colore}"></i> ${titolo}${nome ? ` · <span class="text-truncate">${escapeHtml(nome)}</span>` : ''}</div>
       ${righe}
     </div>`;
   }
@@ -35,6 +37,7 @@
     const st = d.stanza || {};
     const ac = d.ac ? d.ac.stato || {} : null;
     const dec = d.decisione || {};
+    const letti = d.letti_alle || {};
     const inclusa = d.zona.automazione !== false;
     const stato = !inclusa ? 'esclusa' : (d.pausa_fino ? 'pausa' : (dec.stato === 'esclusa' ? null : dec.stato));
     document.getElementById('badgeStanza').innerHTML = stato && d.automazione_attiva ? badgeStatoZona(stato, dec.simulazione) : '';
@@ -43,21 +46,21 @@
       : d.pausa_fino ? `In pausa fino alle ${oraDaEpoch(d.pausa_fino)}`
       : (dec.motivo || 'In attesa del prossimo controllo') + (dec.aggiornato ? ` · ${dec.aggiornato}` : '');
 
-    const termostato = blocco('Termostato', 'thermometer-half', 'gas', `
+    const termostato = blocco('Termostato', st.nome, 'thermometer-half', 'gas', `
       <div class="tp-stanza-valore">${gradi(st.temperatura_attuale)}</div>
       <div class="small tp-muted">${st.raggiungibile === false
         ? `<span class="text-danger">${escapeHtml(st.errore || 'non raggiungibile')}</span>`
         : `impostato ${gradi(st.setpoint)} · ${escapeHtml(MODI_STANZA[st.modalita] || st.modalita || '—')}${st.setpoint_fine ? ` fino alle ${oraDaEpoch(st.setpoint_fine)}` : ''}`}</div>
       <div class="small tp-muted"><i class="bi bi-droplet"></i> ${percento(st.umidita)}${st.richiesta_calore_pct ? ` · <span class="tp-gas"><i class="bi bi-fire"></i> richiesta ${percento(st.richiesta_calore_pct)}</span>` : ''}${st.finestra_aperta ? ' · <span class="text-danger"><i class="bi bi-wind"></i> finestra aperta</span>' : ''}</div>
-      <a class="small" href="/dispositivi/stanza/${enc(roomId)}">Dettagli del termostato</a>`);
-    const condizionatore = ac ? blocco('Condizionatore', 'snow', 'ac', `
-      <div class="tp-stanza-valore">${gradi(ac.temperatura_ambiente, 0)}</div>
+      ${etichettaLettura(letti.netatmo)}`);
+    const condizionatore = ac ? blocco('Condizionatore', d.ac.nome, 'snow', 'ac', `
+      <div class="tp-stanza-valore">${gradi(ac.temperatura_ambiente)}</div>
       <div class="small tp-muted">${ac.acceso
-        ? `<span class="tp-ac">acceso</span> · ${escapeHtml(MODI_AC[ac.modalita] || ac.modalita || '')} a ${gradi(ac.setpoint_riscaldamento, 0)}`
+        ? `<span class="tp-ac">acceso</span> · ${escapeHtml(MODI_AC[ac.modalita] || ac.modalita || '')} a ${gradi(ac.setpoint_riscaldamento)}`
         : 'spento'}</div>
       <div class="small tp-muted"><i class="bi bi-droplet"></i> ${percento(ac.umidita)}${ac.filtro_stato && ac.filtro_stato !== 'normal' ? ' · <span class="text-danger">filtro da pulire</span>' : ''}</div>
-      <a class="small" href="/dispositivi/ac/${enc(d.ac.id)}">Dettagli di ${escapeHtml(d.ac.nome)}</a>`)
-      : blocco('Condizionatore', 'snow', 'ac', '<div class="small tp-muted mt-2">Nessun condizionatore in questa stanza.</div>');
+      ${etichettaLettura(letti.ac)}`)
+      : blocco('Condizionatore', '', 'snow', 'ac', '<div class="small tp-muted mt-2">Nessun condizionatore in questa stanza.</div>');
     let differenza = '';
     if (ac && st.temperatura_attuale != null && ac.temperatura_ambiente != null) {
       const diff = ac.temperatura_ambiente - st.temperatura_attuale;
@@ -80,8 +83,12 @@
       righe.push(`Quando conviene il condizionatore: <strong>AC a ${gradi(c.setpoint_ac_previsto)}</strong>
         (target ${gradi(c.target)} ${c.offset_ac >= 0 ? '+' : '−'} correzione ${num(Math.abs(c.offset_ac))} °C)
         e <strong>termostato a ${gradi(c.setpoint_termostato_in_ac)}</strong>
-        ${c.modalita === 'affiancata' ? `(modalità affiancata: target − riserva ${num(c.riserva_gas_delta)} °C, la caldaia resta di riserva)`
-          : '(modalità esclusiva: caldaia chiusa)'}.`);
+        ${c.modalita === 'affiancata'
+          ? (c.riserva_gas_delta > 0
+            ? `(modalità affiancata: target − ${num(c.riserva_gas_delta)} °C). Scaldano insieme, ma la caldaia parte solo
+               se la stanza scende sotto ${gradi(c.setpoint_termostato_in_ac)}, cioè se il condizionatore da solo non basta`
+            : '(modalità affiancata senza margine): caldaia e condizionatore scaldano in parallelo fino al target')
+          : '(modalità esclusiva: il termostato non chiede calore alla caldaia, scalda solo il condizionatore)'}.`);
       if (c.condiviso_con.length) {
         righe.push(`<i class="bi bi-share"></i> Il condizionatore serve anche ${escapeHtml(c.condiviso_con.join(', '))}:
           resta acceso finché una stanza lo chiede, al setpoint più alto richiesto.`);
@@ -126,45 +133,69 @@
     </div>`;
   }
 
+  // Stessa struttura per i due dispositivi: intestazione, comandi base (una riga
+  // per comando, etichetta a sinistra), pulsante per la pagina con tutti i controlli.
+  function rigaComando(etichetta, contenuto) {
+    return `<div class="tp-comando"><span class="tp-comando-label">${etichetta}</span><div class="tp-comando-input">${contenuto}</div></div>`;
+  }
+
+  function colonnaComandi(titolo, nome, icona, colore, corpo, link, testoLink) {
+    return `<div class="tp-stanza-blocco tp-stanza-comandi">
+      <div class="tp-dato-label"><i class="bi bi-${icona} tp-${colore}"></i> ${titolo}${nome ? ` · <span class="text-truncate">${escapeHtml(nome)}</span>` : ''}</div>
+      <div class="d-flex flex-column gap-2 mt-1">${corpo}</div>
+      ${link ? `<a class="btn btn-sm btn-outline-secondary mt-auto align-self-start" href="${link}">
+        <i class="bi bi-sliders me-1"></i>${testoLink} <i class="bi bi-chevron-right"></i></a>` : ''}
+    </div>`;
+  }
+
   function renderComandi(d) {
     const st = d.stanza || {};
-    let html = '';
+    let termostato;
     if (st.raggiungibile === false || !d.stanza) {
-      html += `<div class="small text-danger mb-2"><i class="bi bi-wifi-off me-1"></i>${escapeHtml(st.errore || 'Termostato non raggiungibile')}: comandi del termostato non disponibili.</div>`;
+      termostato = `<div class="small text-danger"><i class="bi bi-wifi-off me-1"></i>${escapeHtml(st.errore || 'Termostato non raggiungibile')}: comandi non disponibili.</div>`;
     } else {
-      html += `<div class="tp-controllo">
-        <div><div class="tp-controllo-label">Termostato</div>
-          <div class="small tp-muted">Temperatura manuale, poi torna da solo al programma</div></div>
-        <div class="d-flex flex-wrap align-items-center gap-2">
-          ${stepper('stepTermostato', st.setpoint ?? d.calcolo.target ?? 20, 5, 30, 0.5, '°C')}
+      termostato = [
+        rigaComando('Modalità', `<span class="small">${escapeHtml(MODI_STANZA[st.modalita] || st.modalita || '—')}${st.setpoint_fine ? ` fino alle ${oraDaEpoch(st.setpoint_fine)}` : ''}</span>
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-azione="ripristina" ${st.modalita === 'home' ? 'disabled' : ''}>
+            <i class="bi bi-calendar-week me-1"></i>Programma</button>`),
+        rigaComando('Temperatura', `${stepper('stepTermostato', st.setpoint ?? d.calcolo.target ?? 20, 5, 30, 0.5, '°C')}
           <select class="form-select form-select-sm w-auto" id="durataTermostato" aria-label="Durata">
             ${DURATE.map(([m, t]) => `<option value="${m}" ${m === 180 ? 'selected' : ''}>per ${t}</option>`).join('')}
           </select>
-          <button type="button" class="btn btn-sm btn-primary" data-azione="setpoint">Imposta</button>
-          <button type="button" class="btn btn-sm btn-outline-danger" data-azione="boost" title="Al massimo per 30 minuti"><i class="bi bi-fire"></i> Boost</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-azione="ripristina" ${st.modalita === 'home' ? 'disabled' : ''}>Programma</button>
-        </div>
-      </div>`;
+          <button type="button" class="btn btn-sm btn-primary" data-azione="setpoint">Imposta</button>`),
+        rigaComando('Boost', `<button type="button" class="btn btn-sm btn-outline-danger" data-azione="boost">
+          <i class="bi bi-fire me-1"></i>Al massimo per 30 min</button>`),
+      ].join('');
     }
+    let condizionatore;
     if (d.ac) {
       const controlli = Object.fromEntries((d.ac.controlli || []).map(c => [c.chiave, c]));
       const s = d.ac.stato || {};
-      html += `<div class="tp-controllo">
-        <div><div class="tp-controllo-label">Condizionatore</div>
-          <div class="small tp-muted">${escapeHtml(d.ac.nome)}</div></div>
-        <div class="d-flex flex-wrap align-items-center gap-2">
-          ${controlli.accensione ? `<div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch"
-            id="acceso" ${s.acceso ? 'checked' : ''} aria-label="Accensione"></div>` : ''}
-          ${controlli.modalita ? `<select class="form-select form-select-sm w-auto" id="modoAc" aria-label="Modalità">
-            ${controlli.modalita.valori.map(v => `<option value="${escapeHtml(v)}" ${v === s.modalita ? 'selected' : ''}>${escapeHtml(controlli.modalita.etichette[v] || v)}</option>`).join('')}
-          </select>` : ''}
-          ${controlli.setpoint ? stepper('stepAc', s.setpoint_riscaldamento ?? controlli.setpoint.minimo, controlli.setpoint.minimo,
-            controlli.setpoint.massimo, controlli.setpoint.passo, '°C') + '<button type="button" class="btn btn-sm btn-primary" data-azione="setpoint-ac">Imposta</button>' : ''}
-          <a class="btn btn-sm btn-link" href="/dispositivi/ac/${enc(d.ac.id)}">Tutti i controlli</a>
-        </div>
-      </div>`;
+      const righe = [];
+      if (controlli.accensione) {
+        righe.push(rigaComando('Accensione', `<div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch"
+          id="acceso" ${s.acceso ? 'checked' : ''} aria-label="Accensione"></div>`));
+      }
+      if (controlli.modalita) {
+        righe.push(rigaComando('Modalità', `<select class="form-select form-select-sm w-auto" id="modoAc" aria-label="Modalità">
+          ${controlli.modalita.valori.map(v => `<option value="${escapeHtml(v)}" ${v === s.modalita ? 'selected' : ''}>${escapeHtml(controlli.modalita.etichette[v] || v)}</option>`).join('')}
+        </select>`));
+      }
+      if (controlli.setpoint) {
+        righe.push(rigaComando('Temperatura', stepper('stepAc', s.setpoint_riscaldamento ?? controlli.setpoint.minimo, controlli.setpoint.minimo,
+          controlli.setpoint.massimo, controlli.setpoint.passo, '°C') + '<button type="button" class="btn btn-sm btn-primary" data-azione="setpoint-ac">Imposta</button>'));
+      }
+      condizionatore = righe.join('') || '<div class="small tp-muted">Nessun comando disponibile.</div>';
+    } else {
+      condizionatore = `<div class="small tp-muted">Nessun condizionatore in questa stanza.${window.utenteAdmin
+        ? ' Puoi associarlo nelle <a href="#impostazioniStanza">impostazioni</a>.' : ''}</div>`;
     }
-    document.getElementById('comandiStanza').innerHTML = html;
+    document.getElementById('comandiStanza').innerHTML = `<div class="tp-stanza-blocchi">
+      ${colonnaComandi('Termostato', st.nome, 'thermometer-half', 'gas', termostato,
+        `/dispositivi/stanza/${enc(roomId)}`, 'Tutti i controlli del termostato')}
+      ${colonnaComandi('Condizionatore', d.ac ? d.ac.nome : '', 'snow', 'ac', condizionatore,
+        d.ac ? `/dispositivi/ac/${enc(d.ac.id)}` : '', 'Tutti i controlli del condizionatore')}
+    </div>`;
   }
 
   // ── Registro ───────────────────────────────────────────────────────────
@@ -203,12 +234,13 @@
         <div class="form-text">Lo stesso condizionatore può servire più stanze.</div></div>
       <div class="col-md-4"><label class="form-label small" for="impModalita">Modalità</label>
         <select class="form-select form-select-sm" id="impModalita">
-          <option value="esclusiva" ${z.modalita !== 'affiancata' ? 'selected' : ''}>Esclusiva: con l'AC la caldaia si chiude</option>
-          <option value="affiancata" ${z.modalita === 'affiancata' ? 'selected' : ''}>Affiancata: la caldaia resta di riserva</option>
+          <option value="esclusiva" ${z.modalita !== 'affiancata' ? 'selected' : ''}>Esclusiva: con l'AC la caldaia non scalda la stanza</option>
+          <option value="affiancata" ${z.modalita === 'affiancata' ? 'selected' : ''}>Affiancata: AC e caldaia insieme</option>
         </select></div>
-      <div class="col-md-4"><label class="form-label small" for="impRiserva">Riserva caldaia (°C sotto il target)</label>
-        <input type="number" class="form-control form-control-sm" id="impRiserva" min="0.5" max="5" step="0.5"
-          value="${z.riserva_gas_delta}" ${z.modalita === 'affiancata' ? '' : 'disabled'}></div>
+      <div class="col-md-4"><label class="form-label small" for="impRiserva">Margine della caldaia (°C sotto il target)</label>
+        <input type="number" class="form-control form-control-sm" id="impRiserva" min="0" max="5" step="0.5"
+          value="${z.riserva_gas_delta}" ${z.modalita === 'affiancata' ? '' : 'disabled'}>
+        <div class="form-text">In affiancata il termostato sta a target − margine: la caldaia parte solo se l'AC non basta. Con 0 scaldano in parallelo.</div></div>
       <div class="col-md-4"><label class="form-label small" for="impOffset">Correzione setpoint AC (°C)</label>
         <div class="input-group input-group-sm">
           <input type="number" class="form-control" id="impOffset" min="-3" max="3" step="0.5" value="${z.offset_ac}">
@@ -355,7 +387,6 @@
       document.getElementById('nomeStanza').textContent = d.zona.nome;
       document.getElementById('erroriStanza').innerHTML = (d.errori || []).length
         ? `<div class="alert alert-warning py-2 small mb-0">${d.errori.map(escapeHtml).join('<br>')}</div>` : '';
-      if (d.letto_alle) segnalaAggiornamento(`Letto alle ${d.letto_alle.slice(11, 16)}`, false);
       renderStato(d);
       renderCalcolo(d);
       renderComandi(d);

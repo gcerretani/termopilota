@@ -230,6 +230,9 @@ def test_api_storico_restituisce_i_campioni(admin_client):
 
 def test_api_storico_giornaliero_ha_il_risparmio_in_euro(admin_client):
     storico.registra_campione(_campione("2026-01-10T08:00"))
+    storico.registra_letture("2026-01-10T08:00", [{
+        "tipo": "ac", "id": "ac-1", "nome": "AC", "t_ambiente": 21.0, "umidita": 50, "setpoint": 21,
+        "attivo": 1, "modalita": "heat", "energia_wh": None, "potenza_w": None, "extra": {}}])
     r = admin_client.get("/api/storico?da=2026-01-10&a=2026-01-10&risoluzione=giornaliera")
     punto = r.get_json()["punti"][0]
     assert punto["ore_ac"] == 1 and punto["risparmio_eur"] > 0
@@ -247,7 +250,8 @@ def test_api_storico_rifiuta_parametri_invalidi(admin_client, query):
 def test_api_risparmi_struttura_e_vuoto(admin_client):
     dati = admin_client.get("/api/risparmi").get_json()
     assert dati["stagione_eur"] == 0.0
-    for chiave in ("oggi_eur", "settimana_eur", "ore_ac_stagione", "potenza_kw", "inizio_stagione"):
+    for chiave in ("oggi_eur", "settimana_eur", "ore_ac_stagione", "potenza_kw", "inizio_stagione",
+                   "fonte", "stagione_principale_eur"):
         assert chiave in dati
 
 
