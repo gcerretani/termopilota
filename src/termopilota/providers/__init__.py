@@ -10,12 +10,16 @@ Per aggiungere un nuovo provider:
 """
 
 import json
+import logging
 import os
 import tempfile
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections import deque
 from typing import Optional
+
+import requests
 
 _scrittura_lock = threading.Lock()
 
@@ -50,6 +54,80 @@ def scrivi_json_atomico(path: str, dati: dict) -> None:
             except OSError:
                 pass
             raise
+
+
+# ── Chiamate alle API dei dispositivi: conteggio e limite superato ───────────
+# Netatmo concede 500 richieste l'ora per utente (e 50 ogni 10 s); oltre risponde
+# 403 con codice 26 o 429. Le chiamate passano tutte da qui: si contano (ultima
+# ora, mostrate in Credenziali API) e, se il limite e' superato, per PAUSA_LIMITE_S
+# non se ne fanno altre invece di insistere.
+
+PAUSA_LIMITE_S = 600
+FINESTRA_CONTEGGIO_S = 3600
+_log = logging.getLogger(__name__)
+_chiamate: dict = {}          # servizio -> deque di epoch
+_pausa_fino: dict = {}        # servizio -> epoch
+_lock_chiamate = threading.Lock()
+
+
+class LimiteChiamate(RuntimeError):
+    """Il servizio ha segnalato il limite di richieste: si aspetta prima di riprovare."""
+
+    def __init__(self, servizio: str, fino: float):
+        super().__init__(f"limite di richieste {servizio} superato, nuove chiamate dalle "
+                         f"{time.strftime('%H:%M', time.localtime(fino))}")
+        self.servizio, self.fino = servizio, fino
+
+
+def _limite_superato(resp) -> bool:
+    if resp.status_code == 429:
+        return True
+    if resp.status_code == 403:
+        try:
+            errore = resp.json().get("error") or {}
+            return isinstance(errore, dict) and errore.get("code") == 26
+        except ValueError:
+            return False
+    return False
+
+
+def chiamata(servizio: str, metodo: str, url: str, **parametri):
+    """requests.<metodo>(url, ...) contata per `servizio`; LimiteChiamate in pausa."""
+    adesso = time.time()
+    with _lock_chiamate:
+        if _pausa_fino.get(servizio, 0) > adesso:
+            raise LimiteChiamate(servizio, _pausa_fino[servizio])
+        coda = _chiamate.setdefault(servizio, deque())
+        coda.append(adesso)
+        while coda and coda[0] < adesso - FINESTRA_CONTEGGIO_S:
+            coda.popleft()
+    resp = getattr(requests, metodo)(url, **parametri)
+    if _limite_superato(resp):
+        fino = time.time() + PAUSA_LIMITE_S
+        with _lock_chiamate:
+            gia_in_pausa = _pausa_fino.get(servizio, 0) > adesso
+            _pausa_fino[servizio] = fino
+        if not gia_in_pausa:
+            _log.warning("%s: limite di richieste superato (%s chiamate nell'ultima ora), pausa di %d minuti",
+                         servizio, conteggio_chiamate().get(servizio, 0), PAUSA_LIMITE_S // 60)
+        raise LimiteChiamate(servizio, fino)
+    return resp
+
+
+def conteggio_chiamate() -> dict:
+    """{servizio: chiamate nell'ultima ora}, piu' 'pausa_fino' per i servizi in pausa."""
+    adesso = time.time()
+    with _lock_chiamate:
+        risultato = {s: sum(1 for t in coda if t >= adesso - FINESTRA_CONTEGGIO_S) for s, coda in _chiamate.items()}
+        risultato["pausa_fino"] = {s: t for s, t in _pausa_fino.items() if t > adesso}
+    return risultato
+
+
+def azzera_chiamate() -> None:
+    """Solo per i test."""
+    with _lock_chiamate:
+        _chiamate.clear()
+        _pausa_fino.clear()
 
 
 def aggiorna_config_atomico(path: str, mutator) -> None:

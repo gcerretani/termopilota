@@ -59,9 +59,16 @@ def differenze(prima: Optional[dict], dopo: dict) -> list:
         vecchia = stanze_p.get(rid)
         if vecchia is None:
             continue
+        nome = st.get("nome") or rid
+        if vecchia.get("raggiungibile") != st.get("raggiungibile"):
+            # Termostato perso o ritrovato da Netatmo: setpoint e modalita' diventano
+            # (o tornano da) "nessun dato", non sono cambi da segnalare
+            cambi.append({"tipo": "stanza", "id": rid, "nome": nome, "campo": "raggiungibile",
+                          "prima": vecchia.get("raggiungibile"), "dopo": st.get("raggiungibile")})
+            continue
         for campo in CAMPI_STANZA:
             if vecchia.get(campo) != st.get(campo):
-                cambi.append({"tipo": "stanza", "id": rid, "nome": st.get("nome") or rid,
+                cambi.append({"tipo": "stanza", "id": rid, "nome": nome,
                               "campo": campo, "prima": vecchia.get(campo), "dopo": st.get(campo)})
     return cambi
 
@@ -85,6 +92,9 @@ ETICHETTE = {"setpoint": "termostato", "modalita": "modalità", "setpoint_fine":
 
 
 def descrivi(cambi: list) -> str:
+    if len(cambi) == 1 and cambi[0]["campo"] == "raggiungibile":
+        return ("termostato di nuovo raggiungibile" if cambi[0]["dopo"]
+                else "termostato non raggiungibile (segnalato da Netatmo)")
     return ", ".join(f"{ETICHETTE.get(c['campo'], c['campo'])} {_valore(c['campo'], c['prima'])} → "
                      f"{_valore(c['campo'], c['dopo'])}" for c in cambi)
 
@@ -97,7 +107,6 @@ class OsservatoreNetatmo:
         self._carica_config = carica_config
         self._ricalcolo_per = ricalcolo_per
         self._precedente: Optional[dict] = None
-        self._in_errore = False
         self._letture = 0
         self._ultimo_vivo = 0.0
         self._stop = threading.Event()
@@ -130,14 +139,7 @@ class OsservatoreNetatmo:
             return []
         nuovo, errori = dispositivi.aggiorna_netatmo(cfg)
         if errori or not nuovo.get("stanze"):
-            if not self._in_errore:
-                self._in_errore = True
-                registro.scrivi("sistema", "Polling Netatmo: lettura non riuscita",
-                                livello="warning", dati={"errori": errori})
-            return []
-        if self._in_errore:
-            self._in_errore = False
-            registro.scrivi("sistema", "Polling Netatmo: lettura di nuovo riuscita")
+            return []        # l'avviso (uno per disservizio) lo scrive dispositivi
         self._letture += 1
         cambi = differenze(self._precedente, nuovo)
         self._precedente = nuovo
@@ -146,15 +148,22 @@ class OsservatoreNetatmo:
         for c in cambi:
             per_oggetto.setdefault((c["tipo"], c["id"], c["nome"]), []).append(c)
         for (tipo, ident, nome), gruppo in per_oggetto.items():
-            nostro = tipo == "stanza" and live.recente_nostro(ident, adesso, finestra)
-            origine = "da TermoPilota" if nostro else "esterno (app o termostato)"
-            registro.scrivi("evento", f"{descrivi(gruppo)} — {origine}", oggetto=nome,
-                            dati={"sorgente": "polling", "origine": "termopilota" if nostro else "esterna",
-                                  "cambi": gruppo})
+            raggiungibilita = all(c["campo"] == "raggiungibile" for c in gruppo)
+            nostro = tipo == "stanza" and not raggiungibilita and live.recente_nostro(ident, adesso, finestra)
+            if raggiungibilita:
+                origine, messaggio = "netatmo", descrivi(gruppo)
+            else:
+                origine = "termopilota" if nostro else "esterna"
+                messaggio = f"{descrivi(gruppo)} — " + ("da TermoPilota" if nostro else "esterno (app o termostato)")
+            registro.scrivi("evento", messaggio, oggetto=nome,
+                            livello="warning" if raggiungibilita and not gruppo[0]["dopo"] else "info",
+                            dati={"sorgente": "polling", "origine": origine, "cambi": gruppo})
             idents = [ident] if tipo == "stanza" else []
-            live.notifica("netatmo_polling", idents or [ident or "casa"], lambda: None,
-                          None if nostro or not idents else self._ricalcolo_per(cfg, "stanza", idents),
-                          nostri=nostro)
+            # Le pagine si aggiornano sempre; l'automazione riparte solo per un cambio esterno
+            ricalcolo = (None if nostro or raggiungibilita or not idents
+                         else self._ricalcolo_per(cfg, "stanza", idents))
+            live.notifica("netatmo_polling", idents or [ident or "casa"], lambda: None, ricalcolo,
+                          nostri=nostro or raggiungibilita)
         if adesso - self._ultimo_vivo >= VIVO_OGNI_S:
             self._ultimo_vivo = adesso
             registro.scrivi("evento", f"Polling Netatmo attivo: {self._letture} letture, ogni {intervallo(cfg)} s",

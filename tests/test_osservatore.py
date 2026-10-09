@@ -25,12 +25,22 @@ def test_differenze_campi_rilevanti():
     assert osservatore.differenze(prima, _lettura(temperatura_attuale=21.0)) == []
     cambi = osservatore.differenze(prima, _lettura(setpoint=22, modalita="manual", setpoint_fine=1_800_000_000))
     assert {c["campo"] for c in cambi} == {"setpoint", "modalita", "setpoint_fine"}
-    dopo = _lettura(raggiungibile=False, finestra_aperta=True)
+    dopo = _lettura(finestra_aperta=True)
     dopo["casa"]["therm_mode"] = "away"
     dopo["casa"]["programma_attivo"] = "Casa calda"
     campi = {(c["tipo"], c["campo"]) for c in osservatore.differenze(prima, dopo)}
-    assert campi == {("stanza", "raggiungibile"), ("stanza", "finestra_aperta"),
-                     ("casa", "therm_mode"), ("casa", "programma_attivo")}
+    assert campi == {("stanza", "finestra_aperta"), ("casa", "therm_mode"), ("casa", "programma_attivo")}
+
+
+def test_termostato_perso_e_ritrovato_solo_raggiungibilita():
+    # Regressione: "termostato 7 °C → —, modalità programma → —" quando Netatmo lo perde
+    attivo = _lettura(setpoint=7)
+    perso = _lettura(setpoint=None, modalita=None, raggiungibile=False)
+    [cambio] = osservatore.differenze(attivo, perso)
+    assert cambio["campo"] == "raggiungibile"
+    assert osservatore.descrivi([cambio]) == "termostato non raggiungibile (segnalato da Netatmo)"
+    [ritorno] = osservatore.differenze(perso, attivo)
+    assert osservatore.descrivi([ritorno]) == "termostato di nuovo raggiungibile"
 
 
 def test_descrizione_leggibile():
@@ -98,7 +108,9 @@ def test_nessun_cambio_nessuna_riga(netatmo):
 
 
 def test_errore_registrato_una_volta_sola(netatmo, monkeypatch):
+    from termopilota import dispositivi
     bt, cfg, oss, _ = netatmo
+    monkeypatch.setattr(dispositivi.time, "sleep", lambda s: None)
     oss.controlla(cfg)
     salvato = copy.deepcopy(bt.casa)
 
@@ -107,11 +119,38 @@ def test_errore_registrato_una_volta_sola(netatmo, monkeypatch):
     monkeypatch.setattr(bt, "stato_casa", guasto)
     oss.controlla(cfg)
     oss.controlla(cfg)
+    dispositivi.snapshot(cfg, forza=True)        # anche un altro lettore: nessun avviso in piu'
     avvisi = registro.leggi(categorie=["sistema"], livello_min="warning")
-    assert len(avvisi) == 1 and "non riuscita" in avvisi[0]["messaggio"]
+    assert len(avvisi) == 1 and avvisi[0]["messaggio"] == "Netatmo non risponde: timeout"
     monkeypatch.setattr(bt, "stato_casa", lambda home_id: copy.deepcopy(salvato))
     oss.controlla(cfg)
-    assert registro.leggi(categorie=["sistema"])[0]["messaggio"] == "Polling Netatmo: lettura di nuovo riuscita"
+    assert registro.leggi(categorie=["sistema"])[0]["messaggio"].startswith("Netatmo risponde di nuovo")
+
+
+def test_primo_tentativo_fallito_non_e_un_avviso(netatmo, monkeypatch):
+    from termopilota import dispositivi
+    bt, cfg, oss, _ = netatmo
+    monkeypatch.setattr(dispositivi.time, "sleep", lambda s: None)
+    vero, chiamate = bt.stato_casa, []
+
+    def una_volta(home_id):
+        chiamate.append(home_id)
+        if len(chiamate) == 1:
+            raise ConnectionError("503")
+        return vero(home_id)
+    monkeypatch.setattr(bt, "stato_casa", una_volta)
+    oss.controlla(cfg)
+    assert len(chiamate) == 2 and registro.leggi(livello_min="warning") == []
+
+
+def test_raggiungibilita_nel_registro_senza_esterno_ne_ricalcolo(netatmo):
+    bt, cfg, oss, ricalcoli = netatmo
+    oss.controlla(cfg)
+    bt.casa["stato"]["rooms"][0]["reachable"] = False
+    oss.controlla(cfg)
+    [riga] = registro.leggi(categorie=["evento"], livello_min="warning")
+    assert riga["messaggio"] == "termostato non raggiungibile (segnalato da Netatmo)"
+    assert riga["dati"]["origine"] == "netatmo" and ricalcoli == []
 
 
 def test_senza_netatmo_configurato_non_fa_nulla(netatmo):

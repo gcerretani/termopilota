@@ -48,7 +48,7 @@ from termopilota.auth import (
 )
 from termopilota.auth_google import google_attivo, oauth, setup_google_oauth
 from termopilota.providers import (
-    aggiorna_config_atomico, get_heatpump, get_thermostat, scrivi_json_atomico,
+    aggiorna_config_atomico, conteggio_chiamate, get_heatpump, get_thermostat, scrivi_json_atomico,
 )
 
 from termopilota.providers.netatmo import ErroreNetatmo
@@ -1364,7 +1364,7 @@ def api_webhook_netatmo():
     nomi = {rid: (dispositivi.snapshot(cfg)["stanze"].get(rid) or {}).get("nome", rid) for rid in idents}
     registro.scrivi("evento", f"Netatmo (webhook): {tipo}", oggetto=", ".join(nomi.values()) or None,
                     dati={"sorgente": "webhook", **evento})
-    live.notifica("netatmo", idents or [home_id or "casa"], dispositivi.invalida,
+    live.notifica("netatmo", idents or [home_id or "casa"], lambda: dispositivi.invalida("netatmo"),
                   _ricalcolo_per(cfg, "stanza", idents) if idents else None)
     return jsonify({"status": "ok"})
 
@@ -1454,7 +1454,7 @@ def api_webhook_smartthings(token):
     if da_aggiornare:
         # Solo un cambio di comando (accensione, modalita', temperatura...) puo' far
         # ripartire l'automazione; le misure aggiornano solo le pagine
-        live.notifica("smartthings", sorted(da_aggiornare), dispositivi.invalida,
+        live.notifica("smartthings", sorted(da_aggiornare), lambda: dispositivi.invalida("ac"),
                       _ricalcolo_per(cfg, "ac", comandati) if comandati else None)
     return jsonify({"eventData": {}})
 
@@ -1513,6 +1513,7 @@ def api_live_configurazione():
         "smartthings_oauth": oauth,
         "stato_netatmo": stato_notifiche_netatmo(cfg),
         "stato_smartthings": stato_sottoscrizioni_smartthings(cfg, st) if oauth else None,
+        "chiamate": conteggio_chiamate(),
         **live.stato(),
     })
 
