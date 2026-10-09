@@ -232,3 +232,12 @@ def test_fascia_notte():
     assert not in_fascia_notte(12, 22, 7)
     assert in_fascia_notte(14, 13, 15) and not in_fascia_notte(15, 13, 15)
     assert not in_fascia_notte(5, 7, 7)
+
+
+def test_termostato_non_raggiungibile_con_il_motivo_di_netatmo():
+    offline = {"temperatura_attuale": None, "setpoint": None, "target": 20.0, "modalita": None,
+               "raggiungibile": False, "errore": "Termostato non raggiungibile da Netatmo (errore 6)"}
+    piano = pianifica([ZONA], contesto({"r1": offline}), stato_vuoto())
+    [z] = piano["zone"]
+    assert z["stato"] == "errore" and "errore 6" in z["motivo"]
+    assert piano["netatmo"] == [] and piano["ac"] == []

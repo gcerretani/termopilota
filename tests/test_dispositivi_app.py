@@ -214,3 +214,35 @@ def test_config_opzioni_ac(admin_client):
     assert cfg["automazione_simulazione"] is True
     admin_client.post("/api/config", json={"ac_ventola": "uragano"})
     assert admin_client.get("/api/config").get_json()["ac_ventola"] == "low"
+
+
+def test_termostato_offline_resta_visibile(admin_client, finti):
+    # Regressione: homestatus omette stanza e modulo dei termostati offline e li
+    # elenca in `errors` (codice 6); la stanza deve restare, non raggiungibile
+    _, bt = finti
+    bt.casa["dati"]["rooms"].append({"id": "stanza-3", "name": "Camera", "type": "bedroom",
+                                     "module_ids": ["modulo-3"]})
+    bt.casa["dati"]["modules"].append({"id": "modulo-3", "name": "Smarther", "type": "BNS",
+                                       "room_id": "stanza-3"})
+    bt.casa["errori"] = [{"code": 6, "id": "modulo-3"}]
+    stanze = {s["id"]: s for s in admin_client.get("/api/dispositivi/stato").get_json()["stanze"]}
+    assert stanze["stanza-3"]["raggiungibile"] is False
+    assert "errore 6" in stanze["stanza-3"]["errore"]
+    assert stanze["stanza-3"]["moduli"][0]["raggiungibile"] is False
+    assert stanze["stanza-1"]["raggiungibile"] is True and stanze["stanza-1"]["errore"] is None
+    d = admin_client.get("/api/dispositivi/stanza/stanza-3")
+    assert d.status_code == 200 and d.get_json()["stato"]["temperatura_attuale"] is None
+    from termopilota import dispositivi
+    assert "stanza-3" not in {r["id"] for r in dispositivi.letture_per_storico(dispositivi.snapshot({}))}
+
+
+def test_zona_reinclusa_aggiorna_subito_lo_stato(utente_client, finti):
+    from termopilota.automazione import get_servizio
+    servizio = get_servizio()
+    servizio.stato_zone = [{"room_id": "stanza-1", "stato": "esclusa", "automazione": False,
+                            "motivo": "Zona esclusa dall'automazione"}]
+    servizio._sveglia.clear()
+    utente_client.post("/api/automazione/zona/stanza-1/attiva", json={"attiva": True})
+    [z] = utente_client.get("/api/automazione").get_json()["zone"]
+    assert z["stato"] is None and z["automazione"] is True
+    assert servizio._sveglia.is_set()    # il ciclo riparte senza aspettare l'intervallo

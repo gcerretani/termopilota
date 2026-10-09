@@ -62,7 +62,7 @@ Pacchetto `src/termopilota/` (layout `src`: si installa con `pip install -e .`, 
 - `versione.py` — `VERSIONE`, unica fonte della versione (la legge anche `pyproject.toml`)
 - `providers/` — Architettura modulare per dispositivi
   - `__init__.py` — ABC `ThermostatProvider`, `HeatPumpProvider`, registry
-  - `netatmo.py` — Client Netatmo OAuth2 per termostati BTicino Smarther. Stanza: `manual`/`max`/`home` (`setroomthermpoint`, `home` = programma); casa: `schedule`/`away`/`hg` (`setthermmode`). `setpoint_programmato` calcola il target dalla timetable
+  - `netatmo.py` — Client Netatmo OAuth2 per termostati BTicino Smarther. Stanza: `manual`/`max`/`home` (`setroomthermpoint`, `home` = programma); casa: `schedule`/`away`/`hg` (`setthermmode`). `setpoint_programmato` calcola il target dalla timetable. homestatus omette stanza e modulo dei termostati offline e li elenca in `errors` (codice 6): `stato_casa` li restituisce in `errori` e `dispositivi.snapshot` tiene la stanza come non raggiungibile
   - `smartthings.py` — Client SmartThings OAuth2 (consigliato) + PAT fallback per AC Samsung. `normalizza_stato`, `CONTROLLI_AC` (whitelist dei comandi manuali: i non standard compaiono solo se la definizione della capability li conferma), `controlli_disponibili`, `valida_comando`
 - `templates/`, `static/` — HTML (Jinja) e asset; `static/vendor/` e' generato, non e' nel repository
   - `templates/base.html` — app shell: barra laterale (desktop, `lg`+) e barra di navigazione in basso (mobile) con le 5 sezioni; blocchi `title`, `azioni` (barra superiore), `indietro`; `admin/_nav.html` e' la sotto-navigazione admin

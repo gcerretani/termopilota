@@ -200,14 +200,15 @@ def pianifica(zone: list, contesto: dict, stato: dict, simulazione: bool = False
             fine = st.get("setpoint_fine")
             motivo = "Termostato in manuale" + (
                 f" fino alle {datetime.fromtimestamp(fine).strftime('%H:%M')}" if fine else "")
+        elif st and not st.get("raggiungibile", True):
+            esito, fonte = "errore", "gas"
+            motivo = st.get("errore") or "Termostato non raggiungibile"
+            categoria = "irraggiungibile"
+            rilascia()
         elif not rid or not st or st.get("temperatura_attuale") is None or target is None:
             esito, fonte, categoria = "errore", "gas", "dati"
             motivo = "Dati Netatmo non disponibili: " + (
                 (contesto.get("diagnosi") or {}).get(rid) or "stanza non configurata o setpoint non noto")
-            rilascia()
-        elif not st.get("raggiungibile", True):
-            esito, fonte, motivo = "errore", "gas", "Termostato non raggiungibile"
-            categoria = "irraggiungibile"
             rilascia()
         elif st.get("finestra_aperta"):
             esito, fonte, motivo = "finestra", "gas", "Finestra aperta: niente AC"
@@ -338,6 +339,7 @@ class AutomazioneRiscaldamento:
     def __init__(self):
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._sveglia = threading.Event()      # ciclo subito (zona inclusa/esclusa, pausa)
         self.log_eventi: list = []       # ultimi 50 eventi
         self.stato_zone: list = []       # stato corrente per zona
         self._lock = threading.Lock()
@@ -354,15 +356,24 @@ class AutomazioneRiscaldamento:
 
     def avvia(self) -> None:
         if self._thread and self._thread.is_alive():
-            return
+            if not self._stop_event.is_set():
+                return
+            # Spenta e riaccesa subito: si attende la fine del thread vecchio
+            self._thread.join(timeout=30)
         self._stop_event.clear()
+        self._sveglia.clear()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="automazione")
         self._thread.start()
         logger.info("Automazione avviata")
 
     def ferma(self) -> None:
         self._stop_event.set()
+        self._sveglia.set()
         logger.info("Automazione fermata")
+
+    def ricalcola(self) -> None:
+        """Anticipa il prossimo ciclo (senza attendere l'intervallo)."""
+        self._sveglia.set()
 
     @property
     def attiva(self) -> bool:
@@ -370,6 +381,7 @@ class AutomazioneRiscaldamento:
 
     def _loop(self) -> None:
         while not self._stop_event.is_set():
+            self._sveglia.clear()
             try:
                 self._ciclo()
             except Exception as e:
@@ -377,7 +389,7 @@ class AutomazioneRiscaldamento:
                 self._log_evento("sistema", "errore", str(e))
             cfg = self._carica_config()
             intervallo_min = max(1.0, min(1440.0, cfg.get("intervallo_controllo_minuti") or 15.0))
-            self._stop_event.wait(timeout=intervallo_min * 60)
+            self._sveglia.wait(timeout=intervallo_min * 60)
 
     def _contesto(self, cfg: dict, attuale: dict, snap: dict) -> dict:
         from termopilota.providers import get_thermostat
@@ -542,8 +554,21 @@ class AutomazioneRiscaldamento:
                         z["stato"], z["fonte"] = "pausa", None
                         z["motivo"] = "In pausa fino alle " + datetime.fromtimestamp(fine).strftime("%H:%M")
                     elif z.get("stato") == "pausa":
-                        z["stato"], z["fonte"], z["motivo"] = None, None, "Riprende al prossimo controllo"
+                        z["stato"], z["fonte"], z["motivo"] = None, None, "Aggiornamento in corso…"
+        self.ricalcola()
         return fine
+
+    def zona_modificata(self, room_id: str, inclusa: bool) -> None:
+        """Zona inclusa o esclusa: la UI lo mostra subito e il ciclo riparte."""
+        with self._lock:
+            for z in self.stato_zone:
+                if z.get("room_id") == room_id:
+                    z["automazione"] = inclusa
+                    if inclusa:
+                        z["stato"], z["fonte"], z["motivo"] = None, None, "Aggiornamento in corso…"
+                    else:
+                        z["stato"], z["fonte"], z["motivo"] = "esclusa", None, "Zona esclusa dall'automazione"
+        self.ricalcola()
 
     # ── Utilità ───────────────────────────────────────────────────────────────
 

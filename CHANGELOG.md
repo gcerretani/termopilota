@@ -7,6 +7,20 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.2.1] - 2026-10-09
+
+### Corretto
+- **Termostati offline**: quando Netatmo non raggiunge un termostato lo segnala a parte e non ne
+  riporta la stanza. La stanza spariva dalla fotografia: la pagina del dispositivo dava "Stanza non
+  trovata" e l'automazione scriveva "Stanza non presente nella risposta Netatmo". Ora la stanza
+  resta visibile come **termostato non raggiungibile**, con il motivo indicato da Netatmo, in Home,
+  Dispositivi e Automazione.
+- **Zone reincluse ancora "escluse"**: includere o escludere una zona, metterla in pausa o salvare
+  la configurazione ora fa ripartire subito il ciclo dell'automazione, invece di aspettare
+  l'intervallo (15 minuti); nel frattempo la zona mostra "Aggiornamento in corso…" e non più lo
+  stato vecchio.
+- Spegnere e riaccendere subito l'automazione poteva lasciarla ferma.
+
 ## [1.2.0] - 2026-10-09
 
 ### Aggiunto
@@ -220,7 +234,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.2.0...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.1
 [1.2.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.0
 [1.1.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.1.0
 [1.0.3]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.3

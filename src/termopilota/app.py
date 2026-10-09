@@ -581,6 +581,7 @@ def leggi_stato_stanze_dashboard(cfg: dict) -> dict:
             "richiesta_calore_pct": st.get("richiesta_calore_pct"),
             "finestra_aperta": st.get("finestra_aperta"),
             "raggiungibile": st.get("raggiungibile"),
+            "errore_termostato": st.get("errore"),
             "ac": {
                 "nome": snap["ac"][acid]["nome"],
                 "acceso": ac.get("acceso"),
@@ -902,6 +903,7 @@ def api_config():
         salva_config(cfg)
         _cache_meteo["timestamp"] = 0.0
         _cache_cfr["timestamp"] = 0.0
+        get_servizio().ricalcola()    # zone e soglie nuove al ciclo subito, non tra 15 min
         return jsonify({"status": "ok", "messaggio": "Configurazione salvata"})
     return jsonify(carica_config())
 
@@ -988,6 +990,7 @@ def api_zona_attiva(room_id):
         return jsonify({"errore": "Zona non trovata"}), 404
     zona["automazione"] = bool(dati.get("attiva"))
     salva_config(cfg)
+    get_servizio().zona_modificata(room_id, zona["automazione"])
     return jsonify({"automazione": zona["automazione"]})
 
 

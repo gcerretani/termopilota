@@ -19,7 +19,7 @@ from typing import Optional
 
 from termopilota.providers import get_heatpump, get_thermostat
 from termopilota.providers.netatmo import (
-    normalizza_stanza, ora_casa, programma_attivo, setpoint_programmato,
+    descrivi_errore_modulo, normalizza_stanza, ora_casa, programma_attivo, setpoint_programmato,
 )
 from termopilota.providers.smartthings import (
     CONTROLLI_AC, controlli_disponibili, normalizza_stato, valida_comando,
@@ -127,26 +127,34 @@ def _leggi_netatmo(cfg: dict, errori: list) -> dict:
 
     moduli_stato = {m.get("id"): m for m in stato.get("modules", []) or []}
     stato_stanze = {r.get("id"): r for r in stato.get("rooms", []) or []}
+    # Moduli in errore (es. termostato offline): homestatus non riporta ne' loro ne' la stanza
+    errori_moduli = {e.get("id"): e.get("code") for e in completo.get("errori", []) or [] if e.get("id")}
     dati_per_target = {**dati, "therm_mode": casa.get("therm_mode")}
     stanze = {}
     for room in dati.get("rooms", []) or []:
         rid = room.get("id")
-        if rid not in stato_stanze:
+        moduli_dati = [m for m in dati.get("modules", []) or [] if m.get("room_id") == rid]
+        if rid not in stato_stanze and not moduli_dati:
             continue    # stanze senza termostato (es. 'outdoor')
-        grezzo = stato_stanze[rid]
+        grezzo = stato_stanze.get(rid) or {"id": rid, "reachable": False}
         voce = normalizza_stanza(grezzo)
         moduli = []
-        for m in dati.get("modules", []) or []:
-            if m.get("room_id") != rid:
-                continue
+        for m in moduli_dati:
             ms = moduli_stato.get(m.get("id"), {})
+            codice = errori_moduli.get(m.get("id"))
             moduli.append({
                 "id": m.get("id"), "nome": m.get("name"), "tipo": m.get("type"),
                 "wifi": ms.get("wifi_strength"), "firmware": ms.get("firmware_revision"),
                 "caldaia_accesa": ms.get("boiler_status"), "raffrescamento_acceso": ms.get("cooler_status"),
-                "raggiungibile": ms.get("reachable", True) is not False,
-                "grezzo": ms,
+                "raggiungibile": codice is None and ms.get("reachable", True) is not False,
+                "errore": descrivi_errore_modulo(codice) if codice is not None else None,
+                "grezzo": ms or ({"errore_netatmo": codice} if codice is not None else {}),
             })
+        errore = next((m["errore"] for m in moduli if m["errore"]), None)
+        if rid not in stato_stanze:
+            errore = errore or "Netatmo non riporta lo stato di questa stanza"
+        if errore:
+            voce["raggiungibile"] = False
         voce.update({
             "id": rid,
             "nome": room.get("name") or rid,
@@ -154,6 +162,7 @@ def _leggi_netatmo(cfg: dict, errori: list) -> dict:
             "target": setpoint_programmato(dati_per_target, rid, adesso),
             "caldaia_accesa": any(m["caldaia_accesa"] for m in moduli),
             "moduli": moduli,
+            "errore": errore,
             "grezzo": grezzo,
         })
         stanze[rid] = voce
@@ -300,6 +309,8 @@ def letture_per_storico(snap: dict) -> list:
             "extra": {k: s.get(k) for k in ("ventola", "modalita_opzionale", "filtro_uso_h", "energia_fine")},
         })
     for st in snap.get("stanze", {}).values():
+        if st.get("errore") and st.get("temperatura_attuale") is None:
+            continue    # termostato offline: nessuna lettura
         richiesta = st.get("richiesta_calore_pct")
         righe.append({
             "tipo": "stanza", "id": st["id"], "nome": st["nome"],
