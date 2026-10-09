@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}{{ zona.nome }}{% endblock %}
+
+{% block head_extra %}
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
+{% endblock %}
+
+{% block indietro %}<a href="{{ url_for('index') }}" class="tp-icon-btn tp-back" aria-label="Torna alla Home"><i class="bi bi-chevron-left"></i></a>{% endblock %}
+
+{% block azioni %}
+<span id="aggiornatoAlle" class="aggiornato-chip d-none d-sm-inline-flex"></span>
+{% endblock %}
+
+{% block content %}
+<div class="tp-page" id="paginaStanza" data-room="{{ zona.room_id }}">
+
+  <div id="erroriStanza"></div>
+
+  <!-- Stato -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <div class="min-w-0">
+        <h2 class="tp-card-title"><i class="bi bi-door-open"></i><span id="nomeStanza">{{ zona.nome }}</span></h2>
+        <div class="tp-card-sub" id="statoStanza">Caricamento…</div>
+      </div>
+      <div id="badgeStanza"></div>
+    </div>
+    <div class="tp-stanza-temp" id="temperatureStanza"></div>
+  </section>
+
+  <!-- Cosa fa TermoPilota -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <h2 class="tp-card-title"><i class="bi bi-lightning-charge"></i>Cosa fa TermoPilota</h2>
+    </div>
+    <div id="calcoloStanza" class="small"></div>
+    <div class="zona-azioni mt-3" id="automazioneStanza"></div>
+    <div id="msgStanza" class="mt-2"></div>
+  </section>
+
+  <!-- Comandi -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <div>
+        <h2 class="tp-card-title"><i class="bi bi-sliders"></i>Comandi</h2>
+        <div class="tp-card-sub">Un comando manuale mette in pausa l'automazione della stanza</div>
+      </div>
+    </div>
+    <div id="comandiStanza"><div class="tp-muted small">Caricamento…</div></div>
+  </section>
+
+  <!-- Andamento -->
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="tp-section-title m-0">Andamento</div>
+    <div class="tp-segmented" role="group" aria-label="Intervallo">
+      <button type="button" class="active" data-intervallo="24h" aria-pressed="true">24 ore</button>
+      <button type="button" data-intervallo="7g" aria-pressed="false">7 giorni</button>
+      <button type="button" data-intervallo="30g" aria-pressed="false">30 giorni</button>
+    </div>
+  </div>
+  <div id="graficiVuoti" class="alert alert-prezzi mb-0" style="display:none;">
+    <i class="bi bi-hourglass-split me-2"></i>
+    Nessuna lettura ancora per questo intervallo: TermoPilota registra i dispositivi ogni 15 minuti.
+  </div>
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <div>
+            <h2 class="tp-card-title"><i class="bi bi-thermometer-half"></i>Temperature</h2>
+            <div class="tp-card-sub" id="differenzaSensori">°C</div>
+          </div>
+          <div class="tp-legend" id="legendaTemperature"></div>
+        </div>
+        <div class="tp-chart"><canvas id="graficoTemperatureStanza" role="img" aria-label="Temperature del termostato e del condizionatore"></canvas></div>
+      </section>
+    </div>
+    <div class="col-lg-5">
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <div>
+            <h2 class="tp-card-title"><i class="bi bi-activity"></i>Chi scalda</h2>
+            <div class="tp-card-sub">% del tempo</div>
+          </div>
+          <div class="tp-legend" id="legendaAttivita"></div>
+        </div>
+        <div class="tp-chart"><canvas id="graficoAttivitaStanza" role="img" aria-label="Condizionatore acceso e richiesta di calore"></canvas></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Registro -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <h2 class="tp-card-title"><i class="bi bi-journal-text"></i>Ultimi eventi</h2>
+      <a class="tp-card-link" id="linkRegistro" href="{{ url_for('pagina_registro') }}">Registro completo <i class="bi bi-chevron-right"></i></a>
+    </div>
+    <div id="registroStanza" class="tp-log-list"><div class="tp-muted small">Caricamento…</div></div>
+  </section>
+
+  {% if current_user.is_admin %}
+  <!-- Impostazioni -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <div>
+        <h2 class="tp-card-title"><i class="bi bi-gear"></i>Impostazioni della stanza</h2>
+        <div class="tp-card-sub">Solo amministratori</div>
+      </div>
+    </div>
+    <div id="msgImpostazioni"></div>
+    <div id="impostazioniStanza"><div class="tp-muted small">Caricamento…</div></div>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>window.utenteAdmin = {{ current_user.is_admin | tojson }};</script>
+<script src="{{ url_for('static', filename='js/grafici.js') }}"></script>
+<script src="{{ url_for('static', filename='js/stanza.js') }}"></script>
+{% endblock %}

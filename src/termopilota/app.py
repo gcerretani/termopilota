@@ -551,6 +551,15 @@ def pagina_dispositivo(tipo, ident):
     return render_template("dispositivo.html", tipo=tipo, ident=ident)
 
 
+@app.route("/stanze/<room_id>")
+@login_required
+def pagina_stanza(room_id):
+    zona = _zona_configurata(carica_config(), room_id)
+    if not zona:
+        abort(404)
+    return render_template("stanza.html", zona=zona)
+
+
 @app.route("/sw.js")
 def service_worker():
     # Servito dalla root cosi' lo scope del service worker copre tutta l'app.
@@ -1022,12 +1031,12 @@ def api_zona_pausa(room_id):
         return errore
     zona = _zona_configurata(carica_config(), room_id)
     if not zona:
-        return jsonify({"errore": "Zona non trovata"}), 404
+        return jsonify({"errore": "Stanza non trovata"}), 404
     ore = _limita(dati.get("ore"), -1, 0.0, 24.0)
     if ore < 0:
         return jsonify({"errore": "ore deve essere un numero tra 0 e 24"}), 400
     fine = get_servizio().imposta_pausa([room_id], ore)
-    _registra_comando(f"Zona in pausa per {ore:g} h" if ore > 0 else "Pausa annullata", oggetto=zona.get("nome"))
+    _registra_comando(f"Stanza in pausa per {ore:g} h" if ore > 0 else "Pausa annullata", oggetto=zona.get("nome"))
     return jsonify({"pausa_fino": fine})
 
 
@@ -1040,11 +1049,11 @@ def api_zona_attiva(room_id):
     cfg = carica_config()
     zona = _zona_configurata(cfg, room_id)
     if not zona:
-        return jsonify({"errore": "Zona non trovata"}), 404
+        return jsonify({"errore": "Stanza non trovata"}), 404
     zona["automazione"] = bool(dati.get("attiva"))
     salva_config(cfg)
     get_servizio().zona_modificata(room_id, zona["automazione"])
-    _registra_comando("Zona inclusa nell'automazione" if zona["automazione"] else "Zona esclusa dall'automazione",
+    _registra_comando("Stanza inclusa nell'automazione" if zona["automazione"] else "Stanza esclusa dall'automazione",
                       oggetto=zona.get("nome"))
     return jsonify({"automazione": zona["automazione"]})
 
@@ -1602,6 +1611,206 @@ def api_live_rigenera_token():
                     + f"/api/webhook/smartthings/{nuovo}"})
 
 
+# ─── Stanze (zone): pagina, storico combinato, gestione ─────────────────────
+
+SETPOINT_TERMOSTATO_ESCLUSIVA = 7.0
+
+
+def _calcolo_stanza(cfg: dict, zona: dict, stanza: dict) -> dict:
+    """I setpoint che l'automazione usa per questa stanza, spiegati."""
+    target = stanza.get("target")
+    if target is None:
+        target = stanza.get("setpoint")
+    offset = zona.get("offset_ac", 0.0) or 0.0
+    riserva = zona.get("riserva_gas_delta", 1.5) or 1.5
+    affiancata = zona.get("modalita") == "affiancata"
+    acid = zona.get("ac_device_id", "")
+    condivisa = [z.get("nome", "Stanza") for z in cfg.get("zone", [])
+                 if acid and z.get("ac_device_id") == acid and z.get("room_id") != zona.get("room_id")]
+    return {
+        "target": target,
+        "offset_ac": offset,
+        "setpoint_ac_previsto": round(target + offset, 1) if target is not None else None,
+        "modalita": "affiancata" if affiancata else "esclusiva",
+        "riserva_gas_delta": riserva,
+        "setpoint_termostato_in_ac": (max(SETPOINT_TERMOSTATO_ESCLUSIVA, round((target - riserva) * 2) / 2)
+                                      if affiancata and target is not None else SETPOINT_TERMOSTATO_ESCLUSIVA),
+        "condiviso_con": condivisa,
+    }
+
+
+def _opzioni_stanze(cfg: dict, snap: dict, escludi_room: str = "") -> dict:
+    """Stanze Netatmo con termostato e condizionatori per creare o modificare una stanza."""
+    usate = {z.get("room_id"): z.get("nome") for z in cfg.get("zone", []) if z.get("room_id") != escludi_room}
+    return {
+        "termostati": [{"id": rid, "nome": s.get("nome") or rid, "usata_da": usate.get(rid)}
+                       for rid, s in snap.get("stanze", {}).items()],
+        "condizionatori": [{"id": acid, "nome": a.get("nome") or acid,
+                            "usato_da": [z.get("nome") for z in cfg.get("zone", [])
+                                         if z.get("ac_device_id") == acid and z.get("room_id") != escludi_room]}
+                           for acid, a in snap.get("ac", {}).items()],
+    }
+
+
+@app.route("/api/stanze/<room_id>")
+@login_required
+def api_stanza(room_id):
+    cfg = carica_config()
+    zona = _zona_configurata(cfg, room_id)
+    if not zona:
+        return jsonify({"errore": "Stanza non trovata"}), 404
+    snap = dispositivi.snapshot(cfg)
+    stanza = {k: v for k, v in (snap["stanze"].get(room_id) or {}).items() if k not in ("grezzo", "_campi", "moduli")}
+    acid = zona.get("ac_device_id", "")
+    ac_snap = snap["ac"].get(acid) if acid else None
+    servizio = get_servizio().stato()
+    decisione = next((z for z in servizio["zone"] if z.get("room_id") == room_id), None)
+    oggetti = [o for o in dict.fromkeys([zona.get("nome"), stanza.get("nome"),
+                                         (ac_snap or {}).get("nome")]) if o]
+    zona = normalizza_zone([zona])[0]       # valori di default per le zone vecchie
+    risposta = {
+        "zona": zona,
+        "stanza": stanza or None,
+        "ac": ({"id": acid, "nome": ac_snap["nome"], "stato": ac_snap["stato"], "errore": ac_snap["errore"],
+                "controlli": dispositivi.controlli_ac(cfg, acid, current_user.is_admin)} if ac_snap else None),
+        "decisione": decisione,
+        "pausa_fino": servizio.get("pause", {}).get(room_id),
+        "automazione_attiva": servizio["attiva"],
+        "calcolo": _calcolo_stanza(cfg, zona, stanza),
+        "differenza_sensori": storico.differenza_sensori(room_id, acid),
+        "oggetti_registro": oggetti,
+        "errori": snap["errori"],
+        "letto_alle": snap["letto_alle"],
+        "is_admin": bool(current_user.is_admin),
+    }
+    if current_user.is_admin:
+        risposta["opzioni"] = _opzioni_stanze(cfg, snap, room_id)
+    return jsonify(risposta)
+
+
+@app.route("/api/stanze/<room_id>/storico")
+@login_required
+def api_stanza_storico(room_id):
+    zona = _zona_configurata(carica_config(), room_id)
+    if not zona:
+        return jsonify({"errore": "Stanza non trovata"}), 404
+    oggi = datetime.now().date()
+    da = request.args.get("da", (oggi - timedelta(days=1)).isoformat())
+    a = request.args.get("a", oggi.isoformat())
+    risoluzione = request.args.get("risoluzione", "grezza")
+    if risoluzione not in ("grezza", "oraria", "giornaliera"):
+        return jsonify({"errore": "risoluzione deve essere 'grezza', 'oraria' o 'giornaliera'"}), 400
+    try:
+        datetime.strptime(da, "%Y-%m-%d")
+        datetime.strptime(a, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"errore": "date nel formato YYYY-MM-DD"}), 400
+    acid = zona.get("ac_device_id", "")
+    return jsonify({
+        "da": da, "a": a, "risoluzione": risoluzione,
+        "stanza": storico.leggi_letture("stanza", room_id, da, a, risoluzione),
+        "ac": storico.leggi_letture("ac", acid, da, a, risoluzione) if acid else [],
+    })
+
+
+def _richiesta_admin_json():
+    if not current_user.is_admin:
+        return None, (jsonify({"errore": "Solo gli amministratori possono gestire le stanze"}), 403)
+    return _json_richiesto()
+
+
+def _valida_dispositivi_stanza(cfg: dict, snap: dict, room_id: str, ac_id: str, escludi_room: str = ""):
+    """Messaggio d'errore, o None se termostato e condizionatore sono validi."""
+    if not room_id or room_id not in snap.get("stanze", {}):
+        return "Termostato non trovato tra le stanze Netatmo"
+    if any(z.get("room_id") == room_id and room_id != escludi_room for z in cfg.get("zone", [])):
+        return "Questo termostato è già usato da un'altra stanza"
+    if ac_id and ac_id not in snap.get("ac", {}):
+        return "Condizionatore non trovato"
+    return None
+
+
+@app.route("/api/stanze", methods=["POST"])
+@login_required
+def api_crea_stanza():
+    dati, errore = _richiesta_admin_json()
+    if errore:
+        return errore
+    cfg = carica_config()
+    snap = dispositivi.snapshot(cfg)
+    room_id, ac_id = str(dati.get("room_id") or ""), str(dati.get("ac_device_id") or "")
+    problema = _valida_dispositivi_stanza(cfg, snap, room_id, ac_id)
+    if problema:
+        return jsonify({"errore": problema}), 400
+    nome = str(dati.get("nome") or "").strip() or snap["stanze"][room_id].get("nome") or "Stanza"
+    [zona] = normalizza_zone([{**dati, "nome": nome, "room_id": room_id, "ac_device_id": ac_id}])
+    cfg["zone"] = (cfg.get("zone") or []) + [zona]
+    salva_config(cfg)
+    _registra_comando("Stanza creata", oggetto=zona["nome"],
+                      dati={"room_id": room_id, "ac_device_id": ac_id})
+    get_servizio().ricalcola()
+    return jsonify({"status": "ok", "room_id": room_id})
+
+
+@app.route("/api/stanze/<room_id>", methods=["POST"])
+@login_required
+def api_modifica_stanza(room_id):
+    dati, errore = _richiesta_admin_json()
+    if errore:
+        return errore
+    cfg = carica_config()
+    zona = _zona_configurata(cfg, room_id)
+    if not zona:
+        return jsonify({"errore": "Stanza non trovata"}), 404
+    snap = dispositivi.snapshot(cfg)
+    nuovo_room = str(dati.get("room_id") or room_id)
+    nuovo_ac = str(dati["ac_device_id"] or "") if "ac_device_id" in dati else zona.get("ac_device_id", "")
+    if nuovo_room != room_id or nuovo_ac != zona.get("ac_device_id", ""):
+        problema = _valida_dispositivi_stanza(cfg, snap, nuovo_room, nuovo_ac, escludi_room=room_id)
+        if problema:
+            return jsonify({"errore": problema}), 400
+    [aggiornata] = normalizza_zone([{**zona, **dati, "room_id": nuovo_room, "ac_device_id": nuovo_ac}])
+    vecchio_ac = zona.get("ac_device_id", "")
+    cfg["zone"] = [aggiornata if z is zona else z for z in cfg["zone"]]
+    salva_config(cfg)
+    cambiate = sorted(k for k in aggiornata if aggiornata.get(k) != zona.get(k))
+    if nuovo_room != room_id or nuovo_ac != vecchio_ac:
+        # Il vecchio termostato (o il vecchio AC) non e' piu' di questa stanza: si restituisce
+        get_servizio().rilascia_zona(room_id if nuovo_room != room_id else "", vecchio_ac if nuovo_ac != vecchio_ac else "",
+                                     any(z.get("ac_device_id") == vecchio_ac for z in cfg["zone"]))
+    if cambiate:
+        _registra_comando(f"Impostazioni della stanza modificate: {', '.join(cambiate)}", oggetto=aggiornata["nome"],
+                          dati={k: aggiornata[k] for k in cambiate})
+    get_servizio().ricalcola()
+    return jsonify({"status": "ok", "room_id": nuovo_room, "zona": aggiornata})
+
+
+@app.route("/api/stanze/<room_id>", methods=["DELETE"])
+@login_required
+def api_elimina_stanza(room_id):
+    if not current_user.is_admin:
+        return jsonify({"errore": "Solo gli amministratori possono gestire le stanze"}), 403
+    cfg = carica_config()
+    zona = _zona_configurata(cfg, room_id)
+    if not zona:
+        return jsonify({"errore": "Stanza non trovata"}), 404
+    cfg["zone"] = [z for z in cfg["zone"] if z is not zona]
+    salva_config(cfg)
+    acid = zona.get("ac_device_id", "")
+    get_servizio().rilascia_zona(room_id, acid, any(z.get("ac_device_id") == acid for z in cfg["zone"]))
+    _registra_comando("Stanza eliminata", oggetto=zona.get("nome"), dati={"room_id": room_id})
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/stanze/opzioni")
+@login_required
+def api_opzioni_stanze():
+    if not current_user.is_admin:
+        return jsonify({"errore": "Solo gli amministratori"}), 403
+    cfg = carica_config()
+    return jsonify(_opzioni_stanze(cfg, dispositivi.snapshot(cfg)))
+
+
 # ─── Registro eventi ─────────────────────────────────────────────────────────
 
 @app.route("/registro")
@@ -1620,7 +1829,8 @@ def api_registro():
     except ValueError:
         return jsonify({"errore": "prima_di e limite devono essere numeri"}), 400
     righe = registro.leggi(categorie=categorie or None, livello_min=request.args.get("livello", "info"),
-                           oggetto=request.args.get("oggetto") or None, testo=request.args.get("q") or None,
+                           oggetto=[o for o in request.args.getlist("oggetto") if o] or None,
+                           testo=request.args.get("q") or None,
                            prima_di=prima_di, limite=limite)
     if not current_user.is_admin:
         for r in righe:     # i dettagli tecnici (corpi dei webhook, ID) solo agli admin

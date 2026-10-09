@@ -31,13 +31,13 @@
     const modalita = cfgZona.modalita === 'affiancata' ? 'affiancata' : 'esclusiva';
     const rid = escapeHtml(cfgZona.room_id || '');
     const motivo = stato === 'pausa' && pausaFino ? `In pausa fino alle ${oraDaEpoch(pausaFino)}`
-      : (!inclusa ? "Zona esclusa dall'automazione" : (inAttesa ? 'Aggiornamento in corso…' : z.motivo));
+      : (!inclusa ? "Stanza esclusa dall'automazione" : (inAttesa ? 'Aggiornamento in corso…' : z.motivo));
     return `<div class="col-md-6 col-xl-4">
       <div class="zona-card ${cls}">
         <div class="d-flex justify-content-between align-items-start gap-2">
           <div class="min-w-0">
             <div class="fw-semibold text-truncate">
-              ${cfgZona.room_id ? `<a class="text-reset text-decoration-none" href="/dispositivi/stanza/${encodeURIComponent(cfgZona.room_id)}">${escapeHtml(cfgZona.nome)}</a>` : escapeHtml(cfgZona.nome)}
+              ${cfgZona.room_id ? `<a class="text-reset text-decoration-none" href="/stanze/${encodeURIComponent(cfgZona.room_id)}">${escapeHtml(cfgZona.nome)}</a>` : escapeHtml(cfgZona.nome)}
             </div>
             <div class="mt-1">${badgeStatoZona(stato, z.simulazione)}</div>
             <div class="small tp-muted mt-1">modalità ${modalita}</div>

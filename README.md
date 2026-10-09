@@ -8,13 +8,14 @@ Sistema di controllo intelligente del riscaldamento domestico. Confronta in temp
 - **Previsioni 48 ore** con grafico comparativo costi gas vs AC
 - **Prezzi automatici**: commodity gas (TTF da Yahoo Finance) e luce (PUN da ENTSO-E)
 - **Temperatura reale** dalla stazione meteo CFR Toscana (configurabile)
-- **Automazione per zona**: segue il programma dei termostati Netatmo e commuta tra caldaia e AC quando conviene; ogni zona si include o esclude e si mette in pausa
+- **Automazione per stanza**: segue il programma dei termostati Netatmo e commuta tra caldaia e AC quando conviene; ogni stanza si include o esclude e si mette in pausa
+- **Pagina della stanza**: termostato e condizionatore insieme, cosa fa l'automazione e perché, comandi, grafico delle due temperature e correzione suggerita del setpoint dell'AC
 - **Modalita' esclusiva o affiancata**: con l'AC la caldaia si spegne oppure resta di riserva qualche grado sotto il target
 - **Simulazione**: l'automazione decide e registra senza inviare comandi
 - **Gestione AC condiviso**: un condizionatore puo' servire piu' stanze, si spegne solo quando tutte sono a temperatura
 - **Pagina Dispositivi**: tutti i valori di condizionatori, stanze e casa Netatmo, grafici delle letture e comandi manuali
 - **Consumo reale** dei condizionatori dal loro contatore di energia, con risparmio misurato nello Storico
-- **Area admin** per gestione utenti, credenziali API, configurazione zone e prezzi
+- **Area admin** per gestione utenti, credenziali API, configurazione stanze e prezzi
 - **Architettura modulare** a provider per termostati e pompe di calore
 
 ## Impianto
@@ -24,8 +25,8 @@ Sistema di controllo intelligente del riscaldamento domestico. Confronta in temp
 | Caldaia | Condensazione con regolazione climatica, mandata ~30C |
 | Distribuzione | Pavimento radiante |
 | Pompa di calore | Samsung AJ040TXJ2KG/EU WindFree Comfort Dual |
-| Termostati | BTicino Smarther with Netatmo (4 zone) |
-| Condizionatori | 2 split (1 serve 3 zone, 1 serve 1 zona) |
+| Termostati | BTicino Smarther with Netatmo (4 stanze) |
+| Condizionatori | 2 split (1 serve 3 stanze, 1 serve 1 stanza) |
 
 ## Setup locale
 
@@ -95,7 +96,7 @@ Il file `config.json` contiene:
 - **Prezzi energia**: componenti fisse gas/luce, valori manuali di fallback, token ENTSO-E per PUN automatico
 - **Impianto**: efficienza caldaia, temperatura minima operativa AC, setpoint interno
 - **Credenziali**: client ID/secret Netatmo (OAuth2), token SmartThings (PAT)
-- **Zone**: associazione stanza Netatmo (room_id) a condizionatore Samsung (ac_device_id), inclusione nell'automazione, modalita' esclusiva/affiancata, riserva della caldaia, correzione del setpoint dell'AC
+- **Stanze** ("zone" nella configurazione): associazione stanza Netatmo (room_id) a condizionatore Samsung (ac_device_id), inclusione nell'automazione, modalita' esclusiva/affiancata, riserva della caldaia, correzione del setpoint dell'AC
 - **Automazione**: intervallo controllo, soglia risparmio minimo, simulazione, pausa dopo un comando manuale, ventola e modalita' notturna dell'AC
 
 Lo stato di runtime dell'automazione (override in corso, pause, AC accesi da TermoPilota) e' in `data/automazione_stato.json`.

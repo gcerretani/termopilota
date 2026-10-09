@@ -75,7 +75,7 @@
   function aggiornaOggetti(oggetti) {
     const sel = document.getElementById('filtroOggetto');
     const valori = new Set([...oggetti, filtri.oggetto].filter(Boolean));
-    sel.innerHTML = '<option value="">Tutte le zone e i dispositivi</option>'
+    sel.innerHTML = '<option value="">Tutte le stanze e i dispositivi</option>'
       + [...valori].sort().map(o => `<option value="${escapeHtml(o)}"${o === filtri.oggetto ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('');
   }
 

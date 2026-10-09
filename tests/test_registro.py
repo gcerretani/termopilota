@@ -111,7 +111,7 @@ def test_azioni_degli_utenti_registrate(utente_client, admin_client):
     admin_client.post("/api/config", json={"efficienza_caldaia": 0.9, "legrand_client_secret": "nuovo"})
     righe = registro.leggi(categorie=["comando"])
     messaggi = [r["messaggio"] for r in righe]
-    assert "Zona in pausa per 1 h" in messaggi and "Zona esclusa dall'automazione" in messaggi
+    assert "Stanza in pausa per 1 h" in messaggi and "Stanza esclusa dall'automazione" in messaggi
     config = next(r for r in righe if r["messaggio"].startswith("Configurazione salvata"))
     assert "efficienza_caldaia" in config["messaggio"] and "legrand_client_secret" in config["messaggio"]
     assert "nuovo" not in json.dumps(config)              # mai i valori
@@ -149,3 +149,12 @@ def test_rigenera_token_smartthings(utente_client, admin_client, utente, codice)
         nuovo = modulo_app.carica_config()["smartthings_webhook_token"]
         assert nuovo != "vecchio" and r.get_json()["smartthings_url"].endswith(nuovo)
         assert client.post("/api/webhook/smartthings/vecchio", json={"messageType": "PING"}).status_code == 404
+
+
+def test_filtro_con_piu_oggetti(utente_client):
+    registro.scrivi("evento", "a", oggetto="Salotto")
+    registro.scrivi("evento", "b", oggetto="Condizionatore Salotto")
+    registro.scrivi("evento", "c", oggetto="Studio")
+    assert {r["messaggio"] for r in registro.leggi(oggetto=["Salotto", "Condizionatore Salotto"])} == {"a", "b"}
+    d = utente_client.get("/api/registro?oggetto=Salotto&oggetto=Studio").get_json()
+    assert {r["messaggio"] for r in d["righe"]} == {"a", "c"}

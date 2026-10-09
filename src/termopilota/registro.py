@@ -97,7 +97,7 @@ def scrivi(categoria: str, messaggio: str, *, livello: str = "info", oggetto: Op
         logger.debug("Registro non scritto: %s", e)
 
 
-def leggi(categorie: Optional[list] = None, livello_min: str = "info", oggetto: Optional[str] = None,
+def leggi(categorie: Optional[list] = None, livello_min: str = "info", oggetto=None,
           testo: Optional[str] = None, prima_di: Optional[float] = None, limite: int = 100) -> list[dict]:
     """Righe piu' recenti (in ordine decrescente) che rispettano i filtri."""
     condizioni, parametri = [], []
@@ -109,8 +109,10 @@ def leggi(categorie: Optional[list] = None, livello_min: str = "info", oggetto: 
         condizioni.append(f"livello IN ({','.join('?' * len(ammessi))})")
         parametri += list(ammessi)
     if oggetto:
-        condizioni.append("oggetto = ?")
-        parametri.append(oggetto)
+        oggetti_filtro = [oggetto] if isinstance(oggetto, str) else [o for o in oggetto if o]
+        if oggetti_filtro:
+            condizioni.append(f"oggetto IN ({','.join('?' * len(oggetti_filtro))})")
+            parametri += oggetti_filtro
     if testo:
         condizioni.append("(messaggio LIKE ? OR oggetto LIKE ? OR utente LIKE ?)")
         parametri += [f"%{testo}%"] * 3

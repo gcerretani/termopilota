@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Zone{% endblock %}
+{% block title %}Stanze{% endblock %}
 
 {% block indietro %}<a href="{{ url_for('pagina_impostazioni') }}" class="tp-icon-btn tp-back" aria-label="Torna a Impostazioni"><i class="bi bi-chevron-left"></i></a>{% endblock %}
 
@@ -10,14 +10,14 @@
   {% include "admin/_nav.html" %}
 
   <div class="settings-card">
-    <div id="msgZone"></div>
+    <div id="msgStanze"></div>
 
     <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">
-      <i class="bi bi-diagram-3 me-1"></i>Associazioni zona → condizionatore
+      <i class="bi bi-door-open me-1"></i>Stanze
     </p>
     <p class="text-muted small mb-3">
-      Ogni zona associa una stanza Netatmo (Room ID) a un condizionatore Samsung (Device ID).
-      Piu' zone possono condividere lo stesso condizionatore.
+      Ogni stanza unisce un termostato Netatmo e, se c'è, un condizionatore Samsung (lo stesso condizionatore
+      può servire più stanze). Tocca una stanza per vederla e modificarne le impostazioni.
     </p>
 
     {% if not cfg.legrand_plant_id %}
@@ -27,23 +27,43 @@
     </div>
     {% endif %}
 
-    <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-      <button class="btn btn-outline-primary btn-sm" onclick="caricaDispositivi()">
-        <i class="bi bi-arrow-repeat me-1"></i>Aggiorna elenco dispositivi
-      </button>
-      <span id="statoDispositivi" class="small text-muted"></span>
+    <div class="tp-list mb-3">
+      {% for z in cfg.zone %}
+      <a class="tp-list-item" href="{{ url_for('pagina_stanza', room_id=z.room_id) }}">
+        <span class="tp-list-icon {{ 'ac' if z.ac_device_id else 'gas' }}"><i class="bi bi-door-open"></i></span>
+        <div class="tp-list-body">
+          <div class="tp-list-title">{{ z.nome }}</div>
+          <div class="tp-list-sub" data-termostato="{{ z.room_id }}" data-ac="{{ z.ac_device_id }}">
+            {{ 'modalità affiancata' if z.modalita == 'affiancata' else 'modalità esclusiva' }}{% if z.automazione == false %} · esclusa dall'automazione{% endif %}
+          </div>
+        </div>
+        <i class="bi bi-chevron-right"></i>
+      </a>
+      {% else %}
+      <div class="tp-muted small">Nessuna stanza: aggiungine una qui sotto.</div>
+      {% endfor %}
     </div>
 
-    <div id="zoneEditor"></div>
-    <button class="btn btn-sm btn-outline-secondary mt-2" onclick="aggiungiZona()">
-      <i class="bi bi-plus-circle me-1"></i>Aggiungi zona
-    </button>
-
-    <hr class="my-3">
-
-    <button class="btn btn-dark px-4" onclick="salvaZone()">
-      <i class="bi bi-save me-2"></i>Salva zone
-    </button>
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">
+      <i class="bi bi-plus-circle me-1"></i>Nuova stanza
+    </p>
+    <div class="row g-2 align-items-end" id="nuovaStanza">
+      <div class="col-md-4">
+        <label class="form-label small" for="nuovoTermostato">Termostato (stanza Netatmo)</label>
+        <select class="form-select form-select-sm" id="nuovoTermostato" disabled><option>Caricamento…</option></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small" for="nuovoAc">Condizionatore</label>
+        <select class="form-select form-select-sm" id="nuovoAc" disabled><option value="">Nessuno</option></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small" for="nuovoNome">Nome</label>
+        <input class="form-control form-control-sm" id="nuovoNome" maxlength="60" placeholder="come in Netatmo">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-dark btn-sm w-100" id="creaStanza" disabled><i class="bi bi-plus-lg me-1"></i>Crea</button>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -51,155 +71,58 @@
 
 {% block scripts %}
 <script>
-let zoneConfig = {{ cfg.zone | tojson }};
-let opzioniRoom = [];
-let opzioniAc = [];
+(function () {
+  let opzioni = null;
 
-function escapeHtml(val) {
-  return String(val || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-function opzioniSelect(lista, valoreCorrente, tipo) {
-  const corrente = valoreCorrente || '';
-  const trovato = lista.some(x => x.value === corrente);
-  let html = '<option value="">-- seleziona --</option>';
-  if (corrente && !trovato) {
-    html += `<option value="${escapeHtml(corrente)}" selected>${escapeHtml(corrente)} (attuale)</option>`;
-  }
-  lista.forEach(item => {
-    const selected = item.value === corrente ? 'selected' : '';
-    html += `<option value="${escapeHtml(item.value)}" ${selected}>${escapeHtml(item.label)}</option>`;
-  });
-  return html;
-}
-
-function renderZoneEditor() {
-  const div = document.getElementById('zoneEditor');
-  div.innerHTML = zoneConfig.map((z, i) => `
-    <div class="border rounded-3 p-3 mb-2">
-      <div class="row g-2 align-items-end">
-        <div class="col-md-3">
-          <label class="form-label" style="font-size:.8rem;">Nome zona</label>
-          <input type="text" class="form-control form-control-sm" value="${escapeHtml(z.nome)}" onchange="zoneConfig[${i}].nome=this.value">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label" style="font-size:.8rem;">Room ID termostato Netatmo</label>
-          <select class="form-select form-select-sm font-monospace" onchange="zoneConfig[${i}].room_id=this.value">
-            ${opzioniSelect(opzioniRoom, z.room_id || '', 'room')}
-          </select>
-        </div>
-        <div class="col-md-4">
-          <label class="form-label" style="font-size:.8rem;">Device ID condizionatore Samsung</label>
-          <select class="form-select form-select-sm font-monospace" onchange="zoneConfig[${i}].ac_device_id=this.value">
-            ${opzioniSelect(opzioniAc, z.ac_device_id || '', 'ac')}
-          </select>
-        </div>
-        <div class="col-md-2">
-          <button class="btn btn-outline-danger btn-sm w-100 mt-3" onclick="rimuoviZona(${i})"><i class="bi bi-trash"></i></button>
-        </div>
-      </div>
-      <div class="row g-2 align-items-end mt-1">
-        <div class="col-6 col-md-3">
-          <div class="form-check form-switch mb-1">
-            <input class="form-check-input" type="checkbox" role="switch" id="auto-${i}" ${z.automazione !== false ? 'checked' : ''}
-                   onchange="zoneConfig[${i}].automazione=this.checked">
-            <label class="form-check-label small" for="auto-${i}">Inclusa nell'automazione</label>
-          </div>
-        </div>
-        <div class="col-6 col-md-3">
-          <label class="form-label" style="font-size:.8rem;">Modalità con l'AC</label>
-          <select class="form-select form-select-sm" onchange="zoneConfig[${i}].modalita=this.value; renderZoneEditor()">
-            <option value="esclusiva" ${z.modalita !== 'affiancata' ? 'selected' : ''}>Esclusiva (caldaia spenta)</option>
-            <option value="affiancata" ${z.modalita === 'affiancata' ? 'selected' : ''}>Affiancata (caldaia di riserva)</option>
-          </select>
-        </div>
-        <div class="col-6 col-md-3">
-          <label class="form-label" style="font-size:.8rem;">Riserva caldaia (°C sotto il target)</label>
-          <input type="number" class="form-control form-control-sm" min="0.5" max="5" step="0.5"
-                 value="${z.riserva_gas_delta ?? 1.5}" ${z.modalita === 'affiancata' ? '' : 'disabled'}
-                 onchange="zoneConfig[${i}].riserva_gas_delta=parseFloat(this.value)">
-        </div>
-        <div class="col-6 col-md-3">
-          <label class="form-label" style="font-size:.8rem;">Correzione setpoint AC (°C)</label>
-          <input type="number" class="form-control form-control-sm" min="-3" max="3" step="0.5"
-                 value="${z.offset_ac ?? 0}" onchange="zoneConfig[${i}].offset_ac=parseFloat(this.value)">
-        </div>
-      </div>
-      <div class="mt-2 tp-muted" style="font-size:.75rem;">
-        <i class="bi bi-info-circle me-1"></i>Il target è il setpoint del programma Netatmo. In modalità affiancata, quando
-        conviene l'AC il termostato resta acceso a target − riserva: la caldaia interviene solo se l'AC non basta.
-        La correzione si somma al setpoint dell'AC (il suo sensore, in alto, di solito legge più caldo).
-      </div>
-    </div>
-  `).join('');
-}
-
-function aggiungiZona() {
-  zoneConfig.push({ nome: 'Zona ' + (zoneConfig.length + 1), room_id: '', ac_device_id: '',
-                    automazione: true, modalita: 'esclusiva', riserva_gas_delta: 1.5, offset_ac: 0 });
-  renderZoneEditor();
-}
-
-function rimuoviZona(i) {
-  zoneConfig.splice(i, 1);
-  renderZoneEditor();
-}
-
-function mostraMsg(tipo, testo) {
-  const el = document.getElementById('msgZone');
-  el.innerHTML = `<div class="alert alert-${tipo} py-2 mb-3 small">${testo}</div>`;
-  setTimeout(() => el.innerHTML = '', 5000);
-}
-
-async function leggiElenco(url) {
-  try {
-    const res = await fetch(url);
-    return await res.json();
-  } catch(e) {
-    return { errori: [e.message] };
-  }
-}
-
-// Cerca termostati Netatmo e condizionatori Samsung e riempie i menu delle zone.
-async function caricaDispositivi() {
-  const stato = document.getElementById('statoDispositivi');
-  stato.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Ricerca dispositivi...';
-  const [termostati, condizionatori] = await Promise.all([
-    leggiElenco('/api/dispositivi/termostati'),
-    leggiElenco('/api/dispositivi/condizionatori'),
-  ]);
-  opzioniRoom = (termostati.bticino || []).map(d => ({ value: d.id, label: `${d.name} (${d.id})` }));
-  opzioniAc = (condizionatori.samsung || []).map(d => ({ value: d.device_id, label: `${d.label} (${d.device_id})` }));
-  renderZoneEditor();
-  const errori = [...(termostati.errori || []), ...(condizionatori.errori || [])];
-  let html = `${opzioniRoom.length} termostati · ${opzioniAc.length} condizionatori`;
-  if (errori.length) {
-    html += ` <span class="text-danger ms-2"><i class="bi bi-exclamation-triangle me-1"></i>${errori.map(escapeHtml).join(' · ')}</span>` +
-            ' <a href="/admin/credentials" class="ms-1">Credenziali API</a>';
-  }
-  stato.innerHTML = html;
-}
-
-async function salvaZone() {
-  try {
-    const res = await fetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ zone: zoneConfig })
+  async function caricaOpzioni() {
+    try {
+      opzioni = await apiGetJson('/api/stanze/opzioni');
+    } catch (e) {
+      mostraMessaggio('msgStanze', 'danger', escapeHtml(e.message));
+      return;
+    }
+    const nomeTermostato = Object.fromEntries(opzioni.termostati.map(t => [t.id, t.nome]));
+    const nomeAc = Object.fromEntries(opzioni.condizionatori.map(a => [a.id, a.nome]));
+    // Nell'elenco: termostato e condizionatore di ogni stanza
+    document.querySelectorAll('[data-termostato]').forEach(el => {
+      const parti = [nomeTermostato[el.dataset.termostato] ? `termostato ${nomeTermostato[el.dataset.termostato]}` : 'termostato non trovato'];
+      parti.push(el.dataset.ac ? (nomeAc[el.dataset.ac] || 'condizionatore non trovato') : 'senza condizionatore');
+      el.textContent = parti.join(' · ') + ' · ' + el.textContent.trim();
     });
-    const data = await res.json();
-    mostraMsg('success', '✅ ' + data.messaggio);
-  } catch(e) {
-    mostraMsg('danger', 'Errore: ' + e.message);
+    const liberi = opzioni.termostati.filter(t => !t.usata_da);
+    const selT = document.getElementById('nuovoTermostato');
+    selT.innerHTML = liberi.length
+      ? liberi.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.nome)}</option>`).join('')
+      : '<option value="">Tutti i termostati sono già in una stanza</option>';
+    selT.disabled = !liberi.length;
+    document.getElementById('nuovoAc').innerHTML = '<option value="">Nessuno</option>' + opzioni.condizionatori.map(a =>
+      `<option value="${escapeHtml(a.id)}">${escapeHtml(a.nome)}${a.usato_da.length ? ` (anche ${escapeHtml(a.usato_da.join(', '))})` : ''}</option>`).join('');
+    document.getElementById('nuovoAc').disabled = false;
+    document.getElementById('creaStanza').disabled = !liberi.length;
+    aggiornaNome();
   }
-}
 
-renderZoneEditor();
-caricaDispositivi();
+  function aggiornaNome() {
+    const sel = document.getElementById('nuovoTermostato');
+    const opzione = sel.options[sel.selectedIndex];
+    document.getElementById('nuovoNome').placeholder = opzione && opzione.value ? opzione.textContent : 'come in Netatmo';
+  }
+
+  document.getElementById('nuovoTermostato').addEventListener('change', aggiornaNome);
+  document.getElementById('creaStanza').addEventListener('click', async () => {
+    try {
+      const r = await apiPostJson('/api/stanze', {
+        room_id: document.getElementById('nuovoTermostato').value,
+        ac_device_id: document.getElementById('nuovoAc').value,
+        nome: document.getElementById('nuovoNome').value.trim(),
+      });
+      location.href = `/stanze/${encodeURIComponent(r.room_id)}`;
+    } catch (e) {
+      mostraMessaggio('msgStanze', 'danger', escapeHtml(e.message));
+    }
+  });
+
+  caricaOpzioni();
+})();
 </script>
 {% endblock %}
