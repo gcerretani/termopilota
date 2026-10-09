@@ -18,6 +18,8 @@ dependencies = [
     "gunicorn>=26.2.0",
     "authlib>=1.8.0",
     "email-validator>=2.3.0",
+    # Fuso orario della casa Netatmo (zoneinfo) anche dove il sistema non ha il database
+    "tzdata>=2025.2",
 ]
 
 [project.optional-dependencies]
