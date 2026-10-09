@@ -19,7 +19,7 @@ from typing import Optional
 
 from termopilota.providers import get_heatpump, get_thermostat
 from termopilota.providers.netatmo import (
-    descrivi_errore_modulo, normalizza_stanza, ora_casa, programma_attivo, setpoint_programmato,
+    ErroreNetatmo, descrivi_errore_modulo, normalizza_stanza, ora_casa, programma_attivo, setpoint_programmato,
 )
 from termopilota.providers.smartthings import (
     CONTROLLI_AC, controlli_disponibili, normalizza_stato, valida_comando,
@@ -103,11 +103,17 @@ def _leggi_netatmo(cfg: dict, errori: list) -> dict:
     home_id = cfg.get("legrand_plant_id", "")
     if not bt or not bt.autenticato or not home_id:
         return vuoto
-    try:
-        completo = bt.stato_casa(home_id)
-    except Exception as e:
-        errori.append(f"Netatmo: {e}")
-        return vuoto
+    completo = None
+    for tentativo in range(2):    # un secondo tentativo per gli errori di rete passeggeri
+        try:
+            completo = bt.stato_casa(home_id)
+            break
+        except Exception as e:
+            logger.warning("Lettura Netatmo fallita (tentativo %d): %s", tentativo + 1, e)
+            if tentativo:
+                errori.append(f"Netatmo: {e}")
+                return vuoto
+            time.sleep(2)
     dati = completo.get("dati") or {}
     stato = completo.get("stato") or {}
     adesso = ora_casa(dati.get("timezone"))
@@ -230,6 +236,15 @@ def comando_ac(cfg: dict, device_id: str, chiave: str, valore, is_admin: bool) -
     return {"capability": capability, "comando": comando, "argomenti": argomenti}
 
 
+def _comando_netatmo(invia) -> bool:
+    """Esegue un comando Netatmo; il rifiuto arriva all'utente col messaggio di Netatmo."""
+    try:
+        return invia()
+    except ErroreNetatmo as e:
+        invalida()
+        raise ErroreComando(f"Netatmo: {e}", 502)
+
+
 def _fine(durata_min) -> int:
     try:
         durata = int(float(durata_min))
@@ -249,7 +264,7 @@ def setpoint_stanza(cfg: dict, room_id: str, temp, durata_min) -> int:
     if not SETPOINT_MIN <= temp <= SETPOINT_MAX:
         raise ErroreComando(f"Temperatura fuori intervallo ({SETPOINT_MIN:g}–{SETPOINT_MAX:g} °C)")
     fine = _fine(durata_min)
-    ok = bt.imposta_modalita(home_id, room_id, "manual", setpoint=temp, fine=fine)
+    ok = _comando_netatmo(lambda: bt.imposta_modalita(home_id, room_id, "manual", setpoint=temp, fine=fine))
     invalida()
     if not ok:
         raise ErroreComando("Netatmo ha rifiutato il comando", 502)
@@ -258,7 +273,7 @@ def setpoint_stanza(cfg: dict, room_id: str, temp, durata_min) -> int:
 
 def ripristina_stanza(cfg: dict, room_id: str) -> None:
     bt, home_id = _client_netatmo(cfg)
-    ok = bt.imposta_modalita(home_id, room_id, "home")
+    ok = _comando_netatmo(lambda: bt.imposta_modalita(home_id, room_id, "home"))
     invalida()
     if not ok:
         raise ErroreComando("Netatmo ha rifiutato il comando", 502)
@@ -269,7 +284,7 @@ def modalita_casa(cfg: dict, modo: str, durata_min=None) -> None:
     if modo not in ("schedule", "away", "hg"):
         raise ErroreComando("Modalità non valida")
     fine = _fine(durata_min) if durata_min and modo != "schedule" else None
-    ok = bt.imposta_modalita_casa(home_id, modo, fine)
+    ok = _comando_netatmo(lambda: bt.imposta_modalita_casa(home_id, modo, fine))
     invalida()
     if not ok:
         raise ErroreComando("Netatmo ha rifiutato il comando", 502)
@@ -280,7 +295,7 @@ def programma_casa(cfg: dict, schedule_id: str) -> None:
     casa = snapshot(cfg).get("casa") or {}
     if schedule_id not in {p["id"] for p in casa.get("programmi", [])}:
         raise ErroreComando("Programma non trovato", 404)
-    ok = bt.cambia_programma(home_id, schedule_id)
+    ok = _comando_netatmo(lambda: bt.cambia_programma(home_id, schedule_id))
     invalida()
     if not ok:
         raise ErroreComando("Netatmo ha rifiutato il comando", 502)

@@ -66,18 +66,24 @@ def test_normalizza_stanza():
 
 
 class _Risposta:
-    status_code = 200
-    text = '{"status":"ok"}'
+    def __init__(self, status_code=200, corpo=None):
+        self.status_code = status_code
+        self.corpo = corpo if corpo is not None else {"status": "ok"}
+        self.text = str(self.corpo)
+
+    def json(self):
+        return self.corpo
 
 
 @pytest.fixture
 def chiamate(monkeypatch):
-    registro = []
+    def finto_post(url, headers=None, data=None, json=None, timeout=None, **_):
+        registro.append((url.rsplit("/", 1)[-1], data if json is None else json))
+        return registro.risposta if hasattr(registro, "risposta") else _Risposta()
 
-    def finto_post(url, headers=None, data=None, timeout=None, **_):
-        registro.append((url.rsplit("/", 1)[-1], data))
-        return _Risposta()
-
+    class Registro(list):
+        pass
+    registro = Registro()
     monkeypatch.setattr(netatmo.requests, "post", finto_post)
     return registro
 
@@ -86,17 +92,25 @@ def _client():
     return NetatmoClient("id", "secret", {"access_token": "t", "_expires_at": 9e12})
 
 
-def test_ripristino_usa_mode_home(chiamate):
+def test_ripristino_usa_setstate_mode_home(chiamate):
+    # Con gli scope Smarther setroomthermpoint risponde 403: le stanze si comandano con setstate
     assert _client().imposta_modalita("casa-1", "stanza-1", "AUTOMATIC")
-    endpoint, dati = chiamate[0]
-    assert endpoint == "setroomthermpoint"
-    assert dati == {"home_id": "casa-1", "room_id": "stanza-1", "mode": "home"}
+    endpoint, corpo = chiamate[0]
+    assert endpoint == "setstate"
+    assert corpo == {"home": {"id": "casa-1", "rooms": [{"id": "stanza-1", "therm_setpoint_mode": "home"}]}}
 
 
 def test_manuale_con_temperatura_e_scadenza(chiamate):
     _client().imposta_modalita("casa-1", "stanza-1", "OFF", setpoint=7.0, fine=2_000_000_000)
-    _, dati = chiamate[0]
-    assert dati["mode"] == "manual" and dati["temp"] == 7.0 and dati["endtime"] == 2_000_000_000
+    [stanza] = chiamate[0][1]["home"]["rooms"]
+    assert stanza == {"id": "stanza-1", "therm_setpoint_mode": "manual",
+                      "therm_setpoint_temperature": 7.0, "therm_setpoint_end_time": 2_000_000_000}
+
+
+def test_boost_senza_temperatura(chiamate):
+    _client().imposta_modalita("casa-1", "stanza-1", "max", fine=2_000_000_000)
+    [stanza] = chiamate[0][1]["home"]["rooms"]
+    assert stanza == {"id": "stanza-1", "therm_setpoint_mode": "max", "therm_setpoint_end_time": 2_000_000_000}
 
 
 def test_modalita_non_valida_rifiutata():
@@ -110,3 +124,10 @@ def test_modalita_casa_e_programma(chiamate):
     c.cambia_programma("casa-1", "prog-inverno")
     assert chiamate[0] == ("setthermmode", {"home_id": "casa-1", "mode": "away", "endtime": 2_000_000_000})
     assert chiamate[1] == ("switchhomeschedule", {"home_id": "casa-1", "schedule_id": "prog-inverno"})
+
+
+def test_rifiuto_con_il_messaggio_di_netatmo(chiamate):
+    chiamate.risposta = _Risposta(403, {"error": {"code": 13, "message": "Operation is forbidden"}})
+    with pytest.raises(netatmo.ErroreNetatmo) as e:
+        _client().imposta_modalita("casa-1", "stanza-1", "home")
+    assert e.value.codice == 13 and "Operation is forbidden" in str(e.value)

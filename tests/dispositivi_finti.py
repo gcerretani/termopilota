@@ -74,9 +74,14 @@ class NetatmoFinto:
         from termopilota.providers.netatmo import normalizza_stanza
         return {r["id"]: normalizza_stanza(r) for r in self.casa["stato"]["rooms"]}
 
+    def _esito(self):
+        if isinstance(self.esito, Exception):    # rifiuto di Netatmo (ErroreNetatmo)
+            raise self.esito
+        return self.esito
+
     def imposta_modalita(self, home_id, room_id, mode, setpoint=7.0, fine=None):
         self.comandi.append((room_id, mode, setpoint, fine))
-        return self.esito
+        return self._esito()
 
     def imposta_modalita_casa(self, home_id, mode, fine=None):
         self.comandi.append(("casa", mode, fine))

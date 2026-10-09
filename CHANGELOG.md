@@ -7,6 +7,21 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.2.2] - 2026-10-09
+
+### Corretto
+- **Comandi ai termostati Netatmo**: con il collegamento BTicino Smarther (`write_smarther`) Netatmo
+  rifiutava ogni comando sulle stanze ("Operation is forbidden", codice 13): non funzionavano la
+  temperatura manuale, il ritorno al programma e la chiusura del termostato da parte
+  dell'automazione. Ora le stanze si comandano con `setstate`, che questi permessi ammettono; aggiunta
+  anche la modalità boost (`max`) nel provider.
+- Se Netatmo rifiuta un comando, la pagina mostra il suo messaggio invece di un generico "ha
+  rifiutato il comando".
+- **Lettura Netatmo fallita**: un errore passeggero mandava tutte le zone in "dati mancanti" con un
+  motivo sbagliato ("nessuna stanza"). Ora la lettura si ritenta una volta; se fallisce ancora il
+  ciclo viene saltato, lo stato resta quello dell'ultima decisione e il registro riporta l'errore
+  vero.
+
 ## [1.2.1] - 2026-10-09
 
 ### Corretto
@@ -234,7 +249,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.2.1...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.2
 [1.2.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.1
 [1.2.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.0
 [1.1.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.1.0

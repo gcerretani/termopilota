@@ -433,6 +433,12 @@ class AutomazioneRiscaldamento:
             self._log_evento("sistema", "warning", "Costi dell'ora corrente non disponibili, ciclo saltato")
             return
         snap = dispositivi.snapshot(cfg, forza=True)
+        errore_netatmo = next((e for e in snap.get("errori", []) if e.startswith("Netatmo")), None)
+        if errore_netatmo and not snap.get("stanze"):
+            # Lettura fallita: meglio non decidere nulla (lo stato resta com'e', gli
+            # override nostri scadono da soli) che mandare tutte le zone in errore
+            self._log_evento("sistema", "warning", f"{errore_netatmo}: ciclo saltato, riprovo al prossimo")
+            return
         contesto = self._contesto(cfg, attuale, snap)
         simulazione = bool(cfg.get("automazione_simulazione"))
 

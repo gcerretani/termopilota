@@ -246,3 +246,12 @@ def test_zona_reinclusa_aggiorna_subito_lo_stato(utente_client, finti):
     [z] = utente_client.get("/api/automazione").get_json()["zone"]
     assert z["stato"] is None and z["automazione"] is True
     assert servizio._sveglia.is_set()    # il ciclo riparte senza aspettare l'intervallo
+
+
+def test_rifiuto_netatmo_mostra_il_messaggio(utente_client, finti):
+    from termopilota.providers.netatmo import ErroreNetatmo
+    _, bt = finti
+    bt.esito = ErroreNetatmo("Operation is forbidden", 13)
+    r = utente_client.post("/api/dispositivi/stanza/stanza-1/setpoint", json={"temp": 20, "durata_min": 60})
+    assert r.status_code == 502
+    assert r.get_json()["errore"] == "Netatmo: Operation is forbidden (codice 13)"
