@@ -4,83 +4,49 @@
 Servizio di automazione riscaldamento.
 
 Ogni N minuti (default 15):
-1. Legge temperatura esterna (stazione CFR configurata)
-2. Calcola costo €/kWh_termico per gas vs AC
-3. Per ogni zona configurata:
-   - Se AC conviene più del gas (oltre la soglia delta):
-       → spegne il/i termostato/i BTicino
-       → accende l'AC Samsung corrispondente in modalità heat
-   - Se gas conviene (o temperatura < limite AC):
-       → spegne l'AC
-       → rimette il termostato in AUTOMATIC
-4. Salva un log degli ultimi 50 eventi
+1. Prende i costi dell'ora corrente dallo stesso motore delle raccomandazioni
+   (pannello solare compreso) e la fotografia dei dispositivi.
+2. Pianifica ogni zona con `pianifica` (funzione pura, testabile):
+   - zona esclusa, in pausa, in manuale dall'utente, casa in raffrescamento:
+     non si tocca nulla;
+   - finestra aperta o dati mancanti: niente AC, termostato restituito al programma;
+   - AC conveniente e stanza sotto il target (il setpoint del programma
+     Netatmo, non quello corrente, che durante un nostro override vale 7 °C):
+       esclusiva  → termostato in manuale a 7 °C (valvola chiusa) + AC acceso;
+       affiancata → termostato in manuale a target - riserva_gas_delta (la
+                    caldaia interviene solo se l'AC non ce la fa) + AC acceso;
+   - altrimenti gas: il termostato torna al programma, l'AC si spegne se
+     l'avevamo acceso noi e nessun'altra zona lo vuole.
+3. Invia solo i comandi che cambiano qualcosa. I manuali Netatmo hanno una
+   scadenza breve, rinnovata a ogni ciclo: se TermoPilota si ferma, i
+   termostati tornano da soli al programma.
+
+Lo stato di runtime (override nostri, pause, AC accesi da noi) e' in
+data/automazione_stato.json. In simulazione il ciclo pianifica e registra le
+decisioni senza inviare comandi.
 """
 
+import copy
 import json
 import logging
 import os
 import threading
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
-import requests
-
-from termopilota.costanti import KWH_PER_SMC, interpola_cop
-from termopilota.percorsi import CONFIG_FILE
+from termopilota import dispositivi
+from termopilota.percorsi import CONFIG_FILE, STATO_AUTOMAZIONE_FILE
+from termopilota.providers.netatmo import ora_casa
+from termopilota.providers import scrivi_json_atomico
 
 logger = logging.getLogger(__name__)
 
 
-ISTERESI = 0.5  # °C — AC si accende se T < setpoint-0.5, si spegne se T >= setpoint
-
-
-def _temp_cfr(station_id: str) -> Optional[float]:
-    """Legge la temperatura dalla stazione CFR indicata."""
-    if not station_id:
-        return None
-    import re
-    cfr_url = (
-        f"https://cfr.toscana.it/monitoraggio/dettaglio.php"
-        f"?id={station_id}&type=termo&json=1"
-    )
-    try:
-        resp = requests.get(cfr_url, timeout=10,
-                            headers={"User-Agent": "Mozilla/5.0"})
-        resp.raise_for_status()
-        match = re.search(
-            r'new Array\(\s*"[^"]*"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,',
-            resp.text,
-        )
-        if match:
-            return float(match.group(2).replace(",", "."))
-    except Exception as e:
-        logger.warning("CFR non disponibile: %s", e)
-    return None
-
-
-def _costo_gas(cfg: dict) -> float:
-    """€/kWh termico con la caldaia."""
-    from termopilota.prezzi import calcola_prezzi
-    try:
-        prezzi = calcola_prezzi(cfg)
-        gas_smc = prezzi["gas_totale_smc"]
-    except Exception:
-        gas_smc = cfg.get("gas_totale_smc_manuale", 1.09)
-    eff = max(0.05, min(1.0, cfg.get("efficienza_caldaia") or 0.96))
-    return gas_smc / (KWH_PER_SMC * eff)
-
-
-def _costo_ac(t_ext: float, cfg: dict) -> float:
-    """€/kWh termico con l'AC (pompa di calore)."""
-    from termopilota.prezzi import calcola_prezzi
-    try:
-        prezzi = calcola_prezzi(cfg)
-        luce_kwh = prezzi["luce_totale_kwh"]
-    except Exception:
-        luce_kwh = cfg.get("luce_totale_kwh_manuale", 0.246)
-    cop = interpola_cop(t_ext)
-    return luce_kwh / cop
+ISTERESI = 0.5            # °C: si entra in AC sotto target-0,5, si esce sopra target+0,5
+SETPOINT_ESCLUSIVA = 7.0  # termostato in manuale a 7 °C = valvola chiusa
+DURATA_OVERRIDE_MIN_S = 3600
+STATI_BLOCCATI = ("pausa", "manuale", "raffrescamento")
 
 
 def _motivo_dati_mancanti(bticino, home_id: str, room_id: str, stati: dict) -> str:
@@ -102,6 +68,270 @@ def _motivo_dati_mancanti(bticino, home_id: str, room_id: str, stati: dict) -> s
     return f"Netatmo non fornisce {' e '.join(mancanti)} (campi ricevuti: {campi})"
 
 
+def stato_vuoto() -> dict:
+    return {"stanze": {}, "ac": {}}
+
+
+def in_fascia_notte(ora: int, inizio: int, fine: int) -> bool:
+    if inizio == fine:
+        return False
+    if inizio > fine:
+        return ora >= inizio or ora < fine
+    return inizio <= ora < fine
+
+
+def _num(valore, predefinito: float) -> float:
+    try:
+        return float(valore)
+    except (TypeError, ValueError):
+        return predefinito
+
+
+def _fmt(t) -> str:
+    return "?" if t is None else f"{t:.1f}"
+
+
+# ─── Pianificazione (pura) ───────────────────────────────────────────────────
+
+def pianifica(zone: list, contesto: dict, stato: dict, simulazione: bool = False) -> dict:
+    """Decide cosa fare per ogni zona.
+
+    contesto: adesso (epoch), ora (datetime locale), t_ext, costo_gas, costo_ac
+      (€/kWh termico), soglia, t_min_ac, intervallo_min, stanze {room_id: stanza
+      normalizzata con 'target'}, ac {device_id: stato normalizzato}, casa (dict
+      o None), diagnosi {room_id: motivo dati mancanti}, ac_ventola,
+      ac_modalita_notte, notte_inizio, notte_fine, pausa_manuale_ore.
+    stato: stato persistito (non viene modificato: si restituisce la copia nuova).
+    simulazione: non confronta lo stato con i dispositivi reali (i comandi
+      simulati non sono mai stati inviati).
+
+    Restituisce {zone: [stato per la UI], netatmo: [azioni], ac: [azioni],
+    stato: stato nuovo, eventi: [(zona, azione, dettaglio)]}.
+    """
+    stato = copy.deepcopy(stato) if stato else stato_vuoto()
+    stato.setdefault("stanze", {})
+    stato.setdefault("ac", {})
+    adesso = contesto["adesso"]
+    stanze = contesto.get("stanze") or {}
+    reali_ac = contesto.get("ac") or {}
+    casa = contesto.get("casa") or {}
+    t_ext = contesto["t_ext"]
+    costo_gas, costo_ac = contesto["costo_gas"], contesto["costo_ac"]
+    conviene = (t_ext is not None and t_ext >= contesto["t_min_ac"]
+                and (costo_gas - costo_ac) > contesto["soglia"])
+    durata = max(3 * contesto["intervallo_min"] * 60, DURATA_OVERRIDE_MIN_S)
+    pausa_s = contesto.get("pausa_manuale_ore", 3) * 3600
+
+    azioni_netatmo, eventi, zone_ui = [], [], []
+    richieste_ac: dict = {}     # device_id -> [setpoint richiesti]
+    ac_bloccati: set = set()    # AC di zone in pausa/manuale: non si toccano
+    ac_zone: dict = {}          # device_id -> [room_id] (per le pause automatiche)
+
+    # Un AC acceso da noi e poi spento o cambiato a mano: l'utente ha deciso,
+    # le sue zone vanno in pausa (altrimenti il ciclo annullerebbe la modifica)
+    for zona in zone:
+        if zona.get("ac_device_id"):
+            ac_zone.setdefault(zona["ac_device_id"], []).append(zona.get("room_id", ""))
+    if not simulazione:
+        for acid, stanze_ac in ac_zone.items():
+            sa, reale = stato["ac"].get(acid) or {}, reali_ac.get(acid)
+            motivo = _ac_modificato_da_utente(sa, reale)
+            if motivo:
+                sa["acceso_da_noi"] = False
+                stato["ac"][acid] = sa
+                for rid in stanze_ac:
+                    stato["stanze"].setdefault(rid, {})["pausa_fino"] = adesso + pausa_s
+                eventi.append((acid, "pausa", f"{motivo}: automazione in pausa sulle sue zone"))
+
+    for zona in zone:
+        nome = zona.get("nome", "Zona")
+        rid = zona.get("room_id", "")
+        acid = zona.get("ac_device_id", "")
+        modalita = "affiancata" if zona.get("modalita") == "affiancata" else "esclusiva"
+        sz = stato["stanze"].setdefault(rid, {})
+        st = stanze.get(rid)
+        ui = {
+            "nome": nome, "room_id": rid, "ac_device_id": acid, "modalita": modalita,
+            "automazione": zona.get("automazione", True) is not False,
+            "t_stanza": st.get("temperatura_attuale") if st else None,
+            "setpoint": st.get("setpoint") if st else None,
+            "t_ext": t_ext, "costo_gas": round(costo_gas, 4), "costo_ac": round(costo_ac, 4),
+            "pausa_fino": None, "target": None,
+        }
+
+        # L'override registrato vale solo se la stanza e' ancora come l'abbiamo lasciata
+        override = sz.get("override")
+        if override and not simulazione:
+            if (not st or override.get("fine", 0) <= adesso or st.get("modalita") != "manual"
+                    or abs(_num(st.get("setpoint"), -99) - override["setpoint"]) > 0.05):
+                override = sz["override"] = None
+        nostro = bool(override)
+
+        def rilascia():
+            if sz.get("override"):
+                azioni_netatmo.append({"room_id": rid, "zona": nome, "tipo": "home"})
+                sz["override"] = None
+
+        if st and st.get("target") is not None:
+            sz["ultimo_target"] = st["target"]
+        elif st and not nostro and st.get("modalita") != "manual" and st.get("setpoint") is not None:
+            sz["ultimo_target"] = st["setpoint"]
+        target = sz.get("ultimo_target")
+        ui["target"] = target
+
+        pausa_fino = sz.get("pausa_fino")
+        if pausa_fino and pausa_fino <= adesso:
+            pausa_fino = sz["pausa_fino"] = None
+        manuale_utente = (st is not None and not nostro and st.get("modalita") in ("manual", "max"))
+
+        categoria = None
+        if not ui["automazione"]:
+            esito, fonte, motivo = "esclusa", None, "Zona esclusa dall'automazione"
+            rilascia()
+        elif pausa_fino:
+            esito, fonte = "pausa", None
+            motivo = "In pausa fino alle " + datetime.fromtimestamp(pausa_fino).strftime("%H:%M")
+            ui["pausa_fino"] = pausa_fino
+        elif casa.get("temperature_control_mode") == "cooling":
+            esito, fonte, motivo = "raffrescamento", None, "Impianto in raffrescamento: automazione inattiva"
+            rilascia()
+        elif manuale_utente:
+            esito, fonte = "manuale", None
+            fine = st.get("setpoint_fine")
+            motivo = "Termostato in manuale" + (
+                f" fino alle {datetime.fromtimestamp(fine).strftime('%H:%M')}" if fine else "")
+        elif not rid or not st or st.get("temperatura_attuale") is None or target is None:
+            esito, fonte, categoria = "errore", "gas", "dati"
+            motivo = "Dati Netatmo non disponibili: " + (
+                (contesto.get("diagnosi") or {}).get(rid) or "stanza non configurata o setpoint non noto")
+            rilascia()
+        elif not st.get("raggiungibile", True):
+            esito, fonte, motivo = "errore", "gas", "Termostato non raggiungibile"
+            categoria = "irraggiungibile"
+            rilascia()
+        elif st.get("finestra_aperta"):
+            esito, fonte, motivo = "finestra", "gas", "Finestra aperta: niente AC"
+            rilascia()
+        else:
+            t = st["temperatura_attuale"]
+            in_ac = sz.get("fonte") == "ac"
+            vuole = conviene and bool(acid) and (
+                t < target - ISTERESI or (in_ac and t < target + ISTERESI))
+            if vuole:
+                fonte = "ac"
+                esito = modalita if modalita == "affiancata" else "ac"
+                sp = (SETPOINT_ESCLUSIVA if modalita == "esclusiva"
+                      else max(SETPOINT_ESCLUSIVA, round((target - _num(zona.get("riserva_gas_delta"), 1.5)) * 2) / 2))
+                da_rinnovare = (not nostro or abs(override["setpoint"] - sp) > 0.05
+                                or override.get("fine", 0) - adesso < durata / 2)
+                if da_rinnovare:
+                    fine = int(adesso + durata)
+                    azioni_netatmo.append({"room_id": rid, "zona": nome, "tipo": "manual",
+                                           "setpoint": sp, "fine": fine})
+                    sz["override"] = {"setpoint": sp, "fine": fine}
+                richieste_ac.setdefault(acid, []).append(target + _num(zona.get("offset_ac"), 0.0))
+                motivo = (f"T stanza {_fmt(t)}°C, target {_fmt(target)}°C | "
+                          f"gas={costo_gas:.3f} > ac={costo_ac:.3f} €/kWh_th"
+                          + (f" | caldaia di riserva a {sp:g}°C" if modalita == "affiancata" else ""))
+            else:
+                esito, fonte = "gas", "gas"
+                rilascia()
+                if not acid:
+                    categoria, motivo = "senza_ac", "Nessun condizionatore associato alla zona"
+                elif t >= target:
+                    categoria, motivo = "target", f"Target {_fmt(target)}°C raggiunto (T={_fmt(t)}°C)"
+                elif t_ext is None or t_ext < contesto["t_min_ac"]:
+                    categoria = "freddo"
+                    motivo = f"T esterna {_fmt(t_ext)}°C sotto il limite AC ({contesto['t_min_ac']}°C)"
+                elif not conviene:
+                    categoria = "gas_conviene"
+                    motivo = f"Gas conviene (gas={costo_gas:.3f} ≤ ac={costo_ac:.3f} €/kWh_th)"
+                else:
+                    categoria = "vicino"
+                    motivo = f"T stanza {_fmt(t)}°C vicina al target {_fmt(target)}°C"
+
+        if esito in STATI_BLOCCATI and acid:
+            ac_bloccati.add(acid)
+        precedente = (sz.get("stato"), sz.get("motivo_breve"))
+        motivo_breve = categoria or esito
+        if precedente != (esito, motivo_breve):
+            eventi.append((nome, _azione_evento(esito), motivo))
+        sz.update({"stato": esito, "fonte": fonte, "motivo_breve": motivo_breve})
+        ui.update({"stato": esito, "fonte": fonte, "motivo": motivo})
+        zone_ui.append(ui)
+
+    azioni_ac = _pianifica_ac(ac_zone, richieste_ac, ac_bloccati, contesto, stato, simulazione)
+    return {"zone": zone_ui, "netatmo": azioni_netatmo, "ac": azioni_ac, "stato": stato, "eventi": eventi}
+
+
+def _azione_evento(esito: str) -> str:
+    return {"ac": "→ AC", "affiancata": "→ AC + caldaia di riserva", "gas": "→ Gas",
+            "errore": "→ Gas", "finestra": "→ Gas"}.get(esito, esito)
+
+
+def _ac_modificato_da_utente(sa: dict, reale: Optional[dict]) -> Optional[str]:
+    """Motivo per cui un AC acceso da noi risulta cambiato a mano (o None)."""
+    if not sa.get("acceso_da_noi") or not reale:
+        return None
+    if reale.get("acceso") is False:
+        return "Condizionatore spento a mano"
+    if reale.get("modalita") and reale["modalita"] != "heat":
+        return f"Modalità del condizionatore cambiata a mano ({reale['modalita']})"
+    sp = reale.get("setpoint_riscaldamento")
+    if sp is not None and sa.get("setpoint") is not None and abs(sp - sa["setpoint"]) > 0.5:
+        return f"Temperatura del condizionatore cambiata a mano ({sp:g}°C)"
+    return None
+
+
+def _pianifica_ac(ac_zone: dict, richieste: dict, bloccati: set, contesto: dict, stato: dict,
+                 simulazione: bool = False) -> list:
+    azioni = []
+    notte = in_fascia_notte(contesto["ora"].hour, contesto["notte_inizio"], contesto["notte_fine"])
+    for acid in ac_zone:
+        if acid in bloccati:
+            continue
+        sa = stato["ac"].setdefault(acid, {})
+        reale = (contesto.get("ac") or {}).get(acid) or {}
+        if richieste.get(acid):
+            minimo = reale.get("setpoint_min") or 16
+            massimo = reale.get("setpoint_max") or 30
+            sp = int(max(minimo, min(massimo, round(max(richieste[acid])))))
+            ventola = contesto.get("ac_ventola") if reale.get("ventola") is not None else None
+            opzionale = None
+            if reale.get("modalita_opzionale") is not None:
+                desiderata = contesto.get("ac_modalita_notte") or "off"
+                opzionale = desiderata if notte else "off"
+            nuovo = {"acceso_da_noi": True, "setpoint": sp, "ventola": ventola, "opzionale": opzionale}
+            spento = reale.get("acceso") is False and not simulazione
+            if any(sa.get(k) != v for k, v in nuovo.items()) or spento:
+                azioni.append({"device_id": acid, "tipo": "accendi", "setpoint": sp,
+                               "ventola": ventola, "opzionale": opzionale})
+            sa.update(nuovo)
+        elif sa.get("acceso_da_noi"):
+            azioni.append({"device_id": acid, "tipo": "spegni"})
+            sa.update({"acceso_da_noi": False, "setpoint": None, "ventola": None, "opzionale": None})
+    return azioni
+
+
+def rilascio(stato: dict) -> dict:
+    """Azioni per restituire tutto: stanze al programma, AC accesi da noi spenti."""
+    stato = copy.deepcopy(stato) if stato else stato_vuoto()
+    netatmo = []
+    for rid, sz in stato.get("stanze", {}).items():
+        if sz.get("override"):
+            netatmo.append({"room_id": rid, "zona": rid, "tipo": "home"})
+            sz["override"] = None
+        sz["stato"] = sz["fonte"] = sz["motivo_breve"] = None
+    ac = []
+    for acid, sa in stato.get("ac", {}).items():
+        if sa.get("acceso_da_noi"):
+            ac.append({"device_id": acid, "tipo": "spegni"})
+        stato["ac"][acid] = {"acceso_da_noi": False}
+    return {"netatmo": netatmo, "ac": ac, "stato": stato}
+
+
+# ─── Servizio ────────────────────────────────────────────────────────────────
+
 class AutomazioneRiscaldamento:
     """Loop di controllo automatico. Avviato come thread separato."""
 
@@ -111,6 +341,14 @@ class AutomazioneRiscaldamento:
         self.log_eventi: list = []       # ultimi 50 eventi
         self.stato_zone: list = []       # stato corrente per zona
         self._lock = threading.Lock()
+        self._lock_stato = threading.RLock()   # file di stato: ciclo e API
+        self._stato_simulato: Optional[dict] = None
+        # Riga dell'ora corrente del motore delle raccomandazioni (fornita da app.py,
+        # che possiede meteo, CFR e prezzi): cosi' i costi coincidono con la dashboard
+        self._fornitore: Optional[Callable[[dict], Optional[dict]]] = None
+
+    def imposta_fornitore(self, fornitore: Callable[[dict], Optional[dict]]) -> None:
+        self._fornitore = fornitore
 
     # ── Ciclo principale ──────────────────────────────────────────────────────
 
@@ -141,145 +379,191 @@ class AutomazioneRiscaldamento:
             intervallo_min = max(1.0, min(1440.0, cfg.get("intervallo_controllo_minuti") or 15.0))
             self._stop_event.wait(timeout=intervallo_min * 60)
 
+    def _contesto(self, cfg: dict, attuale: dict, snap: dict) -> dict:
+        from termopilota.providers import get_thermostat
+        stanze = snap.get("stanze", {})
+        diagnosi = {}
+        for zona in cfg.get("zone", []):
+            rid = zona.get("room_id", "")
+            st = stanze.get(rid)
+            if not st or st.get("temperatura_attuale") is None:
+                diagnosi[rid] = _motivo_dati_mancanti(
+                    get_thermostat("netatmo", cfg), cfg.get("legrand_plant_id", ""), rid, stanze)
+        return {
+            "adesso": time.time(),
+            "ora": ora_casa((snap.get("casa") or {}).get("timezone")),
+            "t_ext": attuale.get("temp_esterna"),
+            "costo_gas": attuale["costo_gas_kwh"],
+            "costo_ac": attuale["costo_ac_kwh"],
+            "soglia": _num(cfg.get("soglia_delta_risparmio"), 0.01),
+            "t_min_ac": _num(cfg.get("temperatura_minima_ac"), -10),
+            "intervallo_min": max(1.0, min(1440.0, _num(cfg.get("intervallo_controllo_minuti"), 15.0))),
+            "stanze": stanze,
+            "ac": {i: a.get("stato") or {} for i, a in snap.get("ac", {}).items()},
+            "casa": snap.get("casa"),
+            "diagnosi": diagnosi,
+            "ac_ventola": cfg.get("ac_ventola") or "auto",
+            "ac_modalita_notte": cfg.get("ac_modalita_notte") or "off",
+            "notte_inizio": int(_num(cfg.get("notte_inizio"), 22)),
+            "notte_fine": int(_num(cfg.get("notte_fine"), 7)),
+            "pausa_manuale_ore": _num(cfg.get("pausa_manuale_ore"), 3),
+        }
+
     def _ciclo(self) -> None:
         cfg = self._carica_config()
         if not cfg.get("automazione_attiva", False):
             return
-
         zone = cfg.get("zone", [])
         if not zone:
             return
-
-        # ── Lettura temperatura esterna ───────────────────────────────────────
-        station_id = cfg.get("cfr_station_id", "")
-        t_ext = _temp_cfr(station_id)
-        if t_ext is None:
-            self._log_evento("sistema", "warning", "Temperatura CFR non disponibile, ciclo saltato")
+        attuale = self._fornitore(cfg) if self._fornitore else None
+        if attuale is None:
+            self._log_evento("sistema", "warning", "Costi dell'ora corrente non disponibili, ciclo saltato")
             return
+        snap = dispositivi.snapshot(cfg, forza=True)
+        contesto = self._contesto(cfg, attuale, snap)
+        simulazione = bool(cfg.get("automazione_simulazione"))
 
-        costo_gas = _costo_gas(cfg)
-        costo_ac  = _costo_ac(t_ext, cfg)
-        soglia    = cfg.get("soglia_delta_risparmio", 0.01)
-        t_min_ac  = cfg.get("temperatura_minima_ac", -15)
-        home_id   = cfg.get("legrand_plant_id", "")
-
-        from termopilota.providers import get_thermostat, get_heatpump
-
-        bticino = get_thermostat("netatmo", cfg)
-        samsung = get_heatpump("smartthings", cfg)
-
-        # ── Lettura stati Netatmo in una sola chiamata ────────────────────────
-        stati_netatmo = {}
-        if bticino and home_id:
-            try:
-                stati_netatmo = bticino.stato_tutte_stanze(home_id)
-            except Exception as e:
-                self._log_evento("sistema", "errore", f"Netatmo non raggiungibile: {e}")
-                return
-
-        # ── Determina per ogni AC quante zone richiedono riscaldamento ────────
-        # {ac_device_id: set di room_id che richiedono AC}
-        richieste_ac: dict = {}
-        for zona in zone:
-            ac_id   = zona.get("ac_device_id", "")
-            room_id = zona.get("room_id", "")
-            if ac_id not in richieste_ac:
-                richieste_ac[ac_id] = set()
-            stato = stati_netatmo.get(room_id, {})
-            t_stanza = stato.get("temperatura_attuale")
-            setpoint = stato.get("setpoint")
-            conviene_ac = (t_ext >= t_min_ac and (costo_gas - costo_ac) > soglia)
-            if (t_stanza is not None and setpoint is not None
-                    and t_stanza < (setpoint - ISTERESI)
-                    and conviene_ac):
-                richieste_ac[ac_id].add(room_id)
-
-        # ── Ciclo per zona ────────────────────────────────────────────────────
-        nuovi_stati = []
-        for zona in zone:
-            nome    = zona.get("nome", "Zona")
-            room_id = zona.get("room_id", "")
-            ac_id   = zona.get("ac_device_id", "")
-
-            stato = stati_netatmo.get(room_id, {})
-            t_stanza = stato.get("temperatura_attuale")
-            setpoint = stato.get("setpoint")
-            modalita_corrente = stato.get("modalita", "")
-
-            conviene_ac = (t_ext >= t_min_ac and (costo_gas - costo_ac) > soglia)
-            questa_zona_vuole_ac = room_id in richieste_ac.get(ac_id, set())
-            # L'AC va acceso se almeno una zona con quell'AC vuole riscaldamento
-            ac_deve_essere_acceso = bool(richieste_ac.get(ac_id))
-
-            stato_zona = {
-                "nome":      nome,
-                "fonte":     "ac" if questa_zona_vuole_ac else "gas",
-                "t_stanza":  t_stanza,
-                "setpoint":  setpoint,
-                "t_ext":     t_ext,
-                "costo_gas": round(costo_gas, 4),
-                "costo_ac":  round(costo_ac, 4),
-                "aggiornato": datetime.now().strftime("%H:%M"),
-            }
-
-            if questa_zona_vuole_ac:
-                # Zona ha bisogno di calore e AC conviene
-                # → blocca termostato Netatmo (manual a 7°C = valvola chiusa)
-                if bticino and home_id and modalita_corrente != "manual":
-                    try:
-                        bticino.imposta_modalita(home_id, room_id, "OFF", setpoint=7.0)
-                    except Exception as e:
-                        logger.error("Errore blocco termostato %s: %s", room_id, e)
-
-                # → accendi AC (con setpoint letto da Netatmo)
-                if samsung and ac_id and ac_deve_essere_acceso:
-                    try:
-                        samsung.accendi_ac(ac_id, setpoint=setpoint or 21.0)
-                    except Exception as e:
-                        logger.error("Errore accensione AC %s: %s", ac_id, e)
-                        stato_zona["errore_ac"] = str(e)
-
-                self._log_evento(
-                    nome, "→ AC",
-                    f"T stanza {t_stanza:.1f}°C < setpoint {setpoint:.1f}°C | "
-                    f"gas={costo_gas:.3f} > ac={costo_ac:.3f} €/kWh_th"
-                )
-
+        with self._lock_stato:
+            if simulazione:
+                if self._stato_simulato is None:
+                    self._stato_simulato = self.leggi_stato()
+                stato = self._stato_simulato
+                # Le pause si impostano sul file anche in simulazione
+                for rid, sz in self.leggi_stato().get("stanze", {}).items():
+                    stato.setdefault("stanze", {}).setdefault(rid, {})["pausa_fino"] = sz.get("pausa_fino")
             else:
-                # Zona soddisfatta o gas conviene
-                # → ripristina termostato Netatmo in schedule
-                if bticino and home_id and modalita_corrente == "manual":
-                    try:
-                        bticino.imposta_modalita(home_id, room_id, "AUTOMATIC")
-                    except Exception as e:
-                        logger.error("Errore ripristino termostato %s: %s", room_id, e)
+                self._stato_simulato = None
+                stato = self.leggi_stato()
+            piano = pianifica(zone, contesto, stato, simulazione)
+            nuovo = piano["stato"]
+            errori_ac = {} if simulazione else self._esegui(cfg, piano, nuovo)
+            if simulazione:
+                self._stato_simulato = nuovo
+            else:
+                self._salva_stato(nuovo)
 
-                # → spegni AC solo se NESSUNA zona con quell'AC ha ancora bisogno
-                if samsung and ac_id and not ac_deve_essere_acceso:
-                    try:
-                        samsung.spegni_ac(ac_id)
-                    except Exception as e:
-                        logger.error("Errore spegnimento AC %s: %s", ac_id, e)
-                        stato_zona["errore_ac"] = str(e)
-
-                if t_stanza is not None and setpoint is not None:
-                    if t_stanza >= setpoint:
-                        motivo = f"Setpoint {setpoint:.1f}°C raggiunto (T={t_stanza:.1f}°C)"
-                    elif not conviene_ac:
-                        motivo = f"Gas conviene (gas={costo_gas:.3f} ≤ ac={costo_ac:.3f} €/kWh_th)"
-                    else:
-                        motivo = f"T={t_ext:.1f}°C sotto limite AC ({t_min_ac}°C)"
-                else:
-                    motivo = "Dati Netatmo non disponibili: " + _motivo_dati_mancanti(bticino, home_id, room_id, stati_netatmo)
-                    logger.warning("Zona %s: %s", nome, motivo)
-                self._log_evento(nome, "→ Gas", motivo)
-
-            nuovi_stati.append(stato_zona)
-
+        prefisso = "[simulazione] " if simulazione else ""
+        nomi_ac = {a["id"]: a["nome"] for a in snap.get("ac", {}).values()}
+        for zona, azione, dettaglio in piano["eventi"]:
+            self._log_evento(nomi_ac.get(zona, zona), prefisso + azione, dettaglio)
+        for a in piano["ac"]:
+            desc = (f"acceso a {a['setpoint']}°C" if a["tipo"] == "accendi" else "spento")
+            self._log_evento(nomi_ac.get(a["device_id"], "Condizionatore"), prefisso + "comando", desc)
+        adesso_str = datetime.now().strftime("%H:%M")
+        for z in piano["zone"]:
+            z["aggiornato"] = adesso_str
+            z["simulazione"] = simulazione
+            if z["ac_device_id"] in errori_ac:
+                z["errore_ac"] = errori_ac[z["ac_device_id"]]
         with self._lock:
-            self.stato_zone = nuovi_stati
+            self.stato_zone = piano["zone"]
+
+    def _esegui(self, cfg: dict, piano: dict, stato: dict) -> dict:
+        """Invia i comandi del piano; su errore corregge lo stato per ritentare."""
+        from termopilota.providers import get_heatpump, get_thermostat
+        errori_ac = {}
+        if piano["netatmo"]:
+            bt = get_thermostat("netatmo", cfg)
+            home_id = cfg.get("legrand_plant_id", "")
+            for a in piano["netatmo"]:
+                sz = stato["stanze"].setdefault(a["room_id"], {})
+                try:
+                    if not bt or not home_id:
+                        raise RuntimeError("Netatmo non configurato")
+                    if a["tipo"] == "manual":
+                        ok = bt.imposta_modalita(home_id, a["room_id"], "manual",
+                                                 setpoint=a["setpoint"], fine=a["fine"])
+                    else:
+                        ok = bt.imposta_modalita(home_id, a["room_id"], "home")
+                    if not ok:
+                        raise RuntimeError("comando rifiutato")
+                except Exception as e:
+                    logger.error("Comando Netatmo %s su %s fallito: %s", a["tipo"], a["room_id"], e)
+                    self._log_evento(a["zona"], "errore", f"Termostato: {e}")
+                    if a["tipo"] == "manual":
+                        sz["override"] = None
+        if piano["ac"]:
+            st = get_heatpump("smartthings", cfg)
+            for a in piano["ac"]:
+                sa = stato["ac"].setdefault(a["device_id"], {})
+                try:
+                    if not st:
+                        raise RuntimeError("SmartThings non configurato")
+                    if a["tipo"] == "accendi":
+                        ok = st.accendi_ac(a["device_id"], setpoint=a["setpoint"], ventola=a["ventola"],
+                                           modalita_opzionale=a["opzionale"])
+                    else:
+                        ok = st.spegni_ac(a["device_id"])
+                    if not ok:
+                        raise RuntimeError("comando rifiutato")
+                except Exception as e:
+                    logger.error("Comando AC %s su %s fallito: %s", a["tipo"], a["device_id"], e)
+                    errori_ac[a["device_id"]] = str(e)
+                    if a["tipo"] == "accendi":
+                        sa.update({"acceso_da_noi": False, "setpoint": None})
+                    else:
+                        sa["acceso_da_noi"] = True
+        if piano["netatmo"] or piano["ac"]:
+            dispositivi.invalida()
+        return errori_ac
+
+    def rilascia_tutto(self) -> None:
+        """Restituisce stanze e AC (automazione spenta): eseguito in un thread a parte."""
+        cfg = self._carica_config()
+        with self._lock_stato:
+            self._stato_simulato = None
+            piano = rilascio(self.leggi_stato())
+            if piano["netatmo"] or piano["ac"]:
+                self._esegui(cfg, piano, piano["stato"])
+                self._log_evento("sistema", "rilascio",
+                                 "Termostati restituiti al programma e condizionatori spenti")
+            self._salva_stato(piano["stato"])
+        with self._lock:
+            self.stato_zone = []
+
+    # ── Pause ─────────────────────────────────────────────────────────────────
+
+    def imposta_pausa(self, room_ids: list, ore: float) -> Optional[float]:
+        """Mette in pausa (ore > 0) o riattiva (ore = 0) le zone indicate."""
+        fine = time.time() + ore * 3600 if ore > 0 else None
+        with self._lock_stato:
+            stato = self.leggi_stato()
+            for rid in room_ids:
+                stato["stanze"].setdefault(rid, {})["pausa_fino"] = fine
+                if self._stato_simulato is not None:
+                    self._stato_simulato.setdefault("stanze", {}).setdefault(rid, {})["pausa_fino"] = fine
+            self._salva_stato(stato)
+        with self._lock:
+            for z in self.stato_zone:
+                if z.get("room_id") in room_ids:
+                    z["pausa_fino"] = fine
+                    if fine:
+                        z["stato"], z["fonte"] = "pausa", None
+                        z["motivo"] = "In pausa fino alle " + datetime.fromtimestamp(fine).strftime("%H:%M")
+                    elif z.get("stato") == "pausa":
+                        z["stato"], z["fonte"], z["motivo"] = None, None, "Riprende al prossimo controllo"
+        return fine
 
     # ── Utilità ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def leggi_stato() -> dict:
+        try:
+            with open(STATO_AUTOMAZIONE_FILE, encoding="utf-8") as f:
+                stato = json.load(f)
+            if isinstance(stato, dict):
+                stato.setdefault("stanze", {})
+                stato.setdefault("ac", {})
+                return stato
+        except (OSError, ValueError):
+            pass
+        return stato_vuoto()
+
+    @staticmethod
+    def _salva_stato(stato: dict) -> None:
+        os.makedirs(os.path.dirname(STATO_AUTOMAZIONE_FILE), exist_ok=True)
+        scrivi_json_atomico(STATO_AUTOMAZIONE_FILE, stato)
 
     def _log_evento(self, zona: str, azione: str, dettaglio: str) -> None:
         evento = {
@@ -294,11 +578,15 @@ class AutomazioneRiscaldamento:
         logger.info("[%s] %s — %s", zona, azione, dettaglio)
 
     def stato(self) -> dict:
+        pause = {rid: sz.get("pausa_fino")
+                 for rid, sz in self.leggi_stato().get("stanze", {}).items()
+                 if sz.get("pausa_fino") and sz["pausa_fino"] > time.time()}
         with self._lock:
             return {
                 "attiva": self.attiva,
                 "zone": list(self.stato_zone),
                 "log": list(self.log_eventi[:20]),
+                "pause": pause,
             }
 
     @staticmethod
