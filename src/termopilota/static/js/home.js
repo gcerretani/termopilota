@@ -75,7 +75,8 @@
 
   // ── Stanze: termostato, condizionatore e decisione dell'automazione ────
   function rigaStanza(z) {
-    const s = z.stato_automazione;
+    // Zona appena reinclusa: l'ultima decisione del ciclo dice ancora "esclusa"
+    const s = z.inclusa && z.stato_automazione === 'esclusa' ? null : z.stato_automazione;
     const icona = z.finestra_aperta ? ['danger', 'wind']
       : (s === 'ac' || s === 'affiancata') ? ['ac', 'snow']
       : z.sta_riscaldando ? ['gas', 'fire'] : ['', 'door-open'];
@@ -91,7 +92,7 @@
     if (s) tag.push(badgeStatoZona(s));
     else if (!z.inclusa) tag.push(badgeStatoZona('esclusa'));
     if (z.pausa_fino && s !== 'pausa') tag.push(`<span class="tp-badge-stato"><i class="bi bi-pause-circle"></i>pausa fino alle ${oraDaEpoch(z.pausa_fino)}</span>`);
-    if (z.raggiungibile === false) tag.push('<span class="tp-badge-stato danger"><i class="bi bi-wifi-off"></i>non raggiungibile</span>');
+    if (z.raggiungibile === false) tag.push(`<span class="tp-badge-stato danger" title="${escapeHtml(z.errore_termostato || '')}"><i class="bi bi-wifi-off"></i>termostato non raggiungibile</span>`);
     if (z.ac && z.ac.filtro_stato && z.ac.filtro_stato !== 'normal') {
       tag.push('<span class="tp-badge-stato danger"><i class="bi bi-funnel"></i>filtro AC da pulire</span>');
     }

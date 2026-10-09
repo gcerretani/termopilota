@@ -140,6 +140,7 @@
         <div class="zona-temp">${gradi(st.temperatura_attuale)}</div>
       </div>
       ${tag.length ? `<div class="tp-list-tags">${tag.join('')}</div>` : ''}
+      ${st.errore ? `<div class="small text-danger mt-2">${escapeHtml(st.errore)}</div>` : ''}
       <div class="small tp-muted mt-3 d-flex flex-wrap gap-3">
         <span><i class="bi bi-droplet"></i> ${percento(st.umidita)}</span>
         <span><i class="bi bi-wifi"></i> ${qualitaWifi(modulo.wifi)}</span>
@@ -185,12 +186,13 @@
     if (!zone || !zone.length) return '';
     return `<div class="tp-list">${zone.map(z => {
       const d = z.decisione || {};
-      const stato = !z.automazione ? 'esclusa' : d.stato;
+      const stato = !z.automazione ? 'esclusa' : (d.stato === 'esclusa' ? null : d.stato);
       return `<div class="tp-list-item">
         <span class="tp-list-icon"><i class="bi bi-diagram-3"></i></span>
         <div class="tp-list-body">
           <div class="tp-list-title">Zona ${escapeHtml(z.nome)}</div>
-          <div class="tp-list-sub">${escapeHtml(d.motivo || (z.automazione ? 'In attesa del prossimo controllo' : 'Esclusa dall\'automazione'))}</div>
+          <div class="tp-list-sub">${escapeHtml(!z.automazione ? 'Esclusa dall\'automazione'
+            : (!stato ? 'Aggiornamento in corso…' : d.motivo || 'In attesa del prossimo controllo'))}</div>
         </div>
         ${stato ? badgeStatoZona(stato, d.simulazione) : ''}
       </div>`;
@@ -217,6 +219,7 @@
     if (tipo === 'stanza') {
       const moduli = d.moduli || [];
       return [
+        ...(s.errore ? [dato('Termostato', `<span class="text-danger">${escapeHtml(s.errore)}</span>`)] : []),
         dato('Temperatura', gradi(s.temperatura_attuale)),
         dato('Termostato', gradi(s.setpoint)),
         dato('Target (programma)', gradi(s.target)),

@@ -185,6 +185,8 @@ class NetatmoClient(ThermostatProvider):
         return resp.json().get("body", {}).get("homes", [])
 
     def _homestatus(self, home_id: str) -> dict:
+        """Corpo di homestatus: {'home': {...}, 'errors': [{'code', 'id'}]}. I moduli
+        in `errors` (es. codice 6, non raggiungibile) mancano da home.rooms/modules."""
         resp = requests.get(
             f"{NETATMO_BASE}/homestatus",
             headers=self._headers(),
@@ -192,7 +194,7 @@ class NetatmoClient(ThermostatProvider):
             timeout=10,
         )
         resp.raise_for_status()
-        return resp.json().get("body", {}).get("home", {})
+        return resp.json().get("body", {})
 
     def lista_impianti(self) -> list:
         return [{"id": h["id"], "name": h.get("name", "Casa")} for h in self._homesdata()]
@@ -212,13 +214,15 @@ class NetatmoClient(ThermostatProvider):
         return rooms
 
     def stato_tutte_stanze(self, home_id: str) -> dict:
-        rooms = self._homestatus(home_id).get("rooms", [])
+        rooms = self._homestatus(home_id).get("home", {}).get("rooms", [])
         return {r["id"]: normalizza_stanza(r) for r in rooms}
 
     def stato_casa(self, home_id: str) -> dict:
-        """Dati completi della casa: {'dati': homesdata della casa, 'stato': homestatus}."""
+        """Dati completi della casa: {'dati': homesdata della casa, 'stato': homestatus,
+        'errori': moduli che homestatus segnala in errore}."""
         dati = next((h for h in self._homesdata() if h.get("id") == home_id), {})
-        return {"dati": dati, "stato": self._homestatus(home_id)}
+        corpo = self._homestatus(home_id)
+        return {"dati": dati, "stato": corpo.get("home", {}), "errori": corpo.get("errors", []) or []}
 
     # ── Comandi ───────────────────────────────────────────────────────────────
 
@@ -259,6 +263,13 @@ class NetatmoClient(ThermostatProvider):
 
     def cambia_programma(self, home_id: str, schedule_id: str) -> bool:
         return self._post("switchhomeschedule", {"home_id": home_id, "schedule_id": schedule_id})
+
+
+def descrivi_errore_modulo(codice) -> str:
+    """Messaggio per un errore di modulo di homestatus (`errors`)."""
+    if codice == 6:
+        return "Termostato non raggiungibile da Netatmo (errore 6): controlla alimentazione e Wi-Fi"
+    return f"Netatmo segnala un errore sul termostato (codice {codice})"
 
 
 def normalizza_stanza(r: dict) -> dict:

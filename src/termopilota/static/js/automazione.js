@@ -22,13 +22,16 @@
     const z = ultimo.zone.find(d => d.room_id === cfgZona.room_id) || {};
     const inclusa = cfgZona.automazione !== false;
     const pausaFino = ultimo.pause[cfgZona.room_id] || z.pausa_fino;
-    const stato = !inclusa ? 'esclusa' : (pausaFino ? 'pausa' : z.stato);
-    const cls = stato === 'affiancata' ? 'affiancata' : (z.fonte || 'off');
+    // Zona appena reinclusa: l'ultima decisione del ciclo dice ancora "esclusa"
+    const inAttesa = inclusa && z.stato === 'esclusa';
+    const stato = !inclusa ? 'esclusa' : (pausaFino ? 'pausa' : (inAttesa ? null : z.stato));
+    const cls = stato === 'affiancata' ? 'affiancata' : (stato && z.fonte) || 'off';
     const progresso = (z.t_stanza != null && z.target)
       ? Math.min(100, Math.max(0, (z.t_stanza / z.target) * 100)).toFixed(0) : null;
     const modalita = cfgZona.modalita === 'affiancata' ? 'affiancata' : 'esclusiva';
     const rid = escapeHtml(cfgZona.room_id || '');
-    const motivo = stato === 'pausa' && pausaFino ? `In pausa fino alle ${oraDaEpoch(pausaFino)}` : z.motivo;
+    const motivo = stato === 'pausa' && pausaFino ? `In pausa fino alle ${oraDaEpoch(pausaFino)}`
+      : (!inclusa ? "Zona esclusa dall'automazione" : (inAttesa ? 'Aggiornamento in corso…' : z.motivo));
     return `<div class="col-md-6 col-xl-4">
       <div class="zona-card ${cls}">
         <div class="d-flex justify-content-between align-items-start gap-2">
@@ -105,6 +108,7 @@
       const r = await apiPostJson(`/api/automazione/zona/${encodeURIComponent(rid)}/attiva`, { attiva: e.target.checked });
       zone = zone.map(z => z.room_id === rid ? { ...z, automazione: r.automazione } : z);
       renderZone();
+      setTimeout(carica, 5000);   // il ciclo riparte subito sul server
     } catch (err) {
       e.target.checked = !e.target.checked;
       mostraMessaggio('msgZone', 'danger', escapeHtml(err.message));
@@ -121,9 +125,10 @@
       if (!r.pausa_fino) {
         delete ultimo.pause[btn.dataset.pausa];
         ultimo.zone = ultimo.zone.map(z => z.room_id === btn.dataset.pausa
-          ? { ...z, pausa_fino: null, stato: null, fonte: null, motivo: 'Riprende al prossimo controllo' } : z);
+          ? { ...z, pausa_fino: null, stato: null, fonte: null, motivo: 'Aggiornamento in corso…' } : z);
       }
       renderZone();
+      setTimeout(carica, 5000);
     } catch (err) {
       mostraMessaggio('msgZone', 'danger', escapeHtml(err.message));
     }
