@@ -37,10 +37,18 @@ def test_ogni_sorgente_ha_l_identificatore_spdx():
     assert not senza, f"manca {SPDX} in: {senza}"
 
 
-def test_librerie_vendorizzate_mantengono_l_avviso_mit():
-    # La MIT impone di conservare l'avviso di copyright insieme al codice
+def test_librerie_vendorizzate_mantengono_l_avviso_di_licenza():
+    # MIT e BSD impongono di conservare l'avviso di copyright insieme al codice:
+    # nell'intestazione del file (Bootstrap, Chart.js) oppure in un LICENSE
+    # copiato nella cartella della libreria (Leaflet, BSD-2-Clause)
     vendor = os.path.join(RADICE, "src", "termopilota", "static", "vendor")
     for cartella, _, files in os.walk(vendor):
+        licenza = os.path.join(cartella, "LICENSE")
+        if os.path.isfile(licenza):
+            with open(licenza, encoding="utf-8") as f:
+                testo = f.read()
+            assert "Copyright" in testo and ("BSD" in testo or "MIT" in testo), licenza
+            continue
         for nome in files:
             if nome.endswith((".css", ".js")):
                 with open(os.path.join(cartella, nome), encoding="utf-8") as f:

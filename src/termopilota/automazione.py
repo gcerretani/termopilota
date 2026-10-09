@@ -35,7 +35,7 @@ import time
 from datetime import datetime
 from typing import Callable, Optional
 
-from termopilota import dispositivi
+from termopilota import dispositivi, live
 from termopilota.percorsi import CONFIG_FILE, STATO_AUTOMAZIONE_FILE
 from termopilota.providers.netatmo import ora_casa
 from termopilota.providers import scrivi_json_atomico
@@ -433,6 +433,12 @@ class AutomazioneRiscaldamento:
             self._log_evento("sistema", "warning", "Costi dell'ora corrente non disponibili, ciclo saltato")
             return
         snap = dispositivi.snapshot(cfg, forza=True)
+        errore_netatmo = next((e for e in snap.get("errori", []) if e.startswith("Netatmo")), None)
+        if errore_netatmo and not snap.get("stanze"):
+            # Lettura fallita: meglio non decidere nulla (lo stato resta com'e', gli
+            # override nostri scadono da soli) che mandare tutte le zone in errore
+            self._log_evento("sistema", "warning", f"{errore_netatmo}: ciclo saltato, riprovo al prossimo")
+            return
         contesto = self._contesto(cfg, attuale, snap)
         simulazione = bool(cfg.get("automazione_simulazione"))
 
@@ -483,6 +489,7 @@ class AutomazioneRiscaldamento:
                 try:
                     if not bt or not home_id:
                         raise RuntimeError("Netatmo non configurato")
+                    live.comando_nostro(a["room_id"])
                     if a["tipo"] == "manual":
                         ok = bt.imposta_modalita(home_id, a["room_id"], "manual",
                                                  setpoint=a["setpoint"], fine=a["fine"])
@@ -502,6 +509,7 @@ class AutomazioneRiscaldamento:
                 try:
                     if not st:
                         raise RuntimeError("SmartThings non configurato")
+                    live.comando_nostro(a["device_id"])
                     if a["tipo"] == "accendi":
                         ok = st.accendi_ac(a["device_id"], setpoint=a["setpoint"], ventola=a["ventola"],
                                            modalita_opzionale=a["opzionale"])

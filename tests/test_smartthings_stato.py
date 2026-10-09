@@ -8,7 +8,7 @@ import pytest
 
 from dispositivi_finti import DEFINIZIONI, carica
 from termopilota.providers.smartthings import (
-    controlli_disponibili, normalizza_stato, valida_comando,
+    comandi_avanzati, controlli_disponibili, normalizza_stato, valida_comando, valida_comando_avanzato,
 )
 
 STATO = carica("smartthings_status_ac.json")
@@ -41,7 +41,8 @@ def test_normalizza_stato_vuoto_non_esplode():
 def test_controlli_con_definizioni_per_admin():
     chiavi = _chiavi(controlli_disponibili(STATO, DEFINIZIONI, is_admin=True))
     assert chiavi == ["accensione", "modalita", "setpoint", "ventola", "oscillazione",
-                      "modalita_opzionale", "display", "beep", "pulizia", "soglia_filtro", "reset_filtro"]
+                      "modalita_opzionale", "display", "deodorizzazione", "notte_tropicale",
+                      "beep", "volume", "pulizia", "soglia_filtro", "reset_filtro"]
 
 
 def test_controlli_di_servizio_nascosti_ai_non_admin():
@@ -112,3 +113,67 @@ def test_valida_comando_admin_non_disponibile_al_non_admin():
     controlli = controlli_disponibili(STATO, DEFINIZIONI, is_admin=False)
     with pytest.raises(ValueError):
         valida_comando(controlli, "reset_filtro", None)
+
+
+def test_controlli_con_valori_dalla_definizione():
+    controlli = {c["chiave"]: c for c in controlli_disponibili(STATO, DEFINIZIONI)}
+    assert controlli["deodorizzazione"]["valori"] == ["on", "off"]
+    assert (controlli["volume"]["minimo"], controlli["volume"]["massimo"]) == (0, 100)
+    assert controlli["notte_tropicale"]["massimo"] == 35
+    assert valida_comando(list(controlli.values()), "volume", "40") == ("audioVolume", "setVolume", [40])
+    # Senza schema nella definizione il controllo non compare (non si indovinano i limiti)
+    senza = dict(DEFINIZIONI, audioVolume={"commands": {"setVolume": {"arguments": []}}})
+    assert "volume" not in _chiavi(controlli_disponibili(STATO, senza))
+
+
+# ── Comandi avanzati ─────────────────────────────────────────────────────────
+
+def _avanzati():
+    return comandi_avanzati(STATO, DEFINIZIONI)
+
+
+def test_comandi_avanzati_dalle_definizioni():
+    comandi = {(c["capability"], c["comando"]): c for c in _avanzati()}
+    assert ("audioVolume", "setVolume") in comandi and ("samsungce.selfCheck", "startSelfCheck") in comandi
+    assert comandi[("audioVolume", "setVolume")]["argomenti"] == [
+        {"nome": "volume", "tipo": "integer", "opzionale": False, "minimo": 0, "massimo": 100}]
+    capability = {c["capability"] for c in _avanzati()}
+    assert "execute" not in capability                      # esclusa per principio
+    assert "custom.spiMode" not in capability                # nessuna definizione nella fixture
+    assert ("custom.airConditionerOptionalMode", "setAcOptionalMode") in comandi
+
+
+def test_comandi_avanzati_escludono_disattivati_e_non_disponibili():
+    stato = copy.deepcopy(STATO)
+    stato["custom.disabledCapabilities"]["disabledCapabilities"]["value"].append("audioVolume")
+    stato["samsungce.unavailableCapabilities"]["unavailableCommands"]["value"].append(
+        "samsungce.selfCheck.startSelfCheck")
+    comandi = {(c["capability"], c["comando"]) for c in comandi_avanzati(stato, DEFINIZIONI)}
+    assert not any(cap == "audioVolume" for cap, _ in comandi)
+    assert ("samsungce.selfCheck", "startSelfCheck") not in comandi
+    assert ("samsungce.selfCheck", "cancelSelfCheck") in comandi
+
+
+@pytest.mark.parametrize("capability, comando, argomenti, atteso", [
+    ("audioVolume", "setVolume", [40], [40]),
+    ("audioVolume", "setVolume", ["40"], [40]),
+    ("audioVolume", "volumeUp", [], []),
+    ("custom.airConditionerOdorController", "setAirConditionerOdorControllerState", ["on"], ["on"]),
+])
+def test_valida_comando_avanzato_ammesso(capability, comando, argomenti, atteso):
+    assert valida_comando_avanzato(_avanzati(), capability, comando, argomenti) == atteso
+
+
+@pytest.mark.parametrize("capability, comando, argomenti", [
+    ("audioVolume", "setVolume", [140]),            # fuori intervallo
+    ("audioVolume", "setVolume", [4.5]),            # non intero
+    ("audioVolume", "setVolume", []),               # obbligatorio mancante
+    ("audioVolume", "setVolume", [40, 1]),          # troppi argomenti
+    ("audioVolume", "setVolume", "40"),             # non una lista
+    ("custom.airConditionerOdorController", "setAirConditionerOdorControllerState", ["forse"]),
+    ("execute", "execute", ["x"]),                  # capability esclusa
+    ("audioVolume", "setMute", []),                 # comando inesistente
+])
+def test_valida_comando_avanzato_rifiuta(capability, comando, argomenti):
+    with pytest.raises(ValueError):
+        valida_comando_avanzato(_avanzati(), capability, comando, argomenti)

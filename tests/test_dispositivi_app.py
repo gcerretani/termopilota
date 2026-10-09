@@ -246,3 +246,55 @@ def test_zona_reinclusa_aggiorna_subito_lo_stato(utente_client, finti):
     [z] = utente_client.get("/api/automazione").get_json()["zone"]
     assert z["stato"] is None and z["automazione"] is True
     assert servizio._sveglia.is_set()    # il ciclo riparte senza aspettare l'intervallo
+
+
+def test_rifiuto_netatmo_mostra_il_messaggio(utente_client, finti):
+    from termopilota.providers.netatmo import ErroreNetatmo
+    _, bt = finti
+    bt.esito = ErroreNetatmo("Operation is forbidden", 13)
+    r = utente_client.post("/api/dispositivi/stanza/stanza-1/setpoint", json={"temp": 20, "durata_min": 60})
+    assert r.status_code == 502
+    assert r.get_json()["errore"] == "Netatmo: Operation is forbidden (codice 13)"
+
+
+def test_boost_stanza(utente_client, finti):
+    _, bt = finti
+    r = utente_client.post("/api/dispositivi/stanza/stanza-1/boost", json={"durata_min": 30})
+    assert r.status_code == 200
+    room, modo, _, fine = bt.comandi[0]
+    assert (room, modo) == ("stanza-1", "max") and fine == r.get_json()["fine"]
+
+
+def test_comandi_avanzati_solo_admin(admin_client, utente_client, finti):
+    assert utente_client.get("/api/dispositivi/ac/ac-1/avanzati").status_code == 403
+    assert utente_client.post("/api/dispositivi/ac/ac-1/avanzato",
+                              json={"capability": "audioVolume", "comando": "setVolume",
+                                    "argomenti": [10]}).status_code == 403
+    comandi = admin_client.get("/api/dispositivi/ac/ac-1/avanzati").get_json()["comandi"]
+    assert any(c["capability"] == "audioVolume" and c["comando"] == "setVolume" for c in comandi)
+    assert not any(c["capability"] == "execute" for c in comandi)
+
+
+def test_comando_avanzato_validato_e_registrato(admin_client, finti):
+    st, _ = finti
+    _attiva_automazione()
+    r = admin_client.post("/api/dispositivi/ac/ac-1/avanzato",
+                          json={"capability": "audioVolume", "comando": "setVolume", "argomenti": ["30"]})
+    assert r.status_code == 200
+    assert st.comandi[-1] == ("ac-1", "audioVolume", "setVolume", [30])
+    assert r.get_json()["pausa"]["zone"] == ["Salotto"]
+    log = admin_client.get("/api/automazione").get_json()["log"]
+    assert log[0]["azione"] == "comando avanzato" and "audioVolume.setVolume" in log[0]["dettaglio"]
+    fuori = admin_client.post("/api/dispositivi/ac/ac-1/avanzato",
+                              json={"capability": "audioVolume", "comando": "setVolume", "argomenti": [300]})
+    assert fuori.status_code == 400
+    escluso = admin_client.post("/api/dispositivi/ac/ac-1/avanzato",
+                                json={"capability": "execute", "comando": "execute", "argomenti": ["x"]})
+    assert escluso.status_code == 400
+
+
+def test_coordinate_della_casa(admin_client, finti):
+    _, bt = finti
+    bt.casa["dati"]["coordinates"] = [11.25, 43.77]
+    casa = admin_client.get("/api/dispositivi/stato").get_json()["casa"]
+    assert casa["coordinate"] == {"lat": 43.77, "lon": 11.25}

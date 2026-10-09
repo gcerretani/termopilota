@@ -96,3 +96,27 @@ def test_costi_non_disponibili_ciclo_saltato(ciclo, monkeypatch):
     servizio._ciclo()
     assert bt.comandi == [] and st.comandi == []
     assert "ciclo saltato" in servizio.stato()["log"][0]["dettaglio"]
+
+
+def test_netatmo_non_disponibile_ciclo_saltato_senza_toccare_lo_stato(ciclo, monkeypatch):
+    # Regressione: una lettura Netatmo fallita mandava tutte le zone in
+    # "dati mancanti" con un motivo sbagliato ("nessuna stanza")
+    from termopilota import dispositivi
+    servizio, st, bt, _ = ciclo
+    servizio._ciclo()
+    prima = servizio.leggi_stato()
+    chiamate = []
+
+    def guasto(home_id):
+        chiamate.append(home_id)
+        raise ConnectionError("timeout")
+    monkeypatch.setattr(bt, "stato_casa", guasto)
+    monkeypatch.setattr(dispositivi.time, "sleep", lambda s: None)
+    bt.comandi.clear()
+    st.comandi.clear()
+    servizio._ciclo()
+    assert len(chiamate) == 2                    # ritentata una volta
+    assert bt.comandi == [] and st.comandi == []
+    assert servizio.leggi_stato() == prima
+    assert "Netatmo: timeout" in servizio.stato()["log"][0]["dettaglio"]
+    assert servizio.stato()["zone"][0]["stato"] == "ac"   # resta l'ultima decisione valida

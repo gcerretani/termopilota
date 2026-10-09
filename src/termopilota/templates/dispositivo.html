@@ -41,6 +41,19 @@
     <div id="controlli"><div class="tp-muted small">Caricamento…</div></div>
   </section>
 
+  {% if tipo == 'ac' and current_user.is_admin %}
+  <!-- Comandi avanzati (admin) -->
+  <details class="tp-card" id="sezioneAvanzati">
+    <summary class="tp-card-title"><i class="bi bi-terminal"></i>Comandi avanzati <span class="tp-badge-stato">admin</span></summary>
+    <p class="small tp-muted mt-2 mb-2">
+      Tutti i comandi che il condizionatore dichiara, con gli argomenti controllati sullo schema
+      delle capability. Esclusi firmware, Wi-Fi, comandi OCF grezzi e demand response.
+    </p>
+    <div id="msgAvanzati"></div>
+    <div id="comandiAvanzati"></div>
+  </details>
+  {% endif %}
+
   {% if tipo != 'casa' %}
   <!-- Grafici -->
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">

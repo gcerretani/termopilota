@@ -13,6 +13,7 @@ Avvio:  ADMIN_USER=admin ADMIN_PASSWORD=password venv/bin/python app.py
 Apri:   http://localhost:5001
 """
 
+import hmac
 import json
 import logging
 import os
@@ -34,6 +35,7 @@ from flask_login import current_user, login_required, login_user, logout_user
 from termopilota.prezzi import calcola_prezzi
 from termopilota.automazione import get_servizio, avvia_se_attiva
 from termopilota import dispositivi
+from termopilota import live
 from termopilota import pannello
 from termopilota import storico
 from termopilota.versione import VERSIONE
@@ -47,6 +49,8 @@ from termopilota.providers import (
     aggiorna_config_atomico, get_heatpump, get_thermostat, scrivi_json_atomico,
 )
 
+from termopilota.providers.netatmo import ErroreNetatmo
+from termopilota.providers.netatmo import firma_webhook_valida as netatmo_firma_valida
 from termopilota.raccomandazioni import calcola_raccomandazioni
 from termopilota.percorsi import CONFIG_FILE
 
@@ -117,6 +121,7 @@ DEFAULT_CONFIG = {
     "smartthings_client_id": "",
     "smartthings_client_secret": "",
     "smartthings_token_data": {},
+    "smartthings_webhook_token": "",
     "legrand_client_id": "",
     "legrand_client_secret": "",
     "legrand_plant_id": "",
@@ -1189,6 +1194,208 @@ def api_programma_casa():
     if errore:
         return errore
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/dispositivi/stanza/<ident>/boost", methods=["POST"])
+@login_required
+def api_boost_stanza(ident):
+    dati, errore = _json_richiesto()
+    if errore:
+        return errore
+    cfg = carica_config()
+    fine, errore = _esito_comando(lambda: dispositivi.boost_stanza(cfg, ident, dati.get("durata_min", 30)))
+    if errore:
+        return errore
+    pausa = _pausa_dopo_comando(cfg, dispositivi.zone_collegate(cfg, "stanza", ident),
+                                max(0.25, (fine - time.time()) / 3600))
+    return jsonify({"status": "ok", "fine": fine, "pausa": pausa})
+
+
+@app.route("/api/dispositivi/ac/<ident>/avanzati")
+@login_required
+def api_comandi_avanzati_ac(ident):
+    if not current_user.is_admin:
+        return jsonify({"errore": "Comandi avanzati riservati agli amministratori"}), 403
+    comandi, errore = _esito_comando(lambda: dispositivi.comandi_avanzati_ac(carica_config(), ident))
+    if errore:
+        return errore
+    return jsonify({"comandi": comandi})
+
+
+@app.route("/api/dispositivi/ac/<ident>/avanzato", methods=["POST"])
+@login_required
+def api_comando_avanzato_ac(ident):
+    if not current_user.is_admin:
+        return jsonify({"errore": "Comandi avanzati riservati agli amministratori"}), 403
+    dati, errore = _json_richiesto()
+    if errore:
+        return errore
+    cfg = carica_config()
+    esito, errore = _esito_comando(lambda: dispositivi.comando_avanzato_ac(
+        cfg, ident, str(dati.get("capability", "")), str(dati.get("comando", "")), dati.get("argomenti", [])))
+    if errore:
+        return errore
+    nome = (dispositivi.snapshot(cfg)["ac"].get(ident) or {}).get("nome", "Condizionatore")
+    get_servizio()._log_evento(nome, "comando avanzato",
+                               f"{esito['capability']}.{esito['comando']}{esito['argomenti']} "
+                               f"da {current_user.username}")
+    pausa = _pausa_dopo_comando(cfg, dispositivi.zone_collegate(cfg, "ac", ident), dati.get("pausa_ore"))
+    return jsonify({"status": "ok", "comando": esito, "pausa": pausa})
+
+
+# ─── Aggiornamenti live (webhook) ────────────────────────────────────────────
+
+def _ricalcolo_per(cfg: dict, tipo: str, idents: list):
+    """Funzione che anticipa il ciclo, se gli eventi toccano zone automatizzate."""
+    if not cfg.get("automazione_attiva"):
+        return None
+    campo = "ac_device_id" if tipo == "ac" else "room_id"
+    if any(z.get(campo) in idents and z.get("automazione", True) is not False for z in cfg.get("zone", [])):
+        return get_servizio().ricalcola
+    return None
+
+
+@app.route("/api/live")
+@login_required
+def api_live():
+    return jsonify(live.stato())
+
+
+@app.route("/api/webhook/netatmo", methods=["POST"])
+def api_webhook_netatmo():
+    """Eventi Netatmo (pubblico, firmato con il client secret: X-Netatmo-secret)."""
+    cfg = carica_config()
+    corpo = request.get_data(cache=False)
+    if not netatmo_firma_valida(cfg.get("legrand_client_secret", ""), corpo,
+                                request.headers.get("X-Netatmo-secret")):
+        live.rifiutato("netatmo", "firma non valida")
+        return jsonify({"errore": "firma non valida"}), 403
+    try:
+        evento = json.loads(corpo or b"{}")
+    except ValueError:
+        evento = {}
+    if not isinstance(evento, dict):
+        evento = {}
+    home_id = evento.get("home_id") or (evento.get("home") or {}).get("id")
+    if home_id and home_id != cfg.get("legrand_plant_id"):
+        return jsonify({"status": "ignorato"})
+    idents = [i for i in (evento.get("room_id"), (evento.get("room") or {}).get("id")) if i]
+    live.notifica("netatmo", idents or [home_id or "casa"], dispositivi.invalida,
+                  _ricalcolo_per(cfg, "stanza", idents) if idents else None)
+    return jsonify({"status": "ok"})
+
+
+def _host_smartthings(url: str) -> bool:
+    parti = urlparse(url or "")
+    return parti.scheme == "https" and (parti.hostname or "").endswith(".smartthings.com")
+
+
+@app.route("/api/webhook/smartthings/<token>", methods=["POST"])
+def api_webhook_smartthings(token):
+    """Eventi delle sottoscrizioni SmartThings (pubblico: protetto dal token nell'URL
+    e dall'installedAppId; i dati si rileggono comunque dall'API)."""
+    cfg = carica_config()
+    atteso = cfg.get("smartthings_webhook_token") or ""
+    if not atteso or not hmac.compare_digest(token, atteso):
+        return jsonify({"errore": "non trovato"}), 404
+    dati = request.get_json(force=True, silent=True) or {}
+    tipo = dati.get("messageType") or dati.get("lifecycle")
+    if tipo == "CONFIRMATION":
+        url = (dati.get("confirmationData") or {}).get("confirmationUrl", "")
+        if not _host_smartthings(url):
+            live.rifiutato("smartthings", "URL di conferma non SmartThings")
+            return jsonify({"errore": "URL di conferma non valido"}), 400
+        try:
+            requests.get(url, timeout=10).raise_for_status()
+        except Exception as e:
+            live.rifiutato("smartthings", f"conferma fallita: {e}")
+            return jsonify({"errore": "conferma fallita"}), 502
+        logger.info("Target URL SmartThings confermato")
+        return jsonify({"targetUrl": request.base_url})
+    if tipo == "PING":
+        return jsonify({"pingData": dati.get("pingData")})
+    if tipo != "EVENT":
+        return jsonify({"status": "ignorato"})
+    evento = dati.get("eventData") or {}
+    installata = ((evento.get("installedApp") or {}).get("installedAppId")
+                  or (dati.get("installedApp") or {}).get("installedAppId"))
+    nostra = (cfg.get("smartthings_token_data") or {}).get("installed_app_id")
+    if nostra and installata and installata != nostra:
+        live.rifiutato("smartthings", "installedAppId diverso")
+        return jsonify({"errore": "app non riconosciuta"}), 403
+    noti = set(dispositivi.snapshot(cfg)["ac"])
+    idents = sorted({(e.get("deviceEvent") or {}).get("deviceId") for e in evento.get("events", []) or []}
+                    & noti)
+    if idents:
+        live.notifica("smartthings", idents, dispositivi.invalida, _ricalcolo_per(cfg, "ac", idents))
+    return jsonify({"eventData": {}})
+
+
+def _url_webhook_smartthings(cfg: dict) -> str:
+    token = cfg.get("smartthings_webhook_token")
+    if not token:
+        token = secrets.token_urlsafe(24)
+        aggiorna_config_atomico(CONFIG_FILE, lambda c: c.setdefault("smartthings_webhook_token", token))
+        token = carica_config().get("smartthings_webhook_token", token)
+    return request.url_root.rstrip("/") + f"/api/webhook/smartthings/{token}"
+
+
+@app.route("/api/live/configurazione")
+@login_required
+def api_live_configurazione():
+    if not current_user.is_admin:
+        return jsonify({"errore": "Solo gli amministratori"}), 403
+    cfg = carica_config()
+    st = get_heatpump("smartthings", cfg)
+    return jsonify({
+        "netatmo_url": request.url_root.rstrip("/") + "/api/webhook/netatmo",
+        "smartthings_url": _url_webhook_smartthings(cfg),
+        "smartthings_app_id": (cfg.get("smartthings_token_data") or {}).get("app_id"),
+        "smartthings_oauth": bool(st and getattr(st, "installed_app_id", "")),
+        **live.stato(),
+    })
+
+
+@app.route("/api/live/<sorgente>/<azione>", methods=["POST"])
+@login_required
+def api_live_azione(sorgente, azione):
+    if not current_user.is_admin:
+        return jsonify({"errore": "Solo gli amministratori"}), 403
+    if sorgente not in ("netatmo", "smartthings") or azione not in ("attiva", "disattiva"):
+        return jsonify({"errore": "Azione non valida"}), 404
+    _, errore = _json_richiesto()
+    if errore:
+        return errore
+    cfg = carica_config()
+
+    def esegui():
+        if sorgente == "netatmo":
+            bt = get_thermostat("netatmo", cfg)
+            if not bt or not bt.autenticato:
+                raise dispositivi.ErroreComando("Netatmo non collegato", 409)
+            try:
+                if azione == "attiva":
+                    bt.registra_webhook(request.url_root.rstrip("/") + "/api/webhook/netatmo")
+                else:
+                    bt.rimuovi_webhook()
+            except ErroreNetatmo as e:
+                raise dispositivi.ErroreComando(f"Netatmo: {e}", 502)
+            return None
+        st = get_heatpump("smartthings", cfg)
+        if not st or not getattr(st, "installed_app_id", ""):
+            raise dispositivi.ErroreComando("Serve il collegamento OAuth a SmartThings", 409)
+        if azione == "disattiva":
+            st.rimuovi_sottoscrizioni()
+            return None
+        st.rimuovi_sottoscrizioni()     # niente doppioni
+        for ac_id in dispositivi.snapshot(cfg)["ac"]:
+            st.sottoscrivi_dispositivo(ac_id)
+        return len(st.sottoscrizioni())
+
+    esito, errore = _esito_comando(esegui)
+    if errore:
+        return errore
+    return jsonify({"status": "ok", "sottoscrizioni": esito})
 
 
 # ─── OAuth callback Netatmo / SmartThings ────────────────────────────────────

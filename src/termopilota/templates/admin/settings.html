@@ -126,6 +126,14 @@
         <label class="form-label">Longitudine</label>
         <input type="number" step="0.0001" class="form-control" id="lon" value="{{ cfg.lon }}">
       </div>
+      <div class="col-md-6 order-md-last">
+        <div class="tp-mappa" id="mappaCasa" role="application" aria-label="Mappa della posizione della casa"></div>
+        <div class="d-flex flex-wrap gap-2 mt-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-mia-posizione="casa"><i class="bi bi-crosshair me-1"></i>La mia posizione</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="posizioneNetatmo"><i class="bi bi-house me-1"></i>Posizione della casa Netatmo</button>
+        </div>
+        <div class="form-text">Clicca sulla mappa o trascina il segnaposto.</div>
+      </div>
       <div class="col-md-3">
         <label class="form-label">ID stazione CFR Toscana</label>
         <input type="text" class="form-control font-monospace" id="cfrStationId" value="{{ cfg.cfr_station_id }}" placeholder="es. TOS01002661">
@@ -158,6 +166,10 @@
         <label class="form-label">Fattore di resa</label>
         <input type="number" step="0.01" class="form-control" id="pannelloFattore">
         <div class="form-text" id="pannelloFattoreAiuto"></div>
+      </div>
+      <div class="col-md-6">
+        <div class="tp-mappa" id="mappaPannello" role="application" aria-label="Mappa della posizione del pannello"></div>
+        <div class="form-text">Posizione dell'impianto: clicca sulla mappa o trascina il segnaposto.</div>
       </div>
     </div>
     <div class="row g-3 mb-3">
@@ -272,7 +284,36 @@
 </div>
 {% endblock %}
 
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+{% endblock %}
+
 {% block scripts %}
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+<script src="{{ url_for('static', filename='js/mappa-posizione.js') }}"></script>
+<script>
+// Mappe OpenStreetMap per le posizioni (casa: 4 decimali, pannello: 2)
+document.addEventListener('DOMContentLoaded', () => {
+  const casa = selettorePosizione(document.getElementById('mappaCasa'),
+    document.getElementById('lat'), document.getElementById('lon'), { precisione: 4, zoom: 12 });
+  const pannello = selettorePosizione(document.getElementById('mappaPannello'),
+    document.getElementById('pannelloLat'), document.getElementById('pannelloLon'), { precisione: 2, zoom: 8 });
+  const mappe = { casa, pannello };
+  document.querySelectorAll('[data-mia-posizione]').forEach(btn => btn.addEventListener('click', async () => {
+    const m = mappe[btn.dataset.miaPosizione];
+    if (!m) return;
+    try { await m.miaPosizione(); } catch (e) { alert(e.message); }
+  }));
+  const netatmo = document.getElementById('posizioneNetatmo');
+  if (netatmo) netatmo.addEventListener('click', async () => {
+    try {
+      const coord = ((await apiGetJson('/api/dispositivi/stato')).casa || {}).coordinate;
+      if (!coord) throw new Error('Netatmo non riporta la posizione della casa');
+      if (casa) casa.imposta(coord.lat, coord.lon);
+    } catch (e) { alert(e.message); }
+  });
+});
+</script>
 <script>
 async function salvaImpostazioni() {
   const payload = {

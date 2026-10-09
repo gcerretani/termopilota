@@ -7,6 +7,44 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.3.0] - 2026-10-09
+
+### Aggiunto
+- **Aggiornamenti live**: Netatmo (webhook firmato con il client secret) e SmartThings (sottoscrizioni
+  agli eventi dell'app OAuth) avvisano TermoPilota quando cambi qualcosa dall'app o dal dispositivo.
+  Home, Automazione e Dispositivi si aggiornano in pochi secondi; se l'evento riguarda una zona
+  automatizzata il ciclo dell'automazione riparte subito (al massimo una volta al minuto, mai per gli
+  effetti di un comando appena inviato da TermoPilota). Un evento fa solo rileggere i dati dalle API.
+  Si attivano da Impostazioni → Credenziali API, dove si vede anche quanti eventi sono arrivati;
+  senza notifiche resta la lettura periodica.
+- **Comandi avanzati** (solo amministratori) nel dettaglio di ogni condizionatore: tutti i comandi che
+  il dispositivo dichiara, con gli argomenti controllati sullo schema della capability (valori
+  ammessi, intervalli, tipi). Esclusi firmware, Wi-Fi, comandi OCF grezzi e demand response. Ogni
+  comando finisce nel registro dell'automazione con il nome dell'utente.
+- Nuovi controlli dei condizionatori, se il modello li espone: deodorizzazione, notte tropicale e,
+  per gli amministratori, volume.
+- **Boost** delle stanze Netatmo (termostato al massimo per 15 minuti – 2 ore).
+- **Mappa OpenStreetMap** per scegliere la posizione della casa e del pannello in Impostazioni:
+  clic o trascinamento del segnaposto, "La mia posizione" e "Posizione della casa Netatmo".
+
+### Modificato
+- I controlli di una stanza col termostato non raggiungibile sono disattivati, con il motivo.
+
+## [1.2.2] - 2026-10-09
+
+### Corretto
+- **Comandi ai termostati Netatmo**: con il collegamento BTicino Smarther (`write_smarther`) Netatmo
+  rifiutava ogni comando sulle stanze ("Operation is forbidden", codice 13): non funzionavano la
+  temperatura manuale, il ritorno al programma e la chiusura del termostato da parte
+  dell'automazione. Ora le stanze si comandano con `setstate`, che questi permessi ammettono; aggiunta
+  anche la modalità boost (`max`) nel provider.
+- Se Netatmo rifiuta un comando, la pagina mostra il suo messaggio invece di un generico "ha
+  rifiutato il comando".
+- **Lettura Netatmo fallita**: un errore passeggero mandava tutte le zone in "dati mancanti" con un
+  motivo sbagliato ("nessuna stanza"). Ora la lettura si ritenta una volta; se fallisce ancora il
+  ciclo viene saltato, lo stato resta quello dell'ultima decisione e il registro riporta l'errore
+  vero.
+
 ## [1.2.1] - 2026-10-09
 
 ### Corretto
@@ -234,7 +272,9 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.2.1...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.3.0
+[1.2.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.2
 [1.2.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.1
 [1.2.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.0
 [1.1.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.1.0

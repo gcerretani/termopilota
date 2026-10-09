@@ -41,6 +41,7 @@
   "smartthings_client_id": "",
   "smartthings_client_secret": "",
   "smartthings_token_data": {},
+  "smartthings_webhook_token": "",
   "legrand_client_id": "",
   "legrand_client_secret": "",
   "legrand_plant_id": "",

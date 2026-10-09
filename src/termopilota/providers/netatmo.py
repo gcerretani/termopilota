@@ -13,6 +13,8 @@ casa, cioe' il programma). Modalita' della casa (setthermmode): 'schedule',
 'away', 'hg' (antigelo).
 """
 
+import hashlib
+import hmac
 import time
 import logging
 from datetime import datetime
@@ -32,6 +34,17 @@ NETATMO_TOKEN_URL = "https://api.netatmo.com/oauth2/token"
 NETATMO_BASE = "https://api.netatmo.com/api"
 
 MODALITA_STANZA = ("manual", "max", "home")
+
+
+class ErroreNetatmo(Exception):
+    """Comando rifiutato da Netatmo, con il messaggio e il codice della risposta."""
+
+    def __init__(self, messaggio: str, codice=None):
+        super().__init__(f"{messaggio} (codice {codice})" if codice is not None else messaggio)
+        self.messaggio = messaggio
+        self.codice = codice
+
+
 MODALITA_CASA = ("schedule", "away", "hg")
 DURATA_MANUALE_DEFAULT_S = 12 * 3600
 
@@ -226,31 +239,42 @@ class NetatmoClient(ThermostatProvider):
 
     # ── Comandi ───────────────────────────────────────────────────────────────
 
-    def _post(self, endpoint: str, parametri: dict) -> bool:
+    def _post(self, endpoint: str, *, data: Optional[dict] = None, json: Optional[dict] = None) -> bool:
+        """POST di un comando; su errore solleva ErroreNetatmo con il messaggio di Netatmo."""
         resp = requests.post(
             f"{NETATMO_BASE}/{endpoint}",
             headers=self._headers(),
-            data=parametri,
+            data=data,
+            json=json,
             timeout=10,
         )
         if resp.status_code in (200, 204):
             return True
-        logger.error("Errore Netatmo %s %s: %s %s", endpoint, parametri, resp.status_code, resp.text)
-        return False
+        logger.error("Errore Netatmo %s %s: %s %s", endpoint, data or json, resp.status_code, resp.text)
+        try:
+            errore = resp.json().get("error") or {}
+        except ValueError:
+            errore = {}
+        if not isinstance(errore, dict):
+            errore = {"message": str(errore)}
+        raise ErroreNetatmo(errore.get("message") or f"HTTP {resp.status_code}", errore.get("code"))
 
     def imposta_modalita(self, home_id: str, room_id: str, mode: str, setpoint: float = 7.0,
                          fine: Optional[int] = None) -> bool:
         """Modalita' di una stanza. mode: 'OFF' o 'manual' (setpoint fino a `fine`,
-        epoch), 'max', 'AUTOMATIC' o 'home' (torna al programma)."""
+        epoch), 'max', 'AUTOMATIC' o 'home' (torna al programma).
+
+        Usa `setstate`: con gli scope Smarther (`write_smarther`) setroomthermpoint
+        risponde 403 (codice 13), setstate invece e' ammesso."""
         mode = {"OFF": "manual", "AUTOMATIC": "home"}.get(mode, mode)
         if mode not in MODALITA_STANZA:
             raise ValueError(f"Modalita' stanza non valida: {mode}")
-        parametri = {"home_id": home_id, "room_id": room_id, "mode": mode}
+        stanza = {"id": room_id, "therm_setpoint_mode": mode}
         if mode in ("manual", "max"):
-            parametri["endtime"] = int(fine or time.time() + DURATA_MANUALE_DEFAULT_S)
+            stanza["therm_setpoint_end_time"] = int(fine or time.time() + DURATA_MANUALE_DEFAULT_S)
         if mode == "manual":
-            parametri["temp"] = setpoint
-        return self._post("setroomthermpoint", parametri)
+            stanza["therm_setpoint_temperature"] = setpoint
+        return self._post("setstate", json={"home": {"id": home_id, "rooms": [stanza]}})
 
     def imposta_modalita_casa(self, home_id: str, mode: str, fine: Optional[int] = None) -> bool:
         """Modalita' della casa: 'schedule', 'away' o 'hg' (fino a `fine`, se indicato)."""
@@ -259,10 +283,27 @@ class NetatmoClient(ThermostatProvider):
         parametri = {"home_id": home_id, "mode": mode}
         if fine and mode != "schedule":
             parametri["endtime"] = int(fine)
-        return self._post("setthermmode", parametri)
+        return self._post("setthermmode", data=parametri)
 
     def cambia_programma(self, home_id: str, schedule_id: str) -> bool:
-        return self._post("switchhomeschedule", {"home_id": home_id, "schedule_id": schedule_id})
+        return self._post("switchhomeschedule", data={"home_id": home_id, "schedule_id": schedule_id})
+
+    # ── Webhook ───────────────────────────────────────────────────────────────
+
+    def registra_webhook(self, url: str) -> bool:
+        """Netatmo inviera' gli eventi (set_point, therm_mode, ...) a `url`."""
+        return self._post("addwebhook", data={"url": url})
+
+    def rimuovi_webhook(self) -> bool:
+        return self._post("dropwebhook", data={})
+
+
+def firma_webhook_valida(client_secret: str, corpo: bytes, firma: Optional[str]) -> bool:
+    """Header X-Netatmo-secret: HMAC-SHA256 esadecimale del corpo con il client secret."""
+    if not client_secret or not firma:
+        return False
+    attesa = hmac.new(client_secret.encode("utf-8"), corpo, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(attesa, firma.strip().lower())
 
 
 def descrivi_errore_modulo(codice) -> str:

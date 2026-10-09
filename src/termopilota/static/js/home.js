@@ -172,5 +172,6 @@
   caricaRisparmio();
   caricaPannello();
   ogni(5 * 60 * 1000, aggiorna);
+  ascoltaLive(aggiorna);
   ogni(10 * 60 * 1000, caricaPannello);
 })();
