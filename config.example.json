@@ -51,11 +51,23 @@
   "cfr_station_name": "",
   "lat": 0.0,
   "lon": 0.0,
+  "_nota_zone": "Per zona: automazione (false = la zona e' esclusa), modalita 'esclusiva' (con l'AC il termostato va a 7 gradi) o 'affiancata' (il termostato resta a target - riserva_gas_delta: la caldaia interviene solo se l'AC non basta), offset_ac (gradi aggiunti al setpoint dell'AC, il cui sensore legge piu' caldo).",
+  "_nota_ac": "Quando l'AC lo accende TermoPilota: ventola ac_ventola (auto|low|medium|high|turbo) e, tra notte_inizio e notte_fine, la modalita' ac_modalita_notte (off|sleep|quiet|windFree|windFreeSleep). automazione_simulazione=true decide e registra senza inviare comandi. pausa_manuale_ore: pausa della zona dopo un comando manuale dalla pagina Dispositivi.",
+  "automazione_simulazione": false,
+  "ac_ventola": "auto",
+  "ac_modalita_notte": "off",
+  "notte_inizio": 22,
+  "notte_fine": 7,
+  "pausa_manuale_ore": 3.0,
   "zone": [
     {
       "nome": "Zona 1",
       "room_id": "",
-      "ac_device_id": ""
+      "ac_device_id": "",
+      "automazione": true,
+      "modalita": "esclusiva",
+      "riserva_gas_delta": 1.5,
+      "offset_ac": 0.0
     }
   ]
 }

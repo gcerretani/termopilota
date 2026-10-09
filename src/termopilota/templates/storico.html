@@ -16,6 +16,7 @@
         <div class="tp-kpi-label"><span class="tp-kpi-dot" style="--dot:var(--green)"></span>Risparmiato questa stagione</div>
         <div class="tp-kpi-value tp-green" id="risparmioStagione">€ —</div>
         <div class="tp-kpi-sub" id="risparmioOre">Stima basata sulle ore in cui la pompa di calore era la scelta più economica.</div>
+        <div class="tp-kpi-sub" id="risparmioMisurato"></div>
       </div>
     </div>
     <div class="col-6 col-md-3">
@@ -88,19 +89,34 @@
         <div class="tp-card-header">
           <div>
             <h2 class="tp-card-title"><i class="bi bi-piggy-bank"></i>Risparmio cumulativo</h2>
-            <div class="tp-card-sub">€, stima</div>
+            <div class="tp-card-sub">€, stimato e misurato</div>
           </div>
         </div>
-        <div class="tp-chart"><canvas id="graficoRisparmio" role="img" aria-label="Risparmio cumulativo stimato"></canvas></div>
+        <div class="tp-chart"><canvas id="graficoRisparmio" role="img" aria-label="Risparmio cumulativo stimato e misurato"></canvas></div>
+        <div class="tp-legend mt-2" id="legendaRisparmio"></div>
+      </section>
+    </div>
+    <div class="col-12" id="consumoAcWrap" style="display:none;">
+      <section class="tp-card">
+        <div class="tp-card-header">
+          <div>
+            <h2 class="tp-card-title"><i class="bi bi-plug"></i>Consumo dei condizionatori</h2>
+            <div class="tp-card-sub" id="consumoAcSub">kWh elettrici misurati dal contatore</div>
+          </div>
+          <div class="tp-legend" id="legendaConsumo"></div>
+        </div>
+        <div class="tp-chart"><canvas id="graficoConsumo" role="img" aria-label="Consumo elettrico dei condizionatori"></canvas></div>
       </section>
     </div>
   </div>
 
   <p class="small tp-muted mb-0">
     <i class="bi bi-info-circle me-1"></i>
-    Il risparmio è una <strong>stima</strong>: per ogni ora con riscaldamento attivo in cui la pompa di calore era
-    più conveniente si conta (costo caldaia − costo pompa) × potenza termica media configurata in
+    Il risparmio <strong>stimato</strong> conta, per ogni ora con riscaldamento attivo in cui la pompa di calore era
+    più conveniente, (costo caldaia − costo pompa) × potenza termica media configurata in
     {% if current_user.is_admin %}<a href="/admin/">Impostazioni → Prezzi e impianto</a>{% else %}Impostazioni{% endif %}.
+    Quello <strong>misurato</strong> parte dai kWh letti dal contatore dei condizionatori: calore prodotto
+    (kWh × COP di tabella) × (costo caldaia − costo pompa) di quell'ora.
   </p>
 
 </div>

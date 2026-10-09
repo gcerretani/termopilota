@@ -5,7 +5,7 @@
 // login passano sempre dalla rete, così i dati non risultano mai stantii e i
 // redirect di autenticazione funzionano normalmente.
 // Aggiornare la versione quando cambia un asset statico.
-const CACHE = 'termopilota-static-v2';
+const CACHE = 'termopilota-static-v3';
 
 const PRECACHE = [
   '/static/vendor/bootstrap/bootstrap.min.css',
@@ -22,6 +22,7 @@ const PRECACHE = [
   '/static/js/previsioni.js',
   '/static/js/automazione.js',
   '/static/js/storico.js',
+  '/static/js/dispositivi.js',
   '/static/icons/icon-192.png',
   '/static/icons/favicon.svg',
 ];

@@ -84,9 +84,23 @@ class ThermostatProvider(ABC):
         ...
 
     @abstractmethod
-    def imposta_modalita(self, home_id: str, room_id: str, mode: str, setpoint: float = 7.0) -> bool:
-        """Imposta modalita' termostato. mode: 'OFF' (manual bassa T) o 'AUTOMATIC' (schedule)."""
+    def imposta_modalita(self, home_id: str, room_id: str, mode: str, setpoint: float = 7.0,
+                         fine: Optional[int] = None) -> bool:
+        """Imposta modalita' termostato. mode: 'OFF' (manuale a `setpoint` fino a `fine`,
+        epoch) o 'AUTOMATIC' (torna al programma)."""
         ...
+
+    # Facoltativi: servono alla pagina Dispositivi e ai comandi avanzati.
+
+    def stato_casa(self, home_id: str) -> dict:
+        """Dati completi dell'impianto: {'dati': configurazione, 'stato': stato corrente}."""
+        raise NotImplementedError
+
+    def imposta_modalita_casa(self, home_id: str, mode: str, fine: Optional[int] = None) -> bool:
+        raise NotImplementedError
+
+    def cambia_programma(self, home_id: str, schedule_id: str) -> bool:
+        raise NotImplementedError
 
 
 class HeatPumpProvider(ABC):
@@ -117,6 +131,16 @@ class HeatPumpProvider(ABC):
     def spegni_ac(self, device_id: str) -> bool:
         """Spegne il condizionatore."""
         ...
+
+    # Facoltativi: servono alla pagina Dispositivi e ai comandi avanzati.
+
+    def stato_completo(self, device_id: str) -> dict:
+        """Stato grezzo del dispositivo, cosi' come lo restituisce l'API."""
+        raise NotImplementedError
+
+    def esegui_comando(self, device_id: str, capability: str, comando: str,
+                       argomenti: Optional[list] = None) -> bool:
+        raise NotImplementedError
 
 
 # ── Registry ─────────────────────────────────────────────────────────────────

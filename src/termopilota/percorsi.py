@@ -11,3 +11,5 @@ import os
 
 DATA_DIR = os.environ.get("TERMOPILOTA_DATA_DIR") or os.path.join(os.getcwd(), "data")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+# Stato di runtime dell'automazione (override in corso, pause, AC accesi da noi)
+STATO_AUTOMAZIONE_FILE = os.path.join(DATA_DIR, "automazione_stato.json")

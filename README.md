@@ -8,8 +8,12 @@ Sistema di controllo intelligente del riscaldamento domestico. Confronta in temp
 - **Previsioni 48 ore** con grafico comparativo costi gas vs AC
 - **Prezzi automatici**: commodity gas (TTF da Yahoo Finance) e luce (PUN da ENTSO-E)
 - **Temperatura reale** dalla stazione meteo CFR Toscana (configurabile)
-- **Automazione per zona**: legge setpoint dai termostati Netatmo, commuta tra caldaia e AC quando conviene
+- **Automazione per zona**: segue il programma dei termostati Netatmo e commuta tra caldaia e AC quando conviene; ogni zona si include o esclude e si mette in pausa
+- **Modalita' esclusiva o affiancata**: con l'AC la caldaia si spegne oppure resta di riserva qualche grado sotto il target
+- **Simulazione**: l'automazione decide e registra senza inviare comandi
 - **Gestione AC condiviso**: un condizionatore puo' servire piu' stanze, si spegne solo quando tutte sono a temperatura
+- **Pagina Dispositivi**: tutti i valori di condizionatori, stanze e casa Netatmo, grafici delle letture e comandi manuali
+- **Consumo reale** dei condizionatori dal loro contatore di energia, con risparmio misurato nello Storico
 - **Area admin** per gestione utenti, credenziali API, configurazione zone e prezzi
 - **Architettura modulare** a provider per termostati e pompe di calore
 
@@ -66,7 +70,8 @@ docker pull ghcr.io/gcerretani/termopilota:latest
 src/termopilota/
   app.py                # Flask app principale, routes dashboard e API
   auth.py               # Autenticazione utenti (SQLite + Flask-Login)
-  automazione.py        # Thread daemon per controllo automatico zone
+  automazione.py        # Thread daemon per controllo automatico zone (piano puro + esecuzione)
+  dispositivi.py        # Fotografia condivisa dei dispositivi e comandi manuali validati
   prezzi.py             # Fetch prezzi energia (TTF gas, PUN luce)
   raccomandazioni.py    # Motore di raccomandazione caldaia / pompa di calore
   storico.py            # Storico orario e stima dei risparmi
@@ -90,8 +95,10 @@ Il file `config.json` contiene:
 - **Prezzi energia**: componenti fisse gas/luce, valori manuali di fallback, token ENTSO-E per PUN automatico
 - **Impianto**: efficienza caldaia, temperatura minima operativa AC, setpoint interno
 - **Credenziali**: client ID/secret Netatmo (OAuth2), token SmartThings (PAT)
-- **Zone**: associazione stanza Netatmo (room_id) a condizionatore Samsung (ac_device_id)
-- **Automazione**: intervallo controllo, soglia risparmio minimo
+- **Zone**: associazione stanza Netatmo (room_id) a condizionatore Samsung (ac_device_id), inclusione nell'automazione, modalita' esclusiva/affiancata, riserva della caldaia, correzione del setpoint dell'AC
+- **Automazione**: intervallo controllo, soglia risparmio minimo, simulazione, pausa dopo un comando manuale, ventola e modalita' notturna dell'AC
+
+Lo stato di runtime dell'automazione (override in corso, pause, AC accesi da TermoPilota) e' in `data/automazione_stato.json`.
 
 ## COP Samsung AJ040TXJ2KG/EU
 

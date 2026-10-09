@@ -164,29 +164,44 @@ class SmartThingsClient(HeatPumpProvider):
                     "device_id": d["deviceId"],
                     "label": d.get("label", d.get("name", "AC")),
                     "location_id": d.get("locationId", ""),
+                    # {capability: versione} del componente main, per le definizioni dei comandi
+                    "capability": {
+                        c.get("id"): c.get("version", 1)
+                        for comp in d.get("components", []) if comp.get("id") == "main"
+                        for c in comp.get("capabilities", [])
+                    },
+                    "ocf": d.get("ocf") or {},
                 })
         return ac_list
 
-    def stato_ac(self, device_id: str) -> dict:
+    def stato_completo(self, device_id: str) -> dict:
+        """Componente `main` dello stato, cosi' come lo restituisce l'API:
+        {capability: {attributo: {value, unit, timestamp}}}."""
         resp = requests.get(
             f"{ST_BASE}/devices/{device_id}/status",
             headers=self._headers(),
             timeout=10,
         )
         resp.raise_for_status()
-        status = resp.json().get("components", {}).get("main", {})
+        return resp.json().get("components", {}).get("main", {})
 
-        def _val(cap, attr):
-            return status.get(cap, {}).get(attr, {}).get("value")
+    def stato_ac(self, device_id: str) -> dict:
+        return {"device_id": device_id, **normalizza_stato(self.stato_completo(device_id))}
 
-        acceso = _val("switch", "switch") == "on"
-        return {
-            "device_id": device_id,
-            "acceso": acceso,
-            "modalita": _val("airConditionerMode", "airConditionerMode"),
-            "setpoint_riscaldamento": _val("thermostatCoolingSetpoint", "coolingSetpoint"),
-            "temperatura_ambiente": _val("temperatureMeasurement", "temperature"),
-        }
+    def definizione_capability(self, capability: str, versione: int = 1) -> Optional[dict]:
+        """Definizione di una capability (comandi e argomenti), in cache per processo.
+        None se non e' leggibile: i controlli che ne dipendono restano nascosti."""
+        chiave = (capability, versione)
+        if chiave not in _definizioni:
+            try:
+                resp = requests.get(f"{ST_BASE}/capabilities/{capability}/{versione}",
+                                    headers=self._headers(), timeout=10)
+                resp.raise_for_status()
+                _definizioni[chiave] = resp.json()
+            except Exception as e:
+                logger.warning("Definizione capability %s/%s non disponibile: %s", capability, versione, e)
+                return None
+        return _definizioni[chiave]
 
     # ── Comandi ───────────────────────────────────────────────────────────────
 
@@ -202,21 +217,222 @@ class SmartThingsClient(HeatPumpProvider):
         logger.error("Errore comando AC %s: %s %s", device_id, resp.status_code, resp.text)
         return False
 
-    def accendi_ac(self, device_id: str, setpoint: float = 21.0, modalita: str = "heat") -> bool:
-        """Accende l'AC in modalita' riscaldamento con il setpoint indicato."""
-        return self._comando(device_id, [
-            {"component": "main", "capability": "switch", "command": "on", "arguments": []},
-            {"component": "main", "capability": "airConditionerMode",
-             "command": "setAirConditionerMode", "arguments": [modalita]},
-            {"component": "main", "capability": "thermostatCoolingSetpoint",
-             "command": "setCoolingSetpoint", "arguments": [setpoint]},
-        ])
+    def esegui_comando(self, device_id: str, capability: str, comando: str,
+                       argomenti: Optional[list] = None) -> bool:
+        """Un comando qualsiasi: la validazione (whitelist, valori ammessi) e' a monte."""
+        return self._comando(device_id, [_cmd(capability, comando, argomenti)])
+
+    def accendi_ac(self, device_id: str, setpoint: float = 21.0, modalita: str = "heat",
+                   ventola: Optional[str] = None, modalita_opzionale: Optional[str] = None) -> bool:
+        """Accende l'AC nella modalita' indicata (riscaldamento) al setpoint;
+        ventola e modalita' opzionale (quiet, windFree, ...) solo se indicate."""
+        comandi = [
+            _cmd("switch", "on"),
+            _cmd("airConditionerMode", "setAirConditionerMode", [modalita]),
+            _cmd("thermostatCoolingSetpoint", "setCoolingSetpoint", [setpoint]),
+        ]
+        if ventola:
+            comandi.append(_cmd("airConditionerFanMode", "setFanMode", [ventola]))
+        if modalita_opzionale:
+            comandi.append(_cmd("custom.airConditionerOptionalMode", "setAcOptionalMode",
+                                [modalita_opzionale]))
+        return self._comando(device_id, comandi)
 
     def spegni_ac(self, device_id: str) -> bool:
         """Spegne l'AC."""
-        return self._comando(device_id, [
-            {"component": "main", "capability": "switch", "command": "off", "arguments": []},
-        ])
+        return self._comando(device_id, [_cmd("switch", "off")])
+
+
+def _cmd(capability: str, comando: str, argomenti: Optional[list] = None) -> dict:
+    return {"component": "main", "capability": capability, "command": comando,
+            "arguments": list(argomenti or [])}
+
+
+# Definizioni delle capability lette da /capabilities: non cambiano, si tengono per processo
+_definizioni: dict = {}
+
+
+def valore(stato: dict, capability: str, attributo: str):
+    """Valore di un attributo nello stato grezzo (None se assente)."""
+    return ((stato.get(capability) or {}).get(attributo) or {}).get("value")
+
+
+def normalizza_stato(stato: dict) -> dict:
+    """Campi usati da TermoPilota estratti dallo stato grezzo del componente main."""
+    consumo = valore(stato, "powerConsumptionReport", "powerConsumption") or {}
+    intervallo = valore(stato, "thermostatCoolingSetpoint", "coolingSetpointRange") or {}
+    return {
+        "acceso": valore(stato, "switch", "switch") == "on",
+        "modalita": valore(stato, "airConditionerMode", "airConditionerMode"),
+        "setpoint_riscaldamento": valore(stato, "thermostatCoolingSetpoint", "coolingSetpoint"),
+        "temperatura_ambiente": valore(stato, "temperatureMeasurement", "temperature"),
+        "umidita": valore(stato, "relativeHumidityMeasurement", "humidity"),
+        "ventola": valore(stato, "airConditionerFanMode", "fanMode"),
+        "oscillazione": valore(stato, "fanOscillationMode", "fanOscillationMode"),
+        "modalita_opzionale": valore(stato, "custom.airConditionerOptionalMode", "acOptionalMode"),
+        "display": valore(stato, "samsungce.airConditionerLighting", "lighting"),
+        "energia_wh": consumo.get("energy"),
+        "potenza_w": consumo.get("power"),
+        "energia_fine": consumo.get("end"),
+        "filtro_uso_h": valore(stato, "custom.dustFilter", "dustFilterUsage"),
+        "filtro_capacita_h": valore(stato, "custom.dustFilter", "dustFilterCapacity"),
+        "filtro_stato": valore(stato, "custom.dustFilter", "dustFilterStatus"),
+        "setpoint_min": intervallo.get("minimum"),
+        "setpoint_max": intervallo.get("maximum"),
+        "setpoint_passo": intervallo.get("step"),
+    }
+
+
+# ── Controlli manuali ammessi ────────────────────────────────────────────────
+# Whitelist dei comandi che la pagina Dispositivi puo' inviare. Ogni voce:
+#   tipo 'switch' (comandi 'on'/'off'), 'enum' (un argomento tra `valori`),
+#   'numero' (un argomento nell'intervallo), 'azione' (nessun argomento).
+#   `valori`: attributo con l'elenco ammesso (gli 'available*' lo restringono se presenti).
+#   `standard`: capability pubblica con comandi noti, usabile anche se la
+#   definizione non e' leggibile; le altre (samsungce.*, custom.*) solo se
+#   la definizione conferma il comando.
+CONTROLLI_AC = [
+    {"chiave": "accensione", "etichetta": "Accensione", "capability": "switch",
+     "attributo": "switch", "tipo": "switch", "standard": True},
+    {"chiave": "modalita", "etichetta": "Modalità", "capability": "airConditionerMode",
+     "attributo": "airConditionerMode", "tipo": "enum", "comando": "setAirConditionerMode",
+     "valori": "supportedAcModes", "disponibili": "availableAcModes", "standard": True},
+    {"chiave": "setpoint", "etichetta": "Temperatura impostata", "capability": "thermostatCoolingSetpoint",
+     "attributo": "coolingSetpoint", "tipo": "numero", "comando": "setCoolingSetpoint",
+     "intervallo": "coolingSetpointRange", "unita": "°C", "standard": True},
+    {"chiave": "ventola", "etichetta": "Ventola", "capability": "airConditionerFanMode",
+     "attributo": "fanMode", "tipo": "enum", "comando": "setFanMode",
+     "valori": "supportedAcFanModes", "disponibili": "availableAcFanModes", "standard": True},
+    {"chiave": "oscillazione", "etichetta": "Oscillazione", "capability": "fanOscillationMode",
+     "attributo": "fanOscillationMode", "tipo": "enum", "comando": "setFanOscillationMode",
+     "valori": "supportedFanOscillationModes", "disponibili": "availableFanOscillationModes",
+     "standard": True},
+    {"chiave": "modalita_opzionale", "etichetta": "Modalità speciale",
+     "capability": "custom.airConditionerOptionalMode", "attributo": "acOptionalMode",
+     "tipo": "enum", "comando": "setAcOptionalMode",
+     "valori": "supportedAcOptionalMode", "disponibili": "availableAcOptionalMode"},
+    {"chiave": "display", "etichetta": "Display", "capability": "samsungce.airConditionerLighting",
+     "attributo": "lighting", "tipo": "enum", "comando": "setLightingLevel",
+     "valori": "supportedLightingLevels"},
+    {"chiave": "beep", "etichetta": "Segnale acustico", "capability": "samsungce.airConditionerBeep",
+     "attributo": "beep", "tipo": "switch", "solo_admin": True},
+    {"chiave": "pulizia", "etichetta": "Pulizia automatica", "capability": "custom.autoCleaningMode",
+     "attributo": "autoCleaningMode", "tipo": "enum", "comando": "setAutoCleaningMode",
+     "valori": "supportedAutoCleaningModes", "solo_admin": True},
+    {"chiave": "soglia_filtro", "etichetta": "Avviso pulizia filtro", "capability": "samsungce.dustFilterAlarm",
+     "attributo": "alarmThreshold", "tipo": "enum", "comando": "setAlarmThreshold",
+     "valori": "supportedAlarmThresholds", "unita": "h", "solo_admin": True},
+    {"chiave": "reset_filtro", "etichetta": "Azzera contatore filtro", "capability": "custom.dustFilter",
+     "attributo": "dustFilterUsage", "tipo": "azione", "comando": "resetDustFilter",
+     "solo_admin": True, "conferma": "Azzerare il contatore del filtro? Fallo solo dopo averlo pulito."},
+]
+
+# Etichette italiane dei valori piu' comuni (gli altri si mostrano cosi' come sono)
+ETICHETTE_VALORI = {
+    "on": "Acceso", "off": "Spento", "auto": "Automatico", "cool": "Raffrescamento",
+    "heat": "Riscaldamento", "dry": "Deumidificazione", "fan": "Ventilazione",
+    "wind": "Ventilazione", "low": "Bassa", "medium": "Media", "high": "Alta", "turbo": "Turbo",
+    "fixed": "Fissa", "vertical": "Verticale", "horizontal": "Orizzontale", "all": "Tutte",
+    "sleep": "Notte", "quiet": "Silenzioso", "speed": "Rapido", "windFree": "WindFree",
+    "windFreeSleep": "WindFree notte", "normal": "Regolare", "replace": "Da sostituire",
+    "wash": "Da pulire",
+}
+
+
+def comandi_definiti(definizione: Optional[dict]) -> Optional[set]:
+    if not definizione:
+        return None
+    return set((definizione.get("commands") or {}).keys())
+
+
+def comandi_del_controllo(controllo: dict) -> list:
+    if controllo["tipo"] == "switch":
+        return ["on", "off"]
+    return [controllo["comando"]]
+
+
+def controlli_disponibili(stato: dict, definizioni: dict, is_admin: bool = True) -> list:
+    """Controlli della whitelist utilizzabili su questo dispositivo, con i valori ammessi.
+
+    `definizioni`: {capability: definizione o None}. Un controllo compare se la
+    capability ha un attributo nello stato, il comando non e' tra quelli dichiarati
+    non disponibili e (per le capability non standard) la definizione lo conferma.
+    """
+    non_disponibili = set(valore(stato, "samsungce.unavailableCapabilities", "unavailableCommands") or [])
+    disattivate = set(valore(stato, "custom.disabledCapabilities", "disabledCapabilities") or [])
+    risultato = []
+    for c in CONTROLLI_AC:
+        cap = c["capability"]
+        if cap not in stato or cap in disattivate:
+            continue
+        if c.get("solo_admin") and not is_admin:
+            continue
+        comandi = comandi_del_controllo(c)
+        if any(f"{cap}.{cmd}" in non_disponibili for cmd in comandi):
+            continue
+        definiti = comandi_definiti(definizioni.get(cap))
+        if definiti is None and not c.get("standard"):
+            continue
+        if definiti is not None and not set(comandi) <= definiti:
+            continue
+        voce = {k: c[k] for k in ("chiave", "etichetta", "capability", "tipo") if k in c}
+        voce.update({k: c[k] for k in ("comando", "unita", "conferma") if k in c})
+        voce["solo_admin"] = bool(c.get("solo_admin"))
+        voce["valore"] = valore(stato, cap, c["attributo"])
+        if c["tipo"] == "switch":
+            voce["valori"] = ["on", "off"]
+        elif c["tipo"] == "enum":
+            valori = valore(stato, cap, c["valori"])
+            disponibili = valore(stato, cap, c["disponibili"]) if c.get("disponibili") else None
+            if disponibili:
+                valori = [v for v in (valori or disponibili) if v in disponibili]
+            if not valori:
+                continue
+            voce["valori"] = list(valori)
+        elif c["tipo"] == "numero":
+            intervallo = valore(stato, cap, c["intervallo"]) or {}
+            voce["minimo"] = intervallo.get("minimum", 16)
+            voce["massimo"] = intervallo.get("maximum", 30)
+            voce["passo"] = intervallo.get("step", 1) or 1
+        voce["etichette"] = {str(v): ETICHETTE_VALORI.get(str(v), str(v)) for v in voce.get("valori", [])}
+        risultato.append(voce)
+    return risultato
+
+
+def valida_comando(controlli: list, chiave: str, valore_richiesto) -> tuple:
+    """Traduce una richiesta della UI in (capability, comando, argomenti).
+
+    `controlli` e' l'esito di controlli_disponibili (gia' filtrato per utente);
+    alza ValueError con un messaggio leggibile se la richiesta non e' ammessa.
+    """
+    controllo = next((c for c in controlli if c["chiave"] == chiave), None)
+    if controllo is None:
+        raise ValueError("Controllo non disponibile su questo dispositivo")
+    tipo = controllo["tipo"]
+    if tipo == "switch":
+        if valore_richiesto not in ("on", "off"):
+            raise ValueError("Valore ammesso: on oppure off")
+        return controllo["capability"], valore_richiesto, []
+    if tipo == "azione":
+        return controllo["capability"], controllo["comando"], []
+    if tipo == "enum":
+        ammessi = controllo["valori"]
+        # I valori numerici (soglia filtro) possono arrivare come stringa
+        trovato = next((v for v in ammessi if str(v) == str(valore_richiesto)), None)
+        if trovato is None:
+            raise ValueError(f"Valore non ammesso: {valore_richiesto}")
+        return controllo["capability"], controllo["comando"], [trovato]
+    try:
+        numero = float(valore_richiesto)
+    except (TypeError, ValueError):
+        raise ValueError("Serve un numero")
+    if not controllo["minimo"] <= numero <= controllo["massimo"]:
+        raise ValueError(f"Fuori intervallo ({controllo['minimo']}–{controllo['massimo']})")
+    passo = controllo["passo"]
+    numero = round(round((numero - controllo["minimo"]) / passo) * passo + controllo["minimo"], 2)
+    if numero == int(numero):
+        numero = int(numero)
+    return controllo["capability"], controllo["comando"], [numero]
 
 
 def client_da_config(cfg: dict) -> Optional[SmartThingsClient]:

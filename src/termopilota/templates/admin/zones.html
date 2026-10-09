@@ -103,15 +103,45 @@ function renderZoneEditor() {
           <button class="btn btn-outline-danger btn-sm w-100 mt-3" onclick="rimuoviZona(${i})"><i class="bi bi-trash"></i></button>
         </div>
       </div>
-      <div class="mt-1 tp-muted" style="font-size:.75rem;">
-        <i class="bi bi-info-circle me-1"></i>Setpoint e temperatura letti in automatico dall'app Home+Control
+      <div class="row g-2 align-items-end mt-1">
+        <div class="col-6 col-md-3">
+          <div class="form-check form-switch mb-1">
+            <input class="form-check-input" type="checkbox" role="switch" id="auto-${i}" ${z.automazione !== false ? 'checked' : ''}
+                   onchange="zoneConfig[${i}].automazione=this.checked">
+            <label class="form-check-label small" for="auto-${i}">Inclusa nell'automazione</label>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label" style="font-size:.8rem;">Modalità con l'AC</label>
+          <select class="form-select form-select-sm" onchange="zoneConfig[${i}].modalita=this.value; renderZoneEditor()">
+            <option value="esclusiva" ${z.modalita !== 'affiancata' ? 'selected' : ''}>Esclusiva (caldaia spenta)</option>
+            <option value="affiancata" ${z.modalita === 'affiancata' ? 'selected' : ''}>Affiancata (caldaia di riserva)</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label" style="font-size:.8rem;">Riserva caldaia (°C sotto il target)</label>
+          <input type="number" class="form-control form-control-sm" min="0.5" max="5" step="0.5"
+                 value="${z.riserva_gas_delta ?? 1.5}" ${z.modalita === 'affiancata' ? '' : 'disabled'}
+                 onchange="zoneConfig[${i}].riserva_gas_delta=parseFloat(this.value)">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label" style="font-size:.8rem;">Correzione setpoint AC (°C)</label>
+          <input type="number" class="form-control form-control-sm" min="-3" max="3" step="0.5"
+                 value="${z.offset_ac ?? 0}" onchange="zoneConfig[${i}].offset_ac=parseFloat(this.value)">
+        </div>
+      </div>
+      <div class="mt-2 tp-muted" style="font-size:.75rem;">
+        <i class="bi bi-info-circle me-1"></i>Il target è il setpoint del programma Netatmo. In modalità affiancata, quando
+        conviene l'AC il termostato resta acceso a target − riserva: la caldaia interviene solo se l'AC non basta.
+        La correzione si somma al setpoint dell'AC (il suo sensore, in alto, di solito legge più caldo).
       </div>
     </div>
   `).join('');
 }
 
 function aggiungiZona() {
-  zoneConfig.push({ nome: 'Zona ' + (zoneConfig.length + 1), room_id: '', ac_device_id: '' });
+  zoneConfig.push({ nome: 'Zona ' + (zoneConfig.length + 1), room_id: '', ac_device_id: '',
+                    automazione: true, modalita: 'esclusiva', riserva_gas_delta: 1.5, offset_ac: 0 });
   renderZoneEditor();
 }
 

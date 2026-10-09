@@ -7,6 +7,64 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.2.0] - 2026-10-09
+
+### Aggiunto
+- **Pagina Dispositivi** (`/dispositivi`, da Home, Automazione e Impostazioni): ogni condizionatore,
+  stanza e la casa Netatmo con i valori principali, i **controlli manuali**, i **grafici** delle
+  letture (24 ore, 7 e 30 giorni) e **tutti i valori** restituiti dalle API, anche quelli vuoti a
+  richiesta, con "Copia JSON".
+  - Condizionatori: accensione, modalità, temperatura, ventola, oscillazione, modalità speciali
+    (notte, silenziosa, WindFree…), display; solo per gli amministratori segnale acustico, pulizia
+    automatica, soglia e azzeramento del filtro. I controlli si generano dalle capability del
+    dispositivo: compaiono solo quelli che il modello supporta davvero, e il server accetta solo
+    valori ammessi.
+  - Stanze: temperatura manuale con durata e ritorno al programma. Casa: modalità programma,
+    assente o antigelo, e cambio del programma attivo (admin).
+  - Un comando manuale mette in pausa l'automazione delle zone collegate (3 ore di default), così il
+    ciclo successivo non lo annulla.
+- **Consumo reale dei condizionatori**: ogni 15 minuti si registrano le letture dei dispositivi
+  (temperatura, umidità, setpoint, richiesta di calore, contatore di energia degli AC). Lo Storico
+  mostra i kWh consumati da ogni condizionatore e un **risparmio misurato** accanto a quello stimato;
+  la Home il consumo di oggi. In Impostazioni compare l'assorbimento medio misurato della pompa, da
+  usare al posto del valore inserito a mano.
+- **Automazione per stanza**: ogni zona si può includere o escludere (anche dalla pagina
+  Automazione) e mettere in pausa per 1 o 3 ore.
+- **Modalità affiancata** per zona: quando conviene la pompa di calore il termostato non si chiude
+  ma resta a target − riserva (1,5 °C di default), così la caldaia interviene solo se l'AC non basta
+  (giornate fredde, sbrinamento, partenze a freddo). La modalità esclusiva resta il default.
+- **Simulazione**: l'automazione decide e scrive nel registro eventi senza inviare comandi, per
+  provare le regole sulla casa vera prima di affidarle il controllo.
+- Opzioni dell'AC acceso dall'automazione: ventola e modalità notturna (per esempio silenziosa) in
+  una fascia oraria; correzione del setpoint dell'AC per zona.
+- Home: per ogni stanza target, umidità, richiesta di calore, stato del condizionatore, decisione
+  dell'automazione e avvisi (finestra aperta, termostato non raggiungibile, filtro da pulire); si
+  aggiorna da sola.
+
+### Modificato
+- L'automazione usa come target il **setpoint del programma Netatmo** (anche in assente/antigelo),
+  non quello letto dal termostato, e i costi dello stesso motore della dashboard, **pannello solare
+  compreso**.
+- L'automazione invia i comandi solo quando cambia qualcosa e tocca solo quello che ha impostato lei:
+  non spegne più un condizionatore acceso a mano e non riporta al programma una stanza messa in
+  manuale dall'utente. Se un AC acceso da TermoPilota viene spento o cambiato a mano, le sue zone
+  vanno in pausa.
+- Il manuale imposto ai termostati scade dopo un'ora e si rinnova a ogni controllo: se TermoPilota
+  si ferma, i termostati tornano da soli al programma. Spegnendo l'automazione stanze e AC vengono
+  restituiti subito.
+- Con la finestra aperta o il termostato non raggiungibile la zona non usa il condizionatore; con
+  l'impianto Netatmo in raffrescamento l'automazione non interviene.
+- I comandi ai dispositivi richiedono richieste JSON e il cookie di sessione è `SameSite=Lax`
+  (protezione da richieste di altri siti).
+- Nuova dipendenza `tzdata`, per il fuso orario della casa Netatmo.
+
+### Corretto
+- **Oscillazione caldaia/condizionatore**: dopo aver chiuso il termostato a 7 °C, al controllo
+  successivo l'automazione leggeva 7 °C come setpoint, tornava alla caldaia e poi di nuovo all'AC,
+  alternando a ogni ciclo.
+- Il ritorno al programma dei termostati inviava una modalità non accettata da Netatmo (`schedule`
+  invece di `home`): la stanza restava in manuale fino alla scadenza di 12 ore.
+
 ## [1.1.0] - 2026-10-08
 
 ### Modificato
@@ -162,7 +220,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.1.0...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.0
 [1.1.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.1.0
 [1.0.3]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.3
 [1.0.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.0.2

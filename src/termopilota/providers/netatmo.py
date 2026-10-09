@@ -6,13 +6,19 @@ Provider termostati Netatmo per BTicino Smarther with Netatmo.
 App: Home + Control (Legrand/Netatmo/BTicino) — account Netatmo
 Registrazione app: https://dev.netatmo.com
 Scopes necessari: read_smarther write_smarther
+
+Modalita' di una stanza (setroomthermpoint): 'manual' (setpoint fisso fino a
+endtime), 'max' (massimo fino a endtime), 'home' (segue la modalita' della
+casa, cioe' il programma). Modalita' della casa (setthermmode): 'schedule',
+'away', 'hg' (antigelo).
 """
 
-import os
 import time
 import logging
+from datetime import datetime
 from typing import Optional
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
@@ -24,6 +30,76 @@ logger = logging.getLogger(__name__)
 NETATMO_AUTH_URL = "https://api.netatmo.com/oauth2/authorize"
 NETATMO_TOKEN_URL = "https://api.netatmo.com/oauth2/token"
 NETATMO_BASE = "https://api.netatmo.com/api"
+
+MODALITA_STANZA = ("manual", "max", "home")
+MODALITA_CASA = ("schedule", "away", "hg")
+DURATA_MANUALE_DEFAULT_S = 12 * 3600
+
+
+def ora_casa(timezone: Optional[str]) -> datetime:
+    """Ora corrente nel fuso della casa Netatmo (naive), o ora locale se ignoto."""
+    if timezone:
+        try:
+            return datetime.now(ZoneInfo(timezone)).replace(tzinfo=None)
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return datetime.now()
+
+
+def programma_attivo(casa: dict) -> Optional[dict]:
+    """Programma di riscaldamento selezionato (i programmi 'cooling' sono esclusi)."""
+    programmi = [s for s in casa.get("schedules", []) or []
+                 if s.get("type", "therm") == "therm"]
+    if not programmi:
+        return None
+    return next((s for s in programmi if s.get("selected")), programmi[0])
+
+
+def setpoint_programmato(casa: dict, room_id: str, adesso: datetime) -> Optional[float]:
+    """Setpoint che la stanza avrebbe seguendo la modalita' della casa.
+
+    `casa` e' la casa di homesdata (con `schedules` e `therm_mode`), `adesso`
+    l'ora locale della casa. In 'away' e 'hg' vale la temperatura del
+    programma per quella modalita'; in 'schedule' quella della fascia della
+    timetable in corso (m_offset = minuti dal lunedi' alle 00:00). E' il
+    target vero della stanza anche quando TermoPilota l'ha messa in manuale.
+    """
+    programma = programma_attivo(casa)
+    if programma is None:
+        return None
+    modo = casa.get("therm_mode") or "schedule"
+    if modo == "away":
+        return _num(programma.get("away_temp"))
+    if modo == "hg":
+        return _num(programma.get("hg_temp"))
+
+    fasce = sorted(programma.get("timetable", []) or [], key=lambda f: f.get("m_offset", 0))
+    if not fasce:
+        return None
+    minuti = adesso.weekday() * 1440 + adesso.hour * 60 + adesso.minute
+    # Prima della prima fascia della settimana vale l'ultima della settimana precedente
+    corrente = fasce[-1]
+    for fascia in fasce:
+        if fascia.get("m_offset", 0) <= minuti:
+            corrente = fascia
+    zona = next((z for z in programma.get("zones", []) or []
+                 if z.get("id") == corrente.get("zone_id")), None)
+    if zona is None:
+        return None
+    for stanza in zona.get("rooms", []) or []:
+        if stanza.get("id") == room_id:
+            return _num(stanza.get("therm_setpoint_temperature"))
+    for stanza in zona.get("rooms_temp", []) or []:
+        if stanza.get("room_id") == room_id:
+            return _num(stanza.get("temp"))
+    return None
+
+
+def _num(valore) -> Optional[float]:
+    try:
+        return float(valore)
+    except (TypeError, ValueError):
+        return None
 
 
 class NetatmoClient(ThermostatProvider):
@@ -101,19 +177,28 @@ class NetatmoClient(ThermostatProvider):
     def autenticato(self) -> bool:
         return bool(self._token.get("access_token"))
 
-    # ── API Netatmo termostati ────────────────────────────────────────────────
+    # ── Lettura ───────────────────────────────────────────────────────────────
+
+    def _homesdata(self) -> list:
+        resp = requests.get(f"{NETATMO_BASE}/homesdata", headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json().get("body", {}).get("homes", [])
+
+    def _homestatus(self, home_id: str) -> dict:
+        resp = requests.get(
+            f"{NETATMO_BASE}/homestatus",
+            headers=self._headers(),
+            params={"home_id": home_id},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json().get("body", {}).get("home", {})
 
     def lista_impianti(self) -> list:
-        resp = requests.get(f"{NETATMO_BASE}/homesdata", headers=self._headers(), timeout=10)
-        resp.raise_for_status()
-        homes = resp.json().get("body", {}).get("homes", [])
-        return [{"id": h["id"], "name": h.get("name", "Casa")} for h in homes]
+        return [{"id": h["id"], "name": h.get("name", "Casa")} for h in self._homesdata()]
 
     def lista_moduli(self, home_id: str) -> list:
-        resp = requests.get(f"{NETATMO_BASE}/homesdata", headers=self._headers(), timeout=10)
-        resp.raise_for_status()
-        homes = resp.json().get("body", {}).get("homes", [])
-        home = next((h for h in homes if h["id"] == home_id), None)
+        home = next((h for h in self._homesdata() if h["id"] == home_id), None)
         if not home:
             return []
         rooms = []
@@ -127,71 +212,72 @@ class NetatmoClient(ThermostatProvider):
         return rooms
 
     def stato_tutte_stanze(self, home_id: str) -> dict:
-        resp = requests.get(
-            f"{NETATMO_BASE}/homestatus",
-            headers=self._headers(),
-            params={"home_id": home_id},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        rooms = resp.json().get("body", {}).get("home", {}).get("rooms", [])
-        risultato = {}
-        for r in rooms:
-            risultato[r["id"]] = {
-                "room_id": r["id"],
-                "temperatura_attuale": r.get("therm_measured_temperature"),
-                "setpoint": r.get("therm_setpoint_temperature"),
-                "modalita": r.get("therm_setpoint_mode"),
-                "sta_riscaldando": r.get("heating_power_request", 0) > 0,
-                "_campi": sorted(r.keys()),
-            }
-        return risultato
+        rooms = self._homestatus(home_id).get("rooms", [])
+        return {r["id"]: normalizza_stanza(r) for r in rooms}
 
-    def stato_termostato(self, home_id: str, room_id: str) -> dict:
-        """Legge lo stato corrente di una stanza/termostato."""
-        resp = requests.get(
-            f"{NETATMO_BASE}/homestatus",
-            headers=self._headers(),
-            params={"home_id": home_id},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        rooms = resp.json().get("body", {}).get("home", {}).get("rooms", [])
-        room = next((r for r in rooms if r["id"] == room_id), {})
-        return {
-            "module_id": room_id,
-            "plant_id": home_id,
-            "temperatura_attuale": room.get("therm_measured_temperature"),
-            "setpoint": room.get("therm_setpoint_temperature"),
-            "modalita": room.get("therm_setpoint_mode"),
-            "sta_riscaldando": room.get("heating_power_request", 0) > 0,
-        }
+    def stato_casa(self, home_id: str) -> dict:
+        """Dati completi della casa: {'dati': homesdata della casa, 'stato': homestatus}."""
+        dati = next((h for h in self._homesdata() if h.get("id") == home_id), {})
+        return {"dati": dati, "stato": self._homestatus(home_id)}
 
-    def imposta_modalita(self, home_id: str, room_id: str, mode: str, setpoint: float = 7.0) -> bool:
-        if mode == "AUTOMATIC":
-            mode = "schedule"
-        if mode == "OFF":
-            mode = "manual"
+    # ── Comandi ───────────────────────────────────────────────────────────────
 
-        payload = {
-            "home_id": home_id,
-            "room_id": room_id,
-            "mode": mode,
-        }
-        if mode == "manual":
-            payload["temp"] = setpoint
-            payload["endtime"] = int(time.time()) + 12 * 3600
-
+    def _post(self, endpoint: str, parametri: dict) -> bool:
         resp = requests.post(
-            f"{NETATMO_BASE}/setroomthermpoint",
-            headers={**self._headers(), "Content-Type": "application/json"},
-            json=payload,
+            f"{NETATMO_BASE}/{endpoint}",
+            headers=self._headers(),
+            data=parametri,
             timeout=10,
         )
         if resp.status_code in (200, 204):
             return True
-        logger.error("Errore imposta_modalita room %s: %s %s", room_id, resp.status_code, resp.text)
+        logger.error("Errore Netatmo %s %s: %s %s", endpoint, parametri, resp.status_code, resp.text)
         return False
+
+    def imposta_modalita(self, home_id: str, room_id: str, mode: str, setpoint: float = 7.0,
+                         fine: Optional[int] = None) -> bool:
+        """Modalita' di una stanza. mode: 'OFF' o 'manual' (setpoint fino a `fine`,
+        epoch), 'max', 'AUTOMATIC' o 'home' (torna al programma)."""
+        mode = {"OFF": "manual", "AUTOMATIC": "home"}.get(mode, mode)
+        if mode not in MODALITA_STANZA:
+            raise ValueError(f"Modalita' stanza non valida: {mode}")
+        parametri = {"home_id": home_id, "room_id": room_id, "mode": mode}
+        if mode in ("manual", "max"):
+            parametri["endtime"] = int(fine or time.time() + DURATA_MANUALE_DEFAULT_S)
+        if mode == "manual":
+            parametri["temp"] = setpoint
+        return self._post("setroomthermpoint", parametri)
+
+    def imposta_modalita_casa(self, home_id: str, mode: str, fine: Optional[int] = None) -> bool:
+        """Modalita' della casa: 'schedule', 'away' o 'hg' (fino a `fine`, se indicato)."""
+        if mode not in MODALITA_CASA:
+            raise ValueError(f"Modalita' casa non valida: {mode}")
+        parametri = {"home_id": home_id, "mode": mode}
+        if fine and mode != "schedule":
+            parametri["endtime"] = int(fine)
+        return self._post("setthermmode", parametri)
+
+    def cambia_programma(self, home_id: str, schedule_id: str) -> bool:
+        return self._post("switchhomeschedule", {"home_id": home_id, "schedule_id": schedule_id})
+
+
+def normalizza_stanza(r: dict) -> dict:
+    """Stanza di homestatus nei campi usati da TermoPilota (piu' `_campi` per la diagnosi)."""
+    richiesta = r.get("heating_power_request")
+    return {
+        "room_id": r.get("id"),
+        "temperatura_attuale": r.get("therm_measured_temperature"),
+        "setpoint": r.get("therm_setpoint_temperature"),
+        "modalita": r.get("therm_setpoint_mode"),
+        "setpoint_fine": r.get("therm_setpoint_end_time"),
+        "sta_riscaldando": (richiesta or 0) > 0,
+        "richiesta_calore_pct": richiesta,
+        "umidita": r.get("humidity"),
+        "finestra_aperta": bool(r.get("open_window")),
+        "raggiungibile": r.get("reachable", True) is not False,
+        "anticipo": bool(r.get("anticipating")),
+        "_campi": sorted(r.keys()),
+    }
 
 
 # Alias

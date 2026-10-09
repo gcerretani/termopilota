@@ -50,29 +50,30 @@ L'app gira su **porta 5001** (la 5000 e' occupata da AirPlay su macOS).
 Pacchetto `src/termopilota/` (layout `src`: si installa con `pip install -e .`, gli import sono `from termopilota.x import ...`):
 
 - `app.py` — Routes Flask, Blueprint admin (`/admin/*`), avvio servizi in background; `__main__.py` — avvio locale (`python -m termopilota`)
-- `percorsi.py` — `DATA_DIR` e `CONFIG_FILE` (`TERMOPILOTA_DATA_DIR` oppure `data/` nella cartella corrente): unica definizione, importata dagli altri moduli
+- `percorsi.py` — `DATA_DIR`, `CONFIG_FILE` e `STATO_AUTOMAZIONE_FILE` (`TERMOPILOTA_DATA_DIR` oppure `data/` nella cartella corrente): unica definizione, importata dagli altri moduli
 - `costanti.py` — COP_TABELLA, `interpola_cop`, KWH_PER_SMC (fonte unica, condivisa)
 - `raccomandazioni.py` — Motore `calcola_raccomandazioni` (importabile senza avviare Flask, testabile)
-- `storico.py` — Persistenza SQLite (`data/storico.db`): campionatore orario in thread daemon, query per grafici e stima risparmi
+- `storico.py` — Persistenza SQLite (`data/storico.db`): campionatore orario in thread daemon, query per grafici e stima risparmi; tabella `letture_dispositivi` (ogni 15 min) con il contatore di energia degli AC: `energia_ac`, `consumi_misurati` (risparmio misurato), `potenza_media_ac`
 - `auth.py`, `auth_google.py` — Autenticazione, gestione utenti SQLite, Flask-Login, accesso con Google
-- `automazione.py` — Thread daemon, ciclo di controllo zone (ogni 15 min default)
+- `automazione.py` — Thread daemon, ciclo di controllo zone (ogni 15 min default). `pianifica()` e' una funzione pura (zone + contesto + stato → azioni, stato nuovo, eventi) testata in `tests/test_automazione_piano.py`; `_esegui` invia solo i comandi che cambiano qualcosa. Target = setpoint del programma Netatmo (`setpoint_programmato`), costi dalla riga dell'ora corrente del motore (`raccomandazione_ora_corrente` in `app.py`, passata con `imposta_fornitore`). Zone escluse/in pausa/in manuale dall'utente non si toccano; modalita' `esclusiva` (termostato a 7 °C) o `affiancata` (termostato a target − `riserva_gas_delta`); `automazione_simulazione` non invia comandi. Stato di runtime (override nostri, pause, AC accesi da noi) in `data/automazione_stato.json` (`STATO_AUTOMAZIONE_FILE`)
+- `dispositivi.py` — Fotografia condivisa dei dispositivi (`snapshot`, cache 60 s: AC SmartThings + casa/stanze Netatmo, normalizzati e grezzi) per dashboard, pagina Dispositivi, storico e automazione; comandi manuali validati (`comando_ac` contro la whitelist `CONTROLLI_AC` di `smartthings.py`, `setpoint_stanza`, `modalita_casa`, …); `letture_per_storico`
 - `prezzi.py` — Prezzi gas/luce: tariffa variabile (TTF Yahoo Finance, PUN ENTSO-E, cache in memoria) oppure fissa (prezzo bloccato da config), per gas e luce indipendentemente
 - `pannello.py` — Stima produzione del pannello adottato (Murcia, inseguitori monoassiali) da irraggiamento Open-Meteo: modello monoasse (posizione solare, backtracking, Hay-Davies, temperatura celle; il fattore e' un rendimento 0,7-0,95) oppure orizzontale; ogni modello ha il suo fattore, calibrabile; la produzione di ogni quarto d'ora compensa il consumo di casa (`copertura_pannello` in `raccomandazioni.py`) e abbassa il costo marginale della pompa di calore
 - `versione.py` — `VERSIONE`, unica fonte della versione (la legge anche `pyproject.toml`)
 - `providers/` — Architettura modulare per dispositivi
   - `__init__.py` — ABC `ThermostatProvider`, `HeatPumpProvider`, registry
-  - `netatmo.py` — Client Netatmo OAuth2 per termostati BTicino Smarther
-  - `smartthings.py` — Client SmartThings OAuth2 (consigliato) + PAT fallback per AC Samsung
+  - `netatmo.py` — Client Netatmo OAuth2 per termostati BTicino Smarther. Stanza: `manual`/`max`/`home` (`setroomthermpoint`, `home` = programma); casa: `schedule`/`away`/`hg` (`setthermmode`). `setpoint_programmato` calcola il target dalla timetable
+  - `smartthings.py` — Client SmartThings OAuth2 (consigliato) + PAT fallback per AC Samsung. `normalizza_stato`, `CONTROLLI_AC` (whitelist dei comandi manuali: i non standard compaiono solo se la definizione della capability li conferma), `controlli_disponibili`, `valida_comando`
 - `templates/`, `static/` — HTML (Jinja) e asset; `static/vendor/` e' generato, non e' nel repository
   - `templates/base.html` — app shell: barra laterale (desktop, `lg`+) e barra di navigazione in basso (mobile) con le 5 sezioni; blocchi `title`, `azioni` (barra superiore), `indietro`; `admin/_nav.html` e' la sotto-navigazione admin
   - `static/css/theme.css` — token di design (CSS variable, tema chiaro e `html[data-theme="dark"]`) e componenti `tp-*`
-  - `static/js/` — `theme.js` (tema, nel `<head>`), `app.js` (comune: service worker, installazione, `ogni()`, `oraLocale()`), `grafici.js` (stile Chart.js condiviso: colori dal tema, plugin adesso/fasce/giorni/mirino, legenda a chip), uno script per pagina (`home.js`, `previsioni.js`, `automazione.js`, `storico.js`), `admin.js`
+  - `static/js/` — `theme.js` (tema, nel `<head>`), `app.js` (comune: service worker, installazione, `ogni()`, `oraLocale()`, `gradi()`, `badgeStatoZona()`), `grafici.js` (stile Chart.js condiviso: colori dal tema, plugin adesso/fasce/giorni/mirino, legenda a chip), uno script per pagina (`home.js`, `previsioni.js`, `automazione.js`, `storico.js`, `dispositivi.js` per elenco e dettaglio), `admin.js` (`apiPostJson`, `apiGetJson`, `mostraMessaggio`)
   - Quando cambia un asset statico, aggiornare `CACHE` in `static/sw.js` (cache-first) e la lista `PRECACHE`
 
 Nella radice:
 
 - `pyproject.toml` — metadati, dipendenze Python (`dependencies`) e di sviluppo (extra `dev`), configurazione pytest. Dependabot aggiorna i minimi di versione
-- `tests/` — pytest: unit test (motore, COP, storico, tariffe, pannello) e test di integrazione delle route Flask (`test_app.py`); `conftest.py` isola dati e rete
+- `tests/` — pytest: unit test (motore, COP, storico, tariffe, pannello, piano dell'automazione, provider) e test di integrazione delle route Flask (`test_app.py`, `test_dispositivi_app.py`); `conftest.py` isola dati e rete; `dispositivi_finti.py` e `fixtures/` contengono client e dati finti (anonimizzati da un impianto reale) di SmartThings e Netatmo
 - `package.json`, `package-lock.json` — Bootstrap, Bootstrap Icons, Chart.js a versioni esatte; `scripts/vendor.js` le copia in `src/termopilota/static/vendor/`. Per aggiornarle: merge della PR di Dependabot (la CI rigenera i file da sola); a mano: `npm install --save-exact <pacchetto>@<versione>`
 - `Dockerfile` — multi-stage: una fase Node esegue `npm ci` e `npm run vendor`, la fase Python installa il pacchetto con `pip install .`; `.dockerignore` tiene fuori dati locali e segreti. Gunicorn con un solo worker (`-w 1 --threads 4`): i servizi in background partono all'import e non vanno duplicati
 - `scripts/` — `vendor.js`, `genera_icone.py`
@@ -97,6 +98,7 @@ Nella radice:
 - `GET /previsioni` — Grafico costo 48h, temperatura e dettaglio orario (richiede login)
 - `GET /automazione` — Interruttore automazione, zone, log eventi (richiede login)
 - `GET /storico` — Grafici storici e contatore risparmi (richiede login)
+- `GET /dispositivi`, `GET /dispositivi/<ac|stanza|casa>/<id>` — Elenco e dettaglio dei dispositivi: valori, controlli manuali, grafici, valori grezzi (richiede login; fuori dalla navigazione, evidenzia "Automazione")
 - `GET /impostazioni` — Hub: account, tema, link alle pagine admin (richiede login)
 - `GET /sw.js` — Service worker PWA (pubblico, servito dalla root per lo scope)
 - `GET /login`, `POST /login`, `GET /logout` — Autenticazione
@@ -107,3 +109,4 @@ Nella radice:
 - `GET /api/automazione/oauth-callback` — Callback OAuth Netatmo (pubblico)
 - `GET /api/automazione/smartthings-callback` — Callback OAuth SmartThings (pubblico)
 - API JSON: `/api/prezzi`, `/api/dati`, `/api/temp-cfr`, `/api/config`, `/api/automazione`, `/api/dispositivi`, `/api/dashboard`, `/api/pannello`, `POST /api/pannello/calibra`, `/api/storico?da=&a=&risoluzione=oraria|giornaliera`, `/api/risparmi`
+- Dispositivi: `/api/dispositivi/stato`, `/api/dispositivi/<tipo>/<id>`, `/api/dispositivi/<ac|stanza>/<id>/storico`, `POST /api/dispositivi/ac/<id>/comando` (`{chiave, valore}`), `POST /api/dispositivi/stanza/<id>/setpoint|ripristina`, `POST /api/dispositivi/casa/modalita|programma` (programma solo admin). Zone: `POST /api/automazione/zona/<room_id>/pausa` (`{ore}`), `POST /api/automazione/zona/<room_id>/attiva`. Le POST nuove richiedono `Content-Type: application/json` (415 altrimenti): con il cookie `SameSite=Lax` e' la protezione CSRF

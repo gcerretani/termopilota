@@ -1,0 +1,60 @@
+{
+  "dati": {
+    "id": "casa-1",
+    "name": "Casa",
+    "timezone": "Europe/Rome",
+    "therm_mode": "schedule",
+    "temperature_control_mode": "heating",
+    "cooling_mode": "schedule",
+    "therm_setpoint_default_duration": 180,
+    "rooms": [
+      {"id": "stanza-1", "name": "Salotto", "type": "livingroom", "module_ids": ["modulo-1"]},
+      {"id": "stanza-2", "name": "Studio", "type": "home_office", "module_ids": ["modulo-2"]},
+      {"id": "esterno", "name": "Esterno", "type": "outdoor"}
+    ],
+    "modules": [
+      {"id": "modulo-1", "name": "Termostato salotto", "type": "BNS", "room_id": "stanza-1"},
+      {"id": "modulo-2", "name": "Termostato studio", "type": "BNS", "room_id": "stanza-2"}
+    ],
+    "schedules": [
+      {
+        "id": "prog-inverno", "name": "Inverno", "type": "therm", "selected": true,
+        "away_temp": 15, "hg_temp": 7,
+        "timetable": [
+          {"zone_id": 1, "m_offset": 360},
+          {"zone_id": 2, "m_offset": 1320},
+          {"zone_id": 1, "m_offset": 1800},
+          {"zone_id": 2, "m_offset": 2760}
+        ],
+        "zones": [
+          {"id": 1, "name": "Comfort", "type": 0, "rooms": [
+            {"id": "stanza-1", "therm_setpoint_temperature": 20},
+            {"id": "stanza-2", "therm_setpoint_temperature": 19.5}
+          ]},
+          {"id": 2, "name": "Notte", "type": 1, "rooms": [
+            {"id": "stanza-1", "therm_setpoint_temperature": 17},
+            {"id": "stanza-2", "therm_setpoint_temperature": 16}
+          ]}
+        ]
+      },
+      {"id": "prog-estate", "name": "Estate", "type": "cooling", "selected": true, "timetable": [], "zones": []}
+    ]
+  },
+  "stato": {
+    "id": "casa-1",
+    "rooms": [
+      {"id": "stanza-1", "reachable": true, "anticipating": false, "heating_power_request": 0, "open_window": false,
+       "humidity": 71, "therm_measured_temperature": 19.2, "therm_setpoint_temperature": 20,
+       "therm_setpoint_start_time": 1783444806, "therm_setpoint_end_time": null, "therm_setpoint_mode": "home"},
+      {"id": "stanza-2", "reachable": true, "anticipating": false, "heating_power_request": 40, "open_window": true,
+       "humidity": 75, "therm_measured_temperature": 18.0, "therm_setpoint_temperature": 19.5,
+       "therm_setpoint_start_time": 1783444811, "therm_setpoint_end_time": null, "therm_setpoint_mode": "home"}
+    ],
+    "modules": [
+      {"id": "modulo-1", "type": "BNS", "firmware_revision": 40, "wifi_strength": 69,
+       "boiler_valve_comfort_boost": false, "boiler_status": false, "cooler_status": false},
+      {"id": "modulo-2", "type": "BNS", "firmware_revision": 40, "wifi_strength": 54,
+       "boiler_valve_comfort_boost": false, "boiler_status": true, "cooler_status": false}
+    ]
+  }
+}
