@@ -7,6 +7,32 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.6.0] - 2026-10-09
+
+### Modificato
+- **Risparmio**: conta solo il calore che i condizionatori hanno davvero prodotto in riscaldamento.
+  Se è tutto spento non si risparmia nulla, qualunque fosse il consiglio; se un AC scalda quando
+  conviene il gas il risparmio è negativo. Il consumo in raffrescamento non conta più. Lo Storico e
+  la Home mostrano il risparmio misurato dal contatore (la stima con la potenza configurata, ora
+  limitata alle ore con un AC acceso, resta per i condizionatori senza contatore).
+- **Pagina della stanza**: termostato e condizionatore hanno la stessa struttura, sia nello stato
+  (nome, temperatura, impostazione, umidità, ora di lettura) sia nei comandi (comandi base e
+  pulsante "Tutti i controlli" per entrambi).
+- **Modalità affiancata** spiegata meglio: AC e caldaia lavorano insieme, con il termostato a
+  target − margine, così la caldaia parte solo se l'AC da solo non basta. Il margine può essere 0
+  (scaldano in parallelo fino al target).
+- Pagina del termostato: collegamento a modalità e programma della casa.
+- Negli avvisi del registro gli URL si riducono al nome del server (niente query string).
+
+### Aggiunto
+- Ora dell'ultima lettura nelle pagine di condizionatori, termostati e stanze, anche su telefono,
+  con "x min fa" che si aggiorna e diventa rossa dopo 10 minuti. È l'ultima lettura riuscita di
+  SmartThings o di Netatmo, separatamente.
+
+### Corretto
+- I messaggi lunghi del registro non allargano più la pagina sugli schermi stretti.
+- Su telefono la pagina non "rimbalza" più a inizio e fine scorrimento, e la barra in basso resta ferma.
+
 ## [1.5.0] - 2026-10-09
 
 ### Aggiunto
@@ -370,7 +396,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.5.0...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.6.0
 [1.5.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.5.0
 [1.4.3]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.3
 [1.4.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.2

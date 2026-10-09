@@ -46,7 +46,8 @@ def azzera() -> None:
     """Svuota la cache (test)."""
     with _lock:
         _cache.clear()
-        _cache.update(dati=None, ts={p: 0.0 for p in PARTI}, errori={p: [] for p in PARTI})
+        _cache.update(dati=None, ts={p: 0.0 for p in PARTI}, errori={p: [] for p in PARTI},
+                      letti_alle={p: None for p in PARTI})
     _stato_netatmo["in_errore_dal"] = None
 
 
@@ -61,7 +62,10 @@ def invalida(parte: Optional[str] = None) -> None:
 
 
 def snapshot(cfg: dict, forza: bool = False) -> dict:
-    """{ac: {id: ...}, casa: {...} | None, stanze: {room_id: ...}, errori: [...], letto_alle}."""
+    """{ac: {id: ...}, casa: {...} | None, stanze: {room_id: ...}, errori: [...], letto_alle, letti_alle}.
+
+    `letti_alle` = {ac, netatmo}: l'ultima lettura riuscita di ciascuna parte
+    (resta quella vecchia se l'ultima e' fallita), per l'ora sulle pagine."""
     adesso = time.time()
     with _lock:
         precedente = _cache["dati"]
@@ -79,9 +83,13 @@ def snapshot(cfg: dict, forza: bool = False) -> dict:
     with _lock:
         base = _cache["dati"] or {"ac": {}, "casa": None, "stanze": {}}
         _cache["errori"].update(errori)
+        adesso_iso = datetime.now().isoformat(timespec="seconds")
+        for p in da_leggere:
+            if not errori[p]:
+                _cache["letti_alle"][p] = adesso_iso
         _cache["dati"] = {**base, **letto,
                           "errori": [e for p in PARTI for e in _cache["errori"][p]],
-                          "letto_alle": datetime.now().isoformat(timespec="seconds")}
+                          "letto_alle": adesso_iso, "letti_alle": dict(_cache["letti_alle"])}
         for p in da_leggere:
             _cache["ts"][p] = time.time()
         return _cache["dati"]
@@ -96,8 +104,10 @@ def aggiorna_netatmo(cfg: dict) -> tuple:
         with _lock:
             if _cache["dati"] is not None:
                 _cache["errori"]["netatmo"] = []
+                _cache["letti_alle"]["netatmo"] = datetime.now().isoformat(timespec="seconds")
                 _cache["dati"] = {**_cache["dati"], **nuovo,
-                                  "errori": list(_cache["errori"]["ac"])}
+                                  "errori": list(_cache["errori"]["ac"]),
+                                  "letti_alle": dict(_cache["letti_alle"])}
                 _cache["ts"]["netatmo"] = time.time()
     return nuovo, errori
 
@@ -457,6 +467,7 @@ def riepilogo(snap: dict) -> dict:
         "casa": ({k: v for k, v in snap["casa"].items() if k != "grezzo"} if snap.get("casa") else None),
         "errori": snap.get("errori", []),
         "letto_alle": snap.get("letto_alle"),
+        "letti_alle": snap.get("letti_alle", {}),
     }
 
 

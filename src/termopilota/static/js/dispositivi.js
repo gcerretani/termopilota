@@ -271,9 +271,19 @@
     </div>`;
   }
 
-  function controlliStanza(s) {
+  // Modalita' e programma valgono per tutta la casa: dal termostato si va alla pagina della casa
+  function rigaCasa(casa) {
+    if (!casa || !casa.id) return '';
+    return `<div class="tp-controllo">
+      <div><div class="tp-controllo-label">Casa</div>
+        <div class="small tp-muted">Modalità ${escapeHtml(testoModo(casa.therm_mode))}${casa.programma_attivo ? ` · programma ${escapeHtml(casa.programma_attivo)}` : ''}</div></div>
+      <a class="btn btn-sm btn-outline-secondary" href="/dispositivi/casa/${enc(casa.id)}"><i class="bi bi-house-gear me-1"></i>Modalità e programma <i class="bi bi-chevron-right"></i></a>
+    </div>`;
+  }
+
+  function controlliStanza(s, casa) {
     if (s.raggiungibile === false) {
-      return `<div class="small text-danger"><i class="bi bi-wifi-off me-1"></i>${escapeHtml(s.errore || 'Termostato non raggiungibile')}: comandi non disponibili.</div>`;
+      return `<div class="small text-danger"><i class="bi bi-wifi-off me-1"></i>${escapeHtml(s.errore || 'Termostato non raggiungibile')}: comandi non disponibili.</div>${rigaCasa(casa)}`;
     }
     const valore = s.setpoint ?? s.target ?? 20;
     return `<div class="tp-controllo">
@@ -305,7 +315,7 @@
       <div class="tp-controllo-label">Programma</div>
       <button type="button" class="btn btn-sm btn-outline-secondary" data-stanza-ripristina ${s.modalita === 'home' ? 'disabled' : ''}>
         <i class="bi bi-calendar-week me-1"></i>Torna al programma</button>
-    </div>`;
+    </div>${rigaCasa(casa)}`;
   }
 
   // ── Tutti i valori ─────────────────────────────────────────────────────
@@ -379,6 +389,7 @@
       document.getElementById('nomeDispositivo').textContent = d.nome;
       document.getElementById('sottotitoloDispositivo').textContent =
         tipo === 'ac' ? 'Condizionatore Samsung (SmartThings)' : tipo === 'stanza' ? 'Stanza Netatmo' : 'Casa Netatmo';
+      document.getElementById('lettoDispositivo').innerHTML = etichettaLettura(d.letto_alle);
       document.getElementById('datiPrincipali').innerHTML = datiPrincipali(d);
       document.getElementById('zoneCollegate').innerHTML = zoneCollegate(d.zone);
       const controlli = document.getElementById('controlli');
@@ -386,7 +397,7 @@
         controlli.innerHTML = d.controlli && d.controlli.length ? d.controlli.map(controlloAc).join('')
           : '<div class="tp-muted small">Nessun controllo disponibile per questo dispositivo.</div>';
       } else if (tipo === 'stanza') {
-        controlli.innerHTML = controlliStanza(d.stato || {});
+        controlli.innerHTML = controlliStanza(d.stato || {}, d.casa);
       } else {
         controlli.innerHTML = controlliCasa(d.stato || {}, d.is_admin);
       }

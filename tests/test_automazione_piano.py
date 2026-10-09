@@ -88,6 +88,12 @@ def test_modalita_affiancata_lascia_la_caldaia_di_riserva():
     assert piano["ac"][0]["setpoint"] == 20
 
 
+def test_modalita_affiancata_senza_margine_scaldano_in_parallelo():
+    zona = dict(ZONA, modalita="affiancata", riserva_gas_delta=0)
+    piano = pianifica([zona], contesto({"r1": stanza()}), stato_vuoto())
+    assert piano["netatmo"][0]["setpoint"] == 20 and piano["ac"][0]["setpoint"] == 20
+
+
 def test_offset_ac_si_somma_al_target():
     piano = pianifica([dict(ZONA, offset_ac=1.0)], contesto({"r1": stanza()}), stato_vuoto())
     assert piano["ac"][0]["setpoint"] == 21

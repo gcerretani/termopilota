@@ -74,6 +74,23 @@ def test_dettaglio_ac_con_controlli_e_grezzo(admin_client, utente_client, finti)
     assert "ventola" in chiavi_utente and "beep" not in chiavi_utente
 
 
+def test_ora_di_lettura_per_parte(admin_client, finti, monkeypatch):
+    from termopilota import dispositivi
+    from termopilota.app import carica_config
+    ac = admin_client.get("/api/dispositivi/ac/ac-1").get_json()
+    stanza = admin_client.get("/api/dispositivi/stanza/stanza-1").get_json()
+    assert ac["letto_alle"] and stanza["letto_alle"]
+    # Se Netatmo non risponde resta l'ora dell'ultima lettura riuscita
+    _, bt = finti
+
+    def giu(*a, **k):
+        raise RuntimeError("Netatmo giu'")
+    monkeypatch.setattr(bt, "stato_casa", giu)
+    snap = dispositivi.snapshot(carica_config(), forza=True)
+    assert snap["errori"] and snap["letti_alle"]["netatmo"] == stanza["letto_alle"]
+    assert snap["letti_alle"]["ac"] >= ac["letto_alle"]
+
+
 def test_dettaglio_stanza_e_casa(admin_client, finti):
     st = admin_client.get("/api/dispositivi/stanza/stanza-2").get_json()
     assert st["stato"]["umidita"] == 75 and st["moduli"][0]["firmware"] == 40

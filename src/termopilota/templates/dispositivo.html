@@ -8,10 +8,6 @@
 
 {% block indietro %}<a href="{{ url_for('pagina_dispositivi') }}" class="tp-icon-btn tp-back" aria-label="Torna ai dispositivi"><i class="bi bi-chevron-left"></i></a>{% endblock %}
 
-{% block azioni %}
-<span id="aggiornatoAlle" class="aggiornato-chip d-none d-sm-inline-flex"></span>
-{% endblock %}
-
 {% block content %}
 <div class="tp-page" id="paginaDispositivo" data-tipo="{{ tipo }}" data-id="{{ ident }}">
 
@@ -23,6 +19,7 @@
       <div class="min-w-0">
         <h2 class="tp-card-title"><i class="bi bi-{{ {'ac': 'snow', 'stanza': 'thermometer-half', 'casa': 'house-gear'}[tipo] }}"></i><span id="nomeDispositivo">Caricamento…</span></h2>
         <div class="tp-card-sub" id="sottotitoloDispositivo"></div>
+        <div id="lettoDispositivo"></div>
       </div>
     </div>
     <div class="tp-dati" id="datiPrincipali"></div>

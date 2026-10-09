@@ -8,10 +8,6 @@
 
 {% block indietro %}<a href="{{ url_for('index') }}" class="tp-icon-btn tp-back" aria-label="Torna alla Home"><i class="bi bi-chevron-left"></i></a>{% endblock %}
 
-{% block azioni %}
-<span id="aggiornatoAlle" class="aggiornato-chip d-none d-sm-inline-flex"></span>
-{% endblock %}
-
 {% block content %}
 <div class="tp-page" id="paginaStanza" data-room="{{ zona.room_id }}">
 

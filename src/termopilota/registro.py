@@ -17,6 +17,7 @@ comando. I `dati` si ripuliscono dalle chiavi sensibili prima di salvarli.
 
 import json
 import logging
+import re
 import time
 from typing import Optional
 
@@ -74,6 +75,18 @@ def _serializza(dati) -> Optional[str]:
     if len(testo.encode("utf-8")) > DATI_MAX_BYTE:
         testo = json.dumps({"troncato": True, "inizio": testo[:DATI_MAX_BYTE // 2]}, ensure_ascii=False)
     return testo
+
+
+# "503 Server Error: ... for url: https://host/percorso?query" di requests
+_URL_ERRORE = re.compile(r"\s*for url:\s*https?://([^/\s?]+)\S*")
+_URL = re.compile(r"https?://([^/\s?]+)[^\s]*")
+
+
+def accorcia_url(messaggio: str) -> str:
+    """Riduce gli URL di un messaggio al solo host: nel registro restano leggibili
+    (le query string sono lunghe e possono contenere chiavi o coordinate)."""
+    messaggio = _URL_ERRORE.sub(r" (\1)", messaggio)
+    return _URL.sub(r"\1", messaggio)
 
 
 def scrivi(categoria: str, messaggio: str, *, livello: str = "info", oggetto: Optional[str] = None,
@@ -172,7 +185,7 @@ class GestoreLogRegistro(logging.Handler):
             dati = {"modulo": record.name}
             if record.exc_info:
                 dati["eccezione"] = logging.Formatter().formatException(record.exc_info)[-2000:]
-            scrivi("sistema", record.getMessage(), livello=livello, dati=dati)
+            scrivi("sistema", accorcia_url(record.getMessage()), livello=livello, dati=dati)
         except Exception:
             pass
 

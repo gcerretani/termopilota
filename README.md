@@ -10,11 +10,11 @@ Sistema di controllo intelligente del riscaldamento domestico. Confronta in temp
 - **Temperatura reale** dalla stazione meteo CFR Toscana (configurabile)
 - **Automazione per stanza**: segue il programma dei termostati Netatmo e commuta tra caldaia e AC quando conviene; ogni stanza si include o esclude e si mette in pausa
 - **Pagina della stanza**: termostato e condizionatore insieme, cosa fa l'automazione e perché, comandi, grafico delle due temperature e correzione suggerita del setpoint dell'AC
-- **Modalita' esclusiva o affiancata**: con l'AC la caldaia si spegne oppure resta di riserva qualche grado sotto il target
+- **Modalita' esclusiva o affiancata**: con l'AC la caldaia non scalda la stanza, oppure AC e caldaia lavorano insieme con il termostato qualche grado sotto il target (la caldaia parte solo se l'AC non basta; con margine 0 in parallelo)
 - **Simulazione**: l'automazione decide e registra senza inviare comandi
 - **Gestione AC condiviso**: un condizionatore puo' servire piu' stanze, si spegne solo quando tutte sono a temperatura
 - **Pagina Dispositivi**: tutti i valori di condizionatori, stanze e casa Netatmo, grafici delle letture e comandi manuali
-- **Consumo reale** dei condizionatori dal loro contatore di energia, con risparmio misurato nello Storico
+- **Consumo reale** dei condizionatori dal loro contatore di energia; il risparmio conta solo il calore che hanno davvero prodotto in riscaldamento
 - **Area admin** per gestione utenti, credenziali API, configurazione stanze e prezzi
 - **Architettura modulare** a provider per termostati e pompe di calore
 

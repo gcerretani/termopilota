@@ -60,6 +60,17 @@ def test_calcolo_in_modalita_affiancata(admin_client, finti):
     assert c["modalita"] == "affiancata" and c["setpoint_termostato_in_ac"] == 18.0
 
 
+def test_affiancata_senza_margine(admin_client, finti):
+    admin_client.post("/api/stanze/stanza-1", json={"modalita": "affiancata", "riserva_gas_delta": 0})
+    c = admin_client.get("/api/stanze/stanza-1").get_json()["calcolo"]
+    assert c["riserva_gas_delta"] == 0 and c["setpoint_termostato_in_ac"] == 20.0
+
+
+def test_api_stanza_ha_l_ora_di_lettura_dei_due_dispositivi(utente_client, finti):
+    d = utente_client.get("/api/stanze/stanza-1").get_json()
+    assert set(d["letti_alle"]) == {"ac", "netatmo"} and all(d["letti_alle"].values())
+
+
 def test_storico_combinato(utente_client, finti):
     from termopilota import storico
     storico.registra_letture("2026-01-12T10:00", [

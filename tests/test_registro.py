@@ -88,6 +88,15 @@ def test_gestore_di_logging_porta_warning_ed_errori():
 
 # ── API e pagina ─────────────────────────────────────────────────────────────
 
+def test_url_accorciati_nei_messaggi():
+    from termopilota.registro import accorcia_url
+    assert accorcia_url("Stima pannello non disponibile: 503 Server Error: Service Unavailable for url: "
+                        "https://api.open-meteo.com/v1/forecast?latitude=38.6&longitude=-1.3") == \
+        "Stima pannello non disponibile: 503 Server Error: Service Unavailable (api.open-meteo.com)"
+    assert accorcia_url("errore https://web-api.tp.entsoe.eu/api?securityToken=x") == "errore web-api.tp.entsoe.eu"
+    assert accorcia_url("niente da fare") == "niente da fare"
+
+
 def test_pagina_registro_evidenzia_automazione(utente_client):
     html = utente_client.get("/registro").get_data(as_text=True)
     assert 'id="paginaRegistro"' in html and html.count('aria-current="page"') == 2

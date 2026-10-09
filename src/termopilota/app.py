@@ -833,7 +833,7 @@ def normalizza_zone(zone: list) -> list:
             "ac_device_id": str(z.get("ac_device_id") or ""),
             "automazione": z.get("automazione", True) is not False,
             "modalita": "affiancata" if z.get("modalita") == "affiancata" else "esclusiva",
-            "riserva_gas_delta": _limita(z.get("riserva_gas_delta", 1.5), 1.5, 0.5, 5.0),
+            "riserva_gas_delta": _limita(z.get("riserva_gas_delta", 1.5), 1.5, 0.0, 5.0),
             "offset_ac": _limita(z.get("offset_ac", 0.0), 0.0, -3.0, 3.0),
         })
     return risultato
@@ -1117,7 +1117,9 @@ def api_dispositivo(tipo, ident):
     snap = dispositivi.snapshot(cfg)
     decisioni = {z.get("room_id"): z for z in get_servizio().stato()["zone"]}
     zone = dispositivi.zone_collegate(cfg, tipo, ident)
-    risposta = {"tipo": tipo, "id": ident, "errori": snap["errori"], "letto_alle": snap["letto_alle"],
+    # L'ora dell'ultima lettura riuscita della parte che contiene il dispositivo
+    letto_alle = (snap.get("letti_alle") or {}).get("ac" if tipo == "ac" else "netatmo")
+    risposta = {"tipo": tipo, "id": ident, "errori": snap["errori"], "letto_alle": letto_alle,
                 "zone": [{"nome": z.get("nome"), "room_id": z.get("room_id"),
                           "automazione": z.get("automazione", True) is not False,
                           "decisione": decisioni.get(z.get("room_id"))} for z in zone],
@@ -1622,7 +1624,8 @@ def _calcolo_stanza(cfg: dict, zona: dict, stanza: dict) -> dict:
     if target is None:
         target = stanza.get("setpoint")
     offset = zona.get("offset_ac", 0.0) or 0.0
-    riserva = zona.get("riserva_gas_delta", 1.5) or 1.5
+    riserva = zona.get("riserva_gas_delta", 1.5)
+    riserva = 1.5 if riserva is None else riserva
     affiancata = zona.get("modalita") == "affiancata"
     acid = zona.get("ac_device_id", "")
     condivisa = [z.get("nome", "Stanza") for z in cfg.get("zone", [])
@@ -1681,6 +1684,7 @@ def api_stanza(room_id):
         "oggetti_registro": oggetti,
         "errori": snap["errori"],
         "letto_alle": snap["letto_alle"],
+        "letti_alle": snap.get("letti_alle", {}),
         "is_admin": bool(current_user.is_admin),
     }
     if current_user.is_admin:

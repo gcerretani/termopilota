@@ -13,8 +13,10 @@ Ogni N minuti (default 15):
    - AC conveniente e stanza sotto il target (il setpoint del programma
      Netatmo, non quello corrente, che durante un nostro override vale 7 °C):
        esclusiva  → termostato in manuale a 7 °C (valvola chiusa) + AC acceso;
-       affiancata → termostato in manuale a target - riserva_gas_delta (la
-                    caldaia interviene solo se l'AC non ce la fa) + AC acceso;
+       affiancata → AC acceso e termostato in manuale a target - riserva_gas_delta:
+                    lavorano insieme, ma la caldaia scalda solo se la stanza
+                    scende sotto quella soglia (l'AC da solo non basta); con
+                    riserva 0 scaldano in parallelo fino al target;
    - altrimenti gas: il termostato torna al programma, l'AC si spegne se
      l'avevamo acceso noi e nessun'altra zona lo vuole.
 3. Invia solo i comandi che cambiano qualcosa. I manuali Netatmo hanno una
@@ -233,7 +235,7 @@ def pianifica(zone: list, contesto: dict, stato: dict, simulazione: bool = False
                 richieste_ac.setdefault(acid, []).append(target + _num(zona.get("offset_ac"), 0.0))
                 motivo = (f"T stanza {_fmt(t)}°C, target {_fmt(target)}°C | "
                           f"gas={costo_gas:.3f} > ac={costo_ac:.3f} €/kWh_th"
-                          + (f" | caldaia di riserva a {sp:g}°C" if modalita == "affiancata" else ""))
+                          + (f" | caldaia insieme all'AC, termostato a {sp:g}°C" if modalita == "affiancata" else ""))
             else:
                 esito, fonte = "gas", "gas"
                 rilascia()
@@ -266,7 +268,7 @@ def pianifica(zone: list, contesto: dict, stato: dict, simulazione: bool = False
 
 
 def _azione_evento(esito: str) -> str:
-    return {"ac": "→ AC", "affiancata": "→ AC + caldaia di riserva", "gas": "→ Gas",
+    return {"ac": "→ AC", "affiancata": "→ AC + caldaia", "gas": "→ Gas",
             "errore": "→ Gas", "finestra": "→ Gas"}.get(esito, esito)
 
 
