@@ -124,6 +124,7 @@ DEFAULT_CONFIG = {
     "smartthings_client_secret": "",
     "smartthings_token_data": {},
     "smartthings_webhook_token": "",
+    "netatmo_webhook": {},
     "legrand_client_id": "",
     "legrand_client_secret": "",
     "legrand_plant_id": "",
@@ -1348,9 +1349,19 @@ def api_webhook_netatmo():
     if home_id and home_id != cfg.get("legrand_plant_id"):
         registro.scrivi("evento", "Webhook Netatmo di un'altra casa, ignorato", livello="debug", dati=evento)
         return jsonify({"status": "ignorato"})
+    tipo = evento.get("event_type") or evento.get("push_type") or "evento"
+    if tipo == "webhook_activation":
+        adesso = time.time()
+        def conferma(c):
+            # La conferma arriva solo dopo una registrazione: il webhook e' attivo
+            w = c.setdefault("netatmo_webhook", {})
+            w.update({"attivo": True, "dal": w.get("dal") or adesso, "confermato": adesso})
+        aggiorna_config_atomico(CONFIG_FILE, conferma)
+        registro.scrivi("evento", "Netatmo ha confermato la registrazione delle notifiche",
+                        dati={"sorgente": "webhook", **evento})
+        return jsonify({"status": "ok"})
     idents = stanze_evento_netatmo(evento)
     nomi = {rid: (dispositivi.snapshot(cfg)["stanze"].get(rid) or {}).get("nome", rid) for rid in idents}
-    tipo = evento.get("event_type") or evento.get("push_type") or "evento"
     registro.scrivi("evento", f"Netatmo (webhook): {tipo}", oggetto=", ".join(nomi.values()) or None,
                     dati={"sorgente": "webhook", **evento})
     live.notifica("netatmo", idents or [home_id or "casa"], dispositivi.invalida,
@@ -1494,13 +1505,37 @@ def api_live_configurazione():
         return jsonify({"errore": "Solo gli amministratori"}), 403
     cfg = carica_config()
     st = get_heatpump("smartthings", cfg)
+    oauth = bool(st and getattr(st, "installed_app_id", ""))
     return jsonify({
         "netatmo_url": request.url_root.rstrip("/") + "/api/webhook/netatmo",
         "smartthings_url": _url_webhook_smartthings(cfg),
         "smartthings_app_id": (cfg.get("smartthings_token_data") or {}).get("app_id"),
-        "smartthings_oauth": bool(st and getattr(st, "installed_app_id", "")),
+        "smartthings_oauth": oauth,
+        "stato_netatmo": stato_notifiche_netatmo(cfg),
+        "stato_smartthings": stato_sottoscrizioni_smartthings(cfg, st) if oauth else None,
         **live.stato(),
     })
+
+
+def stato_notifiche_netatmo(cfg: dict) -> dict:
+    """Netatmo non permette di sapere se il webhook e' registrato: vale quello che
+    abbiamo fatto noi (attivo, da quando) e la conferma che Netatmo manda."""
+    w = cfg.get("netatmo_webhook") or {}
+    confermato = w.get("confermato")
+    return {"attivo": bool(w.get("attivo")), "dal": w.get("dal"),
+            "confermato": confermato if confermato and confermato >= (w.get("dal") or 0) - 5 else None}
+
+
+def stato_sottoscrizioni_smartthings(cfg: dict, st) -> dict:
+    """Sottoscrizioni attive lette dall'API: lo stato vero, non quello ricordato."""
+    ac = set(dispositivi.snapshot(cfg)["ac"])
+    try:
+        sottoscritti = {(s.get("device") or {}).get("deviceId") for s in st.sottoscrizioni()}
+    except Exception as e:
+        return {"attivo": None, "errore": str(e), "sottoscritti": 0, "condizionatori": len(ac)}
+    coperti = len(ac & sottoscritti)
+    return {"attivo": bool(ac) and coperti == len(ac), "parziale": 0 < coperti < len(ac),
+            "sottoscritti": coperti, "condizionatori": len(ac), "errore": None}
 
 
 @app.route("/api/live/<sorgente>/<azione>", methods=["POST"])
@@ -1527,6 +1562,9 @@ def api_live_azione(sorgente, azione):
                     bt.rimuovi_webhook()
             except ErroreNetatmo as e:
                 raise dispositivi.ErroreComando(f"Netatmo: {e}", 502)
+            stato = {"attivo": azione == "attiva", "dal": time.time() if azione == "attiva" else None,
+                     "confermato": None}
+            aggiorna_config_atomico(CONFIG_FILE, lambda c: c.update({"netatmo_webhook": stato}))
             return None
         st = get_heatpump("smartthings", cfg)
         if not st or not getattr(st, "installed_app_id", ""):
