@@ -60,6 +60,7 @@
   "notte_inizio": 22,
   "notte_fine": 7,
   "pausa_manuale_ore": 3.0,
+  "netatmo_polling_secondi": 120,
   "zone": [
     {
       "nome": "Zona 1",

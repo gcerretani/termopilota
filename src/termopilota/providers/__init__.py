@@ -13,6 +13,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -33,7 +34,16 @@ def scrivi_json_atomico(path: str, dati: dict) -> None:
                 json.dump(dati, f, ensure_ascii=False, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
-            os.replace(tmp_path, path)
+            # Su Windows la destinazione puo' essere bloccata per un attimo
+            # (antivirus, indicizzazione, un lettore concorrente): si riprova
+            for tentativo in range(5):
+                try:
+                    os.replace(tmp_path, path)
+                    break
+                except PermissionError:
+                    if tentativo == 4:
+                        raise
+                    time.sleep(0.05 * (tentativo + 1))
         except Exception:
             try:
                 os.unlink(tmp_path)

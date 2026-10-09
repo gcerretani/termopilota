@@ -92,8 +92,10 @@ def _connetti():
 
 
 def inizializza_db() -> None:
+    from termopilota import registro     # import qui: registro usa _connetti di questo modulo
     with _connetti() as conn:
         conn.executescript(_SCHEMA)
+        conn.executescript(registro.SCHEMA)
 
 
 def registra_campione(campione: dict) -> None:
@@ -439,6 +441,8 @@ class CampionatoreStorico:
                 self._campiona()
                 if time.time() - ultima_pulizia > 86400:
                     _pulisci_vecchi()
+                    from termopilota import registro
+                    registro.pulisci()
                     ultima_pulizia = time.time()
             except Exception as e:
                 logger.warning("Errore campionatore storico: %s", e)

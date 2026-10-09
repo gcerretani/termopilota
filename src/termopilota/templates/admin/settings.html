@@ -236,6 +236,11 @@
         <div class="form-text">Dalla pagina Dispositivi: la zona non viene toccata per questo tempo</div>
       </div>
       <div class="col-md-3">
+        <label class="form-label">Controllo termostati Netatmo (secondi)</label>
+        <input type="number" step="10" min="60" max="900" class="form-control" id="netatmoPolling" value="{{ cfg.netatmo_polling_secondi | default(120) }}">
+        <div class="form-text">Netatmo non avvisa dei cambi fatti dall'app o dal termostato: TermoPilota li cerca a questo intervallo (60–900)</div>
+      </div>
+      <div class="col-md-3">
         <div class="form-check form-switch mt-md-4">
           <input class="form-check-input" type="checkbox" role="switch" id="simulazione" {% if cfg.automazione_simulazione %}checked{% endif %}>
           <label class="form-check-label" for="simulazione">Simulazione</label>
@@ -328,6 +333,7 @@ async function salvaImpostazioni() {
     intervallo_controllo_minuti: parseFloat(document.getElementById('intervallo').value),
     soglia_delta_risparmio:     parseFloat(document.getElementById('soglia').value),
     pausa_manuale_ore:          parseFloat(document.getElementById('pausaManuale').value),
+    netatmo_polling_secondi:    parseInt(document.getElementById('netatmoPolling').value, 10),
     automazione_simulazione:    document.getElementById('simulazione').checked,
     ac_ventola:                 document.getElementById('acVentola').value,
     ac_modalita_notte:          document.getElementById('acModalitaNotte').value,

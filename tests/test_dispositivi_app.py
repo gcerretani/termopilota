@@ -284,7 +284,8 @@ def test_comando_avanzato_validato_e_registrato(admin_client, finti):
     assert st.comandi[-1] == ("ac-1", "audioVolume", "setVolume", [30])
     assert r.get_json()["pausa"]["zone"] == ["Salotto"]
     log = admin_client.get("/api/automazione").get_json()["log"]
-    assert log[0]["azione"] == "comando avanzato" and "audioVolume.setVolume" in log[0]["dettaglio"]
+    assert log[0]["azione"] == "comando" and "audioVolume.setVolume" in log[0]["dettaglio"]
+    assert "(admin)" in log[0]["dettaglio"]
     fuori = admin_client.post("/api/dispositivi/ac/ac-1/avanzato",
                               json={"capability": "audioVolume", "comando": "setVolume", "argomenti": [300]})
     assert fuori.status_code == 400

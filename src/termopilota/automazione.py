@@ -35,7 +35,7 @@ import time
 from datetime import datetime
 from typing import Callable, Optional
 
-from termopilota import dispositivi, live
+from termopilota import dispositivi, live, registro
 from termopilota.percorsi import CONFIG_FILE, STATO_AUTOMAZIONE_FILE
 from termopilota.providers.netatmo import ora_casa
 from termopilota.providers import scrivi_json_atomico
@@ -340,7 +340,6 @@ class AutomazioneRiscaldamento:
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._sveglia = threading.Event()      # ciclo subito (zona inclusa/esclusa, pausa)
-        self.log_eventi: list = []       # ultimi 50 eventi
         self.stato_zone: list = []       # stato corrente per zona
         self._lock = threading.Lock()
         self._lock_stato = threading.RLock()   # file di stato: ciclo e API
@@ -465,9 +464,15 @@ class AutomazioneRiscaldamento:
         nomi_ac = {a["id"]: a["nome"] for a in snap.get("ac", {}).values()}
         for zona, azione, dettaglio in piano["eventi"]:
             self._log_evento(nomi_ac.get(zona, zona), prefisso + azione, dettaglio)
+        for a in piano["netatmo"]:
+            desc = (f"termostato in manuale a {a['setpoint']:g}°C fino alle "
+                    f"{datetime.fromtimestamp(a['fine']).strftime('%H:%M')}" if a["tipo"] == "manual"
+                    else "termostato restituito al programma")
+            self._log_evento(a["zona"], prefisso + "comando", desc, {"room_id": a["room_id"]})
         for a in piano["ac"]:
             desc = (f"acceso a {a['setpoint']}°C" if a["tipo"] == "accendi" else "spento")
-            self._log_evento(nomi_ac.get(a["device_id"], "Condizionatore"), prefisso + "comando", desc)
+            self._log_evento(nomi_ac.get(a["device_id"], "Condizionatore"), prefisso + "comando", desc,
+                             {"device_id": a["device_id"]})
         adesso_str = datetime.now().strftime("%H:%M")
         for z in piano["zone"]:
             z["aggiornato"] = adesso_str
@@ -598,17 +603,27 @@ class AutomazioneRiscaldamento:
         os.makedirs(os.path.dirname(STATO_AUTOMAZIONE_FILE), exist_ok=True)
         scrivi_json_atomico(STATO_AUTOMAZIONE_FILE, stato)
 
-    def _log_evento(self, zona: str, azione: str, dettaglio: str) -> None:
-        evento = {
-            "ts": datetime.now().strftime("%d/%m %H:%M"),
-            "zona": zona,
-            "azione": azione,
-            "dettaglio": dettaglio,
-        }
-        with self._lock:
-            self.log_eventi.insert(0, evento)
-            self.log_eventi = self.log_eventi[:50]
-        logger.info("[%s] %s — %s", zona, azione, dettaglio)
+    @staticmethod
+    def _log_evento(zona: str, azione: str, dettaglio: str, dati: Optional[dict] = None) -> None:
+        """Riga 'automazione' del registro; `zona` 'sistema' = nessun oggetto."""
+        livello = ("errore" if "errore" in azione else "warning" if "warning" in azione else "info")
+        registro.scrivi("automazione", dettaglio, livello=livello,
+                        oggetto=None if zona == "sistema" else zona, dati={"azione": azione, **(dati or {})})
+
+    @staticmethod
+    def ultimi_eventi(limite: int = 20) -> list:
+        """Ultime righe 'automazione' e 'comando' nel formato della pagina Automazione."""
+        eventi = []
+        for r in registro.leggi(["automazione", "comando"], limite=limite):
+            azione = (r.get("dati") or {}).get("azione") if isinstance(r.get("dati"), dict) else None
+            eventi.append({
+                "ts": datetime.fromtimestamp(r["ts"]).strftime("%d/%m %H:%M"),
+                "zona": r.get("oggetto") or "sistema",
+                "azione": azione or r["categoria"],
+                "dettaglio": r["messaggio"] + (f" ({r['utente']})" if r.get("utente") else ""),
+                "livello": r["livello"],
+            })
+        return eventi
 
     def stato(self) -> dict:
         pause = {rid: sz.get("pausa_fino")
@@ -618,7 +633,7 @@ class AutomazioneRiscaldamento:
             return {
                 "attiva": self.attiva,
                 "zone": list(self.stato_zone),
-                "log": list(self.log_eventi[:20]),
+                "log": self.ultimi_eventi(20),
                 "pause": pause,
             }
 

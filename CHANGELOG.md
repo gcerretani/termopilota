@@ -7,6 +7,34 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.4.0] - 2026-10-09
+
+### Aggiunto
+- **Registro eventi** (`/registro`, da Automazione e Impostazioni): tutto quello che succede, salvato
+  nel database e conservato 30 giorni (7 per il livello debug). Decisioni e comandi
+  dell'automazione, azioni degli utenti (comandi dalla pagina Dispositivi, zone incluse o escluse,
+  pause, interruttore, configurazione salvata: solo i nomi delle voci cambiate, mai i valori),
+  notifiche di SmartThings e Netatmo con i valori ricevuti, cambi trovati dal controllo periodico dei
+  termostati, avvisi ed errori dei moduli. Filtri per categoria, livello, zona o dispositivo e
+  testo, "carica altri", scarica JSON, aggiornamento live; gli amministratori vedono anche i dettagli
+  tecnici di ogni riga (per esempio il contenuto delle notifiche).
+- **Controllo periodico dei termostati Netatmo** (ogni 2 minuti, regolabile in Impostazioni):
+  Netatmo non manda le notifiche dei cambi fatti dall'app o dal termostato Smarther, quindi
+  TermoPilota li cerca confrontando le letture. Ogni cambio finisce nel registro, distinguendo quelli
+  fatti da TermoPilota da quelli esterni; le pagine si aggiornano e, per una zona automatizzata, il
+  ciclo dell'automazione riparte subito. Le notifiche Netatmo restano attive in parallelo.
+- Credenziali API: stato del controllo periodico, link agli eventi nel registro e pulsante "Rigenera
+  URL" per il webhook SmartThings.
+
+### Modificato
+- "Ultimi eventi" della pagina Automazione legge dal registro: non si perde più a ogni riavvio e
+  comprende anche le azioni degli utenti e i comandi inviati ai termostati.
+- `/api/config` non restituisce più token, secret e password (sostituiti da `***`).
+
+### Corretto
+- Su Windows il salvataggio della configurazione poteva fallire per un blocco momentaneo del file:
+  ora si riprova.
+
 ## [1.3.0] - 2026-10-09
 
 ### Aggiunto
@@ -272,7 +300,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.3.0...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.0
 [1.3.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.3.0
 [1.2.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.2
 [1.2.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.1

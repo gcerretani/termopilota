@@ -11,10 +11,10 @@ from termopilota import storico
 RADICE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 PAGINE_PROTETTE = ["/", "/previsioni", "/automazione", "/storico", "/impostazioni", "/account", "/admin/", "/admin/credentials",
-                   "/admin/zones", "/admin/users", "/dispositivi"]
+                   "/admin/zones", "/admin/users", "/dispositivi", "/registro"]
 API_PROTETTE = ["/api/dashboard", "/api/prezzi", "/api/dati", "/api/config",
                 "/api/automazione", "/api/storico", "/api/risparmi", "/api/pannello",
-                "/api/dispositivi/impianti", "/api/dispositivi/stato"]
+                "/api/dispositivi/impianti", "/api/dispositivi/stato", "/api/registro"]
 
 
 # ─── Accesso e autorizzazioni ────────────────────────────────────────────────

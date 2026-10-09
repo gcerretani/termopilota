@@ -3,6 +3,7 @@
 {% block title %}Automazione{% endblock %}
 
 {% block azioni %}
+<a class="tp-icon-btn" href="{{ url_for('pagina_registro') }}" title="Registro" aria-label="Registro eventi"><i class="bi bi-journal-text"></i></a>
 <a class="tp-icon-btn" href="{{ url_for('pagina_dispositivi') }}" title="Dispositivi" aria-label="Dispositivi"><i class="bi bi-cpu"></i></a>
 {% endblock %}
 
@@ -48,6 +49,7 @@
   <section class="tp-card" id="logEventiWrap" style="display:none;">
     <div class="tp-card-header">
       <h2 class="tp-card-title"><i class="bi bi-journal-text"></i>Ultimi eventi</h2>
+      <a class="tp-card-link" href="{{ url_for('pagina_registro') }}">Registro completo <i class="bi bi-chevron-right"></i></a>
     </div>
     <div id="logEventi" class="tp-log-list"></div>
   </section>

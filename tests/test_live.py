@@ -182,3 +182,34 @@ def test_firma_webhook_netatmo():
     assert not firma_webhook_valida(SEGRETO, corpo, _firma(b"altro"))
     assert not firma_webhook_valida("", corpo, _firma(corpo))
     assert not firma_webhook_valida(SEGRETO, corpo, None)
+
+
+def test_webhook_netatmo_registrato_con_il_corpo(client, ambiente):
+    from termopilota import registro
+    _evento_netatmo(client, {"event_type": "set_point", "home_id": "casa-1", "room_id": "stanza-1",
+                             "temperature": 21})
+    [r] = registro.leggi(categorie=["evento"])
+    assert r["messaggio"] == "Netatmo (webhook): set_point" and r["oggetto"] == "Salotto"
+    assert r["dati"]["temperature"] == 21 and r["dati"]["sorgente"] == "webhook"
+    # Rifiutato: avviso con i dettagli utili alla diagnosi (senza segreti)
+    client.post("/api/webhook/netatmo", data=b'{"event_type":"webhook_activation"}',
+                headers={"Content-Type": "application/json"})
+    [avviso] = registro.leggi(categorie=["sistema"], livello_min="warning")
+    assert "firma assente" in avviso["messaggio"]
+    assert avviso["dati"]["header_firma"] is False and avviso["dati"]["corpo"]["event_type"] == "webhook_activation"
+
+
+def test_stanza_da_campi_annidati():
+    from termopilota.app import stanze_evento_netatmo
+    assert stanze_evento_netatmo({"room_id": "a"}) == ["a"]
+    assert stanze_evento_netatmo({"home": {"rooms": [{"id": "b"}, {"id": "c"}]}}) == ["b", "c"]
+    assert stanze_evento_netatmo({"room": {"id": "d"}, "rooms": [{"id": "d"}]}) == ["d"]
+    assert stanze_evento_netatmo({"event_type": "webhook_activation"}) == []
+
+
+def test_webhook_smartthings_registra_i_valori(client, ambiente):
+    from termopilota import registro
+    client.post("/api/webhook/smartthings/tok-segreto", json=_evento_st("ac-1"))
+    [r] = registro.leggi(categorie=["evento"])
+    assert r["oggetto"] == "Condizionatore Salotto" and "coolingSetpoint 23" in r["messaggio"]
+    assert r["dati"]["eventi"][0]["capability"] == "thermostatCoolingSetpoint"
