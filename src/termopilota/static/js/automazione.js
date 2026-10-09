@@ -148,4 +148,5 @@
   renderZone();
   carica();
   ogni(30000, carica, 10000);
+  ascoltaLive(carica);
 })();

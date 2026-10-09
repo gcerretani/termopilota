@@ -272,6 +272,9 @@
   }
 
   function controlliStanza(s) {
+    if (s.raggiungibile === false) {
+      return `<div class="small text-danger"><i class="bi bi-wifi-off me-1"></i>${escapeHtml(s.errore || 'Termostato non raggiungibile')}: comandi non disponibili.</div>`;
+    }
     const valore = s.setpoint ?? s.target ?? 20;
     return `<div class="tp-controllo">
       <div><div class="tp-controllo-label">Temperatura manuale</div>
@@ -286,6 +289,16 @@
           ${DURATE.map(([m, t]) => `<option value="${m}" ${m === 180 ? 'selected' : ''}>per ${t}</option>`).join('')}
         </select>
         <button type="button" class="btn btn-sm btn-primary" data-stanza-setpoint>Imposta</button>
+      </div>
+    </div>
+    <div class="tp-controllo">
+      <div><div class="tp-controllo-label">Boost</div>
+        <div class="small tp-muted">Termostato al massimo, poi di nuovo il programma</div></div>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <select class="form-select form-select-sm w-auto" id="durataBoost" aria-label="Durata del boost">
+          ${[[15, '15 min'], [30, '30 min'], [60, '1 h'], [120, '2 h']].map(([m, t]) => `<option value="${m}" ${m === 30 ? 'selected' : ''}>per ${t}</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-sm btn-outline-danger" data-stanza-boost><i class="bi bi-fire me-1"></i>Boost</button>
       </div>
     </div>
     <div class="tp-controllo">
@@ -506,12 +519,84 @@
     try {
       const r = await apiPostJson(`/api/dispositivi/stanza/${enc(ident)}/${azione}`, corpo);
       const fine = r.fine ? ` fino alle ${oraDaEpoch(r.fine)}` : '';
-      messaggio('success', `${azione === 'setpoint' ? 'Temperatura impostata' + fine : 'Stanza tornata al programma'}.${testoPausa(r.pausa)}`);
+      const testo = { setpoint: 'Temperatura impostata' + fine, boost: 'Boost attivo' + fine }[azione] || 'Stanza tornata al programma';
+      messaggio('success', `${testo}.${testoPausa(r.pausa)}`);
     } catch (e) {
       messaggio('danger', escapeHtml(e.message));
     }
     setTimeout(caricaDettaglio, 1500);
   }
+
+  // ── Comandi avanzati (admin): generati dallo schema delle definizioni ──
+  let comandiAvanzati = null;
+
+  function inputArgomento(a, i) {
+    const etichetta = `${escapeHtml(a.nome)}${a.opzionale ? ' <span class="tp-faint">(opz.)</span>' : ''}`;
+    const vuota = a.opzionale ? '<option value="">—</option>' : '';
+    let campo;
+    if (a.enum) {
+      campo = `<select class="form-select form-select-sm" data-arg="${i}" data-tipo="${a.tipo}">
+        ${vuota}${a.enum.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('')}</select>`;
+    } else if (a.tipo === 'boolean') {
+      campo = `<select class="form-select form-select-sm" data-arg="${i}" data-tipo="boolean">
+        ${vuota}<option value="true">true</option><option value="false">false</option></select>`;
+    } else if (a.tipo === 'integer' || a.tipo === 'number') {
+      const intervallo = a.minimo !== undefined || a.massimo !== undefined ? `${a.minimo ?? ''}–${a.massimo ?? ''}` : '';
+      campo = `<input type="number" class="form-control form-control-sm" data-arg="${i}" data-tipo="${a.tipo}"
+        ${a.minimo !== undefined ? `min="${a.minimo}"` : ''} ${a.massimo !== undefined ? `max="${a.massimo}"` : ''}
+        step="${a.tipo === 'integer' ? 1 : 'any'}" placeholder="${intervallo}">`;
+    } else {
+      campo = `<input type="text" class="form-control form-control-sm" data-arg="${i}" data-tipo="string" maxlength="100">`;
+    }
+    return `<label class="small tp-muted d-flex flex-column gap-1">${etichetta}${campo}</label>`;
+  }
+
+  function rigaAvanzata(c) {
+    return `<div class="tp-avanzato" data-avanzato data-capability="${escapeHtml(c.capability)}" data-comando="${escapeHtml(c.comando)}">
+      <code class="small">${escapeHtml(c.comando)}</code>
+      <div class="tp-avanzato-arg">${c.argomenti.map(inputArgomento).join('')}</div>
+      <button type="button" class="btn btn-sm btn-outline-primary" data-avanzato-invia>Invia</button>
+    </div>`;
+  }
+
+  async function caricaAvanzati() {
+    const box = document.getElementById('comandiAvanzati');
+    if (!box || comandiAvanzati) return;
+    box.innerHTML = '<div class="tp-muted small">Lettura delle definizioni…</div>';
+    try {
+      comandiAvanzati = (await apiGetJson(`/api/dispositivi/ac/${enc(ident)}/avanzati`)).comandi;
+    } catch (e) {
+      box.innerHTML = `<div class="text-danger small">${escapeHtml(e.message)}</div>`;
+      return;
+    }
+    const gruppi = {};
+    comandiAvanzati.forEach(c => { (gruppi[c.capability] = gruppi[c.capability] || []).push(c); });
+    box.innerHTML = Object.keys(gruppi).length ? Object.entries(gruppi).map(([cap, cmd]) =>
+      `<div class="tp-valori-gruppo">${escapeHtml(cap)}</div>${cmd.map(rigaAvanzata).join('')}`).join('')
+      : '<div class="tp-muted small">Nessun comando disponibile.</div>';
+  }
+
+  async function inviaAvanzato(riga) {
+    const argomenti = [...riga.querySelectorAll('[data-arg]')].map(el => {
+      if (el.value === '') return null;
+      if (el.dataset.tipo === 'boolean') return el.value === 'true';
+      if (el.dataset.tipo === 'integer' || el.dataset.tipo === 'number') return Number(el.value);
+      return el.value;
+    });
+    while (argomenti.length && argomenti[argomenti.length - 1] === null) argomenti.pop();
+    const { capability, comando } = riga.dataset;
+    if (!confirm(`Inviare ${capability}.${comando}(${argomenti.map(a => JSON.stringify(a)).join(', ')})?`)) return;
+    try {
+      const r = await apiPostJson(`/api/dispositivi/ac/${enc(ident)}/avanzato`, { capability, comando, argomenti });
+      mostraMessaggio('msgAvanzati', 'success', `Comando inviato.${testoPausa(r.pausa)}`);
+      setTimeout(caricaDettaglio, 2500);
+    } catch (e) {
+      mostraMessaggio('msgAvanzati', 'danger', escapeHtml(e.message));
+    }
+  }
+
+  const sezioneAvanzati = document.getElementById('sezioneAvanzati');
+  if (sezioneAvanzati) sezioneAvanzati.addEventListener('toggle', () => { if (sezioneAvanzati.open) caricaAvanzati(); });
 
   document.addEventListener('click', (e) => {
     const passo = e.target.closest('[data-passo-dir]');
@@ -544,6 +629,15 @@
       const box = document.querySelector('#controlli .tp-stepper');
       inviaStanza('setpoint', { temp: Number(box.querySelector('output').textContent),
                                 durata_min: Number(document.getElementById('durataStanza').value) });
+      return;
+    }
+    if (e.target.closest('[data-stanza-boost]')) {
+      inviaStanza('boost', { durata_min: Number(document.getElementById('durataBoost').value) });
+      return;
+    }
+    const avanzato = e.target.closest('[data-avanzato-invia]');
+    if (avanzato) {
+      inviaAvanzato(avanzato.closest('[data-avanzato]'));
       return;
     }
     if (e.target.closest('[data-stanza-ripristina]')) {
@@ -600,8 +694,10 @@
     caricaGrafici();
     ogni(60 * 1000, caricaDettaglio);
     ogni(15 * 60 * 1000, caricaGrafici);
+    ascoltaLive(caricaDettaglio);
   } else if (document.getElementById('paginaDispositivi')) {
     caricaElenco();
     ogni(60 * 1000, caricaElenco);
+    ascoltaLive(caricaElenco);
   }
 })();

@@ -723,6 +723,15 @@ tr.evidenziata > * { background: var(--highlight) !important; font-weight: 600; 
 .tp-controllo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: .7rem 0; border-bottom: 1px solid var(--border-soft); }
 .tp-controllo:last-child { border-bottom: 0; }
 .tp-controllo-label { font-weight: 600; font-size: .9rem; }
+/* Comandi avanzati (admin) */
+details.tp-card > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: .5rem; }
+details.tp-card > summary::-webkit-details-marker { display: none; }
+details.tp-card > summary::after { content: "\F282"; font-family: bootstrap-icons; margin-left: auto; transition: transform .15s; }
+details.tp-card[open] > summary::after { transform: rotate(180deg); }
+.tp-avanzato { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem 1rem; padding: .5rem 0; border-bottom: 1px solid var(--border-soft); }
+.tp-avanzato > code { min-width: 12rem; align-self: center; }
+.tp-avanzato-arg { display: flex; flex-wrap: wrap; gap: .5rem; flex: 1 1 auto; }
+.tp-avanzato-arg label { min-width: 8rem; }
 .tp-stepper { display: inline-flex; align-items: center; gap: .5rem; }
 .tp-stepper output { min-width: 3.5rem; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 .tp-valori { width: 100%; font-size: .82rem; }
@@ -854,3 +863,7 @@ details.tp-card > summary::-webkit-details-marker { display: none; }
 details.tp-card > summary .bi-chevron-down { transition: transform .2s; }
 details.tp-card[open] > summary .bi-chevron-down { transform: rotate(180deg); }
 .min-w-0 { min-width: 0; }
+
+/* Selettore di posizione su mappa (Admin → Impostazioni) */
+.tp-mappa { height: 260px; border-radius: var(--radius-sm, .5rem); border: 1px solid var(--border-soft); overflow: hidden; z-index: 0; }
+html[data-theme="dark"] .tp-mappa .leaflet-tile-pane { filter: brightness(.8) contrast(1.1) saturate(.8); }

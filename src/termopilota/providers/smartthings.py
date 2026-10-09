@@ -242,6 +242,40 @@ class SmartThingsClient(HeatPumpProvider):
         """Spegne l'AC."""
         return self._comando(device_id, [_cmd("switch", "off")])
 
+    # ── Eventi (sottoscrizioni dell'app OAuth) ────────────────────────────────
+    # Gli eventi arrivano al Target URL dell'app API_ONLY, da impostare con la
+    # CLI (smartthings apps:update); servono OAuth e l'installed_app_id del token.
+
+    @property
+    def installed_app_id(self) -> str:
+        return self._token.get("installed_app_id", "") if self.client_id else ""
+
+    def _url_sottoscrizioni(self) -> str:
+        if not self.installed_app_id:
+            raise RuntimeError("Serve il collegamento OAuth a SmartThings (non il PAT)")
+        return f"{ST_BASE}/installedapps/{self.installed_app_id}/subscriptions"
+
+    def sottoscrivi_dispositivo(self, device_id: str) -> None:
+        """Eventi di tutti gli attributi del componente main, solo ai cambi di stato."""
+        resp = requests.post(self._url_sottoscrizioni(), headers=self._headers(), timeout=10, json={
+            "sourceType": "DEVICE",
+            "device": {"deviceId": device_id, "componentId": "main", "capability": "*",
+                       "attribute": "*", "value": "*", "stateChangeOnly": True,
+                       "subscriptionName": f"tp_{device_id[:30]}"},
+        })
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"SmartThings {resp.status_code}: {resp.text[:300]}")
+
+    def sottoscrizioni(self) -> list:
+        resp = requests.get(self._url_sottoscrizioni(), headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json().get("items", [])
+
+    def rimuovi_sottoscrizioni(self) -> None:
+        resp = requests.delete(self._url_sottoscrizioni(), headers=self._headers(), timeout=10)
+        if resp.status_code not in (200, 204):
+            raise RuntimeError(f"SmartThings {resp.status_code}: {resp.text[:300]}")
+
 
 def _cmd(capability: str, comando: str, argomenti: Optional[list] = None) -> dict:
     return {"component": "main", "capability": capability, "command": comando,
@@ -314,8 +348,17 @@ CONTROLLI_AC = [
     {"chiave": "display", "etichetta": "Display", "capability": "samsungce.airConditionerLighting",
      "attributo": "lighting", "tipo": "enum", "comando": "setLightingLevel",
      "valori": "supportedLightingLevels"},
+    # Valori/intervallo dallo schema del comando nella definizione (`da_definizione`)
+    {"chiave": "deodorizzazione", "etichetta": "Deodorizzazione",
+     "capability": "custom.airConditionerOdorController", "attributo": "airConditionerOdorControllerState",
+     "tipo": "enum", "comando": "setAirConditionerOdorControllerState", "da_definizione": True},
+    {"chiave": "notte_tropicale", "etichetta": "Notte tropicale (ore, solo raffrescamento)",
+     "capability": "custom.airConditionerTropicalNightMode", "attributo": "acTropicalNightModeLevel",
+     "tipo": "numero", "comando": "setAcTropicalNightModeLevel", "unita": "h", "da_definizione": True},
     {"chiave": "beep", "etichetta": "Segnale acustico", "capability": "samsungce.airConditionerBeep",
      "attributo": "beep", "tipo": "switch", "solo_admin": True},
+    {"chiave": "volume", "etichetta": "Volume", "capability": "audioVolume", "attributo": "volume",
+     "tipo": "numero", "comando": "setVolume", "unita": "%", "da_definizione": True, "solo_admin": True},
     {"chiave": "pulizia", "etichetta": "Pulizia automatica", "capability": "custom.autoCleaningMode",
      "attributo": "autoCleaningMode", "tipo": "enum", "comando": "setAutoCleaningMode",
      "valori": "supportedAutoCleaningModes", "solo_admin": True},
@@ -351,6 +394,104 @@ def comandi_del_controllo(controllo: dict) -> list:
     return [controllo["comando"]]
 
 
+def schema_primo_argomento(definizione: Optional[dict], comando: str) -> dict:
+    """Schema JSON del primo argomento di un comando nella definizione ({} se assente)."""
+    argomenti = (((definizione or {}).get("commands") or {}).get(comando) or {}).get("arguments") or []
+    return (argomenti[0].get("schema") or {}) if argomenti else {}
+
+
+# ── Comandi avanzati (console admin) ─────────────────────────────────────────
+# Tutti i comandi delle definizioni, tranne le capability che possono rompere il
+# dispositivo o il suo collegamento (firmware, Wi-Fi, OCF grezzo, demand
+# response, configurazione dei report) o riprodurre contenuti arbitrari.
+CAPABILITY_ESCLUSE = {
+    "execute", "ocf", "samsungce.softwareUpdate", "sec.wifiConfiguration",
+    "samsungce.deviceIdentification", "sec.diagnosticsInformation", "samsungce.driverVersion",
+    "samsungce.softwareVersion", "demandResponseLoadControl", "samsungce.openAutomatedDemandResponse2",
+    "custom.deviceReportStateConfiguration", "audioNotification", "sec.calmConnectionCare",
+}
+TIPI_ARGOMENTO = ("string", "integer", "number", "boolean")
+LUNGHEZZA_MAX_TESTO = 100
+
+
+def comandi_avanzati(stato: dict, definizioni: dict) -> list:
+    """[{capability, comando, argomenti: [{nome, tipo, enum?, minimo?, massimo?, opzionale}]}]
+    per le capability del dispositivo con definizione leggibile. Si escludono le
+    capability in CAPABILITY_ESCLUSE o disattivate, i comandi dichiarati non
+    disponibili e quelli con argomenti non semplici (oggetti, liste, $ref)."""
+    non_disponibili = set(valore(stato, "samsungce.unavailableCapabilities", "unavailableCommands") or [])
+    disattivate = set(valore(stato, "custom.disabledCapabilities", "disabledCapabilities") or [])
+    risultato = []
+    for cap in sorted(definizioni):
+        definizione = definizioni.get(cap)
+        if not definizione or cap in CAPABILITY_ESCLUSE or cap in disattivate or cap not in stato:
+            continue
+        for nome, cmd in sorted((definizione.get("commands") or {}).items()):
+            if f"{cap}.{nome}" in non_disponibili:
+                continue
+            argomenti = []
+            for a in cmd.get("arguments") or []:
+                schema = a.get("schema") or {}
+                if schema.get("type") not in TIPI_ARGOMENTO:
+                    break
+                arg = {"nome": a.get("name"), "tipo": schema["type"], "opzionale": bool(a.get("optional"))}
+                for chiave, campo in (("enum", "enum"), ("minimo", "minimum"), ("massimo", "maximum")):
+                    if campo in schema:
+                        arg[chiave] = schema[campo]
+                argomenti.append(arg)
+            else:
+                risultato.append({"capability": cap, "comando": nome, "argomenti": argomenti})
+    return risultato
+
+
+def valida_comando_avanzato(comandi: list, capability: str, comando: str, argomenti) -> list:
+    """Argomenti validati per un comando di `comandi_avanzati`; ValueError se non ammesso."""
+    voce = next((c for c in comandi if c["capability"] == capability and c["comando"] == comando), None)
+    if voce is None:
+        raise ValueError("Comando non disponibile su questo dispositivo")
+    if not isinstance(argomenti, list):
+        raise ValueError("argomenti deve essere una lista")
+    attesi = voce["argomenti"]
+    if len(argomenti) > len(attesi):
+        raise ValueError("Troppi argomenti")
+    validati = []
+    for i, arg in enumerate(attesi):
+        if i >= len(argomenti) or argomenti[i] is None:
+            if not arg["opzionale"]:
+                raise ValueError(f"Argomento obbligatorio mancante: {arg['nome']}")
+            if any(a is not None for a in argomenti[i:]):
+                raise ValueError(f"Gli argomenti opzionali vanno in fondo ({arg['nome']})")
+            break
+        v = argomenti[i]
+        tipo = arg["tipo"]
+        if tipo == "boolean":
+            if not isinstance(v, bool):
+                raise ValueError(f"{arg['nome']}: serve true o false")
+        elif tipo in ("integer", "number"):
+            try:
+                v = float(v) if not isinstance(v, bool) else None
+            except (TypeError, ValueError):
+                v = None
+            if v is None or v != v:
+                raise ValueError(f"{arg['nome']}: serve un numero")
+            if tipo == "integer":
+                if v != int(v):
+                    raise ValueError(f"{arg['nome']}: serve un intero")
+                v = int(v)
+            if "minimo" in arg and v < arg["minimo"] or "massimo" in arg and v > arg["massimo"]:
+                raise ValueError(f"{arg['nome']}: fuori intervallo")
+        else:
+            if not isinstance(v, (str, int, float)) or isinstance(v, bool):
+                raise ValueError(f"{arg['nome']}: serve un testo")
+            v = str(v)
+            if len(v) > LUNGHEZZA_MAX_TESTO:
+                raise ValueError(f"{arg['nome']}: testo troppo lungo")
+        if "enum" in arg and v not in arg["enum"]:
+            raise ValueError(f"{arg['nome']}: valore non ammesso")
+        validati.append(v)
+    return validati
+
+
 def controlli_disponibili(stato: dict, definizioni: dict, is_admin: bool = True) -> list:
     """Controlli della whitelist utilizzabili su questo dispositivo, con i valori ammessi.
 
@@ -382,7 +523,10 @@ def controlli_disponibili(stato: dict, definizioni: dict, is_admin: bool = True)
         if c["tipo"] == "switch":
             voce["valori"] = ["on", "off"]
         elif c["tipo"] == "enum":
-            valori = valore(stato, cap, c["valori"])
+            if c.get("da_definizione"):
+                valori = schema_primo_argomento(definizioni.get(cap), c["comando"]).get("enum")
+            else:
+                valori = valore(stato, cap, c["valori"])
             disponibili = valore(stato, cap, c["disponibili"]) if c.get("disponibili") else None
             if disponibili:
                 valori = [v for v in (valori or disponibili) if v in disponibili]
@@ -390,7 +534,13 @@ def controlli_disponibili(stato: dict, definizioni: dict, is_admin: bool = True)
                 continue
             voce["valori"] = list(valori)
         elif c["tipo"] == "numero":
-            intervallo = valore(stato, cap, c["intervallo"]) or {}
+            if c.get("da_definizione"):
+                schema = schema_primo_argomento(definizioni.get(cap), c["comando"])
+                if "minimum" not in schema or "maximum" not in schema:
+                    continue
+                intervallo = schema
+            else:
+                intervallo = valore(stato, cap, c["intervallo"]) or {}
             voce["minimo"] = intervallo.get("minimum", 16)
             voce["massimo"] = intervallo.get("maximum", 30)
             voce["passo"] = intervallo.get("step", 1) or 1

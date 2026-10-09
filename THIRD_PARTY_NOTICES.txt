@@ -10,7 +10,7 @@ Librerie front-end (package.json, copiate in static/vendor/ da npm run vendor)
 
 I file non sono nel repository: si generano da package-lock.json e finiscono
 nell'immagine Docker. Gli avvisi di copyright originali restano nell'intestazione
-di ogni file, come richiesto dalla licenza MIT.
+di ogni file, come richiesto dalle licenze MIT e BSD.
 
 - Bootstrap 5.3.8 (CSS e JS) - MIT
   Copyright 2011-2023 The Bootstrap Authors
@@ -21,6 +21,12 @@ di ogni file, come richiesto dalla licenza MIT.
 - Chart.js 4.5.1 - MIT
   (c) 2024 Chart.js Contributors
   https://github.com/chartjs/Chart.js/blob/master/LICENSE.md
+- Leaflet 1.9.4 (JS, CSS e immagini dei segnaposto) - BSD-2-Clause
+  Copyright (c) 2010-2023, Volodymyr Agafonkin; Copyright (c) 2010-2011, CloudMade
+  https://github.com/Leaflet/Leaflet/blob/main/LICENSE
+  Usato solo in Admin → Impostazioni. Le mappe sono di OpenStreetMap
+  (© OpenStreetMap contributors, dati ODbL), caricate dal browser da
+  tile.openstreetmap.org con l'attribuzione richiesta.
 
 Incorporate nei file sopra (stessa licenza MIT): Popper 2.11.8 in bootstrap.bundle
 (Copyright (c) 2019 Federico Zivolo) e @kurkle/color 0.3.4 in chart.umd

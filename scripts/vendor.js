@@ -26,6 +26,12 @@ const FILE = [
   ['bootstrap-icons/fonts/bootstrap-icons.woff2', ['bootstrap-icons/font/fonts/bootstrap-icons.woff2']],
   ['bootstrap-icons/fonts/bootstrap-icons.woff',  ['bootstrap-icons/font/fonts/bootstrap-icons.woff']],
   ['chartjs/chart.umd.min.js',               ['chart.js/dist/chart.umd.min.js', 'chart.js/dist/chart.umd.js']],
+  ['leaflet/leaflet.js',                     ['leaflet/dist/leaflet.js']],
+  ['leaflet/leaflet.css',                    ['leaflet/dist/leaflet.css']],
+  ['leaflet/images/marker-icon.png',         ['leaflet/dist/images/marker-icon.png']],
+  ['leaflet/images/marker-icon-2x.png',      ['leaflet/dist/images/marker-icon-2x.png']],
+  ['leaflet/images/marker-shadow.png',       ['leaflet/dist/images/marker-shadow.png']],
+  ['leaflet/LICENSE',                        ['leaflet/LICENSE']],   // BSD-2: l'avviso va distribuito
 ];
 
 function fallisci(messaggio) {

@@ -13,6 +13,8 @@ casa, cioe' il programma). Modalita' della casa (setthermmode): 'schedule',
 'away', 'hg' (antigelo).
 """
 
+import hashlib
+import hmac
 import time
 import logging
 from datetime import datetime
@@ -285,6 +287,23 @@ class NetatmoClient(ThermostatProvider):
 
     def cambia_programma(self, home_id: str, schedule_id: str) -> bool:
         return self._post("switchhomeschedule", data={"home_id": home_id, "schedule_id": schedule_id})
+
+    # ── Webhook ───────────────────────────────────────────────────────────────
+
+    def registra_webhook(self, url: str) -> bool:
+        """Netatmo inviera' gli eventi (set_point, therm_mode, ...) a `url`."""
+        return self._post("addwebhook", data={"url": url})
+
+    def rimuovi_webhook(self) -> bool:
+        return self._post("dropwebhook", data={})
+
+
+def firma_webhook_valida(client_secret: str, corpo: bytes, firma: Optional[str]) -> bool:
+    """Header X-Netatmo-secret: HMAC-SHA256 esadecimale del corpo con il client secret."""
+    if not client_secret or not firma:
+        return False
+    attesa = hmac.new(client_secret.encode("utf-8"), corpo, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(attesa, firma.strip().lower())
 
 
 def descrivi_errore_modulo(codice) -> str:

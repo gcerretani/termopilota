@@ -65,5 +65,13 @@
     }
   },
   "samsungce.aiMotionWind": {"mode": {"value": null}, "availableModes": {"value": []}, "supportedModes": {"value": null}},
-  "custom.deodorFilter": {"deodorFilterStatus": {"value": null}}
+  "custom.deodorFilter": {"deodorFilterStatus": {"value": null}},
+  "custom.airConditionerOdorController": {
+    "airConditionerOdorControllerProgress": {"value": 0},
+    "airConditionerOdorControllerState": {"value": "off"}
+  },
+  "custom.airConditionerTropicalNightMode": {"acTropicalNightModeLevel": {"value": 0}, "remainingTime": {"value": null}},
+  "audioVolume": {"volume": {"value": 100, "unit": "%"}},
+  "execute": {"data": {"value": null}},
+  "samsungce.selfCheck": {"status": {"value": null}, "supportedActions": {"value": ["start", "cancel"]}}
 }

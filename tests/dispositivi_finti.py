@@ -23,6 +23,22 @@ DEFINIZIONI = {
     "custom.autoCleaningMode": {"commands": {"setAutoCleaningMode": {}}},
     "samsungce.dustFilterAlarm": {"commands": {"setAlarmThreshold": {}}},
     "custom.dustFilter": {"commands": {"resetDustFilter": {}}},
+    # Schemi come nelle definizioni reali (lette dal dispositivo DA-AC-RAC-01011)
+    "custom.airConditionerOdorController": {"commands": {
+        "setAirConditionerOdorControllerState": {"arguments": [
+            {"name": "state", "optional": False, "schema": {"type": "string", "enum": ["on", "off"]}}]},
+        "setNotificationThreshold": {"arguments": [
+            {"name": "notificationThreshold", "optional": False, "schema": {"type": "integer", "minimum": 0}}]}}},
+    "custom.airConditionerTropicalNightMode": {"commands": {
+        "setAcTropicalNightModeLevel": {"arguments": [
+            {"name": "hours", "optional": False, "schema": {"type": "integer", "minimum": 0, "maximum": 35}}]}}},
+    "audioVolume": {"commands": {
+        "setVolume": {"arguments": [
+            {"name": "volume", "optional": False, "schema": {"type": "integer", "minimum": 0, "maximum": 100}}]},
+        "volumeUp": {"arguments": []}}},
+    "execute": {"commands": {"execute": {"arguments": [
+        {"name": "command", "schema": {"type": "string"}}, {"name": "args", "schema": {"type": "object"}}]}}},
+    "samsungce.selfCheck": {"commands": {"startSelfCheck": {"arguments": []}, "cancelSelfCheck": {"arguments": []}}},
 }
 
 

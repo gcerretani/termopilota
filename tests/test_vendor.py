@@ -19,6 +19,11 @@ FILE_ATTESI = [
     "bootstrap-icons/fonts/bootstrap-icons.woff2",
     "bootstrap-icons/fonts/bootstrap-icons.woff",
     "chartjs/chart.umd.min.js",
+    "leaflet/leaflet.js",
+    "leaflet/leaflet.css",
+    "leaflet/images/marker-icon.png",
+    "leaflet/images/marker-icon-2x.png",
+    "leaflet/images/marker-shadow.png",
 ]
 
 
@@ -26,7 +31,7 @@ def _versioni_lock():
     with open(os.path.join(RADICE, "package-lock.json"), encoding="utf-8") as f:
         pacchetti = json.load(f)["packages"]
     return {nome: pacchetti[f"node_modules/{nome}"]["version"]
-            for nome in ("bootstrap", "bootstrap-icons", "chart.js")}
+            for nome in ("bootstrap", "bootstrap-icons", "chart.js", "leaflet")}
 
 
 def _intestazione(percorso):
@@ -45,9 +50,11 @@ def test_versioni_vendor_coincidono_con_il_lock():
         "bootstrap": "bootstrap/bootstrap.min.css",
         "bootstrap-icons": "bootstrap-icons/bootstrap-icons.min.css",
         "chart.js": "chartjs/chart.umd.min.js",
+        "leaflet": "leaflet/leaflet.js",
     }
     for pacchetto, file in controlli.items():
-        trovata = re.search(r"v(\d+\.\d+\.\d+)", _intestazione(file))
+        # "v5.3.8" (Bootstrap, Chart.js) oppure "Leaflet 1.9.4"
+        trovata = re.search(r"(?:v|Leaflet )(\d+\.\d+\.\d+)", _intestazione(file))
         assert trovata, f"versione non trovata nell'intestazione di {file}"
         assert trovata.group(1) == versioni[pacchetto], (
             f"{pacchetto}: file {trovata.group(1)} ma package-lock {versioni[pacchetto]}: {ISTRUZIONI}")

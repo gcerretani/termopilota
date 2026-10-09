@@ -15,7 +15,26 @@ function ogni(ms, fn, minimoAlRitorno = 60000) {
   return esegui;
 }
 
-const formatoEuro = (v) => v.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+// Aggiornamenti live: il server incrementa una versione a ogni evento dei
+// dispositivi (webhook Netatmo/SmartThings); se cambia si ricaricano i dati.
+// Solo a pagina visibile, una richiesta minima ogni 10 s.
+function ascoltaLive(callback, ms = 10000) {
+  let versione = null;
+  const controlla = async () => {
+    if (document.visibilityState !== 'visible') return;
+    try {
+      const res = await fetch('/api/live');
+      if (!res.ok) return;
+      const v = (await res.json()).versione;
+      if (versione !== null && v !== versione) callback();
+      versione = v;
+    } catch (e) { /* rete assente: riprova al prossimo giro */ }
+  };
+  controlla();
+  setInterval(controlla, ms);
+}
+
+const formatoEuro =(v) => v.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 
 function escapeHtml(testo) {
   return String(testo ?? '').replace(/[&<>"']/g, c => ({
