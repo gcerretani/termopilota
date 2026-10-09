@@ -213,3 +213,57 @@ def test_webhook_smartthings_registra_i_valori(client, ambiente):
     [r] = registro.leggi(categorie=["evento"])
     assert r["oggetto"] == "Condizionatore Salotto" and "coolingSetpoint 23" in r["messaggio"]
     assert r["dati"]["eventi"][0]["capability"] == "thermostatCoolingSetpoint"
+
+
+def _evento_attributo(capability, attributo, valore, unita=None):
+    return {"messageType": "EVENT", "eventData": {
+        "installedApp": {"installedAppId": "app-installata"},
+        "events": [{"eventType": "DEVICE_EVENT", "deviceEvent": {
+            "deviceId": "ac-1", "componentId": "main", "capability": capability,
+            "attribute": attributo, "value": valore, "unit": unita}}]}}
+
+
+def test_smartthings_rumore_solo_debug_e_niente_aggiornamenti(client, ambiente):
+    from termopilota import live, registro
+    _, _, ricalcoli = ambiente
+    client.post("/api/webhook/smartthings/tok-segreto",
+                json=_evento_attributo("custom.autoCleaningMode", "progress", 30, "%"))
+    assert registro.leggi(categorie=["evento"]) == []
+    assert registro.leggi(categorie=["evento"], livello_min="debug")[0]["dati"]["tipo"] == "altro"
+    assert live.stato()["versione"] == 0 and ricalcoli == []
+
+
+def test_smartthings_misura_aggiorna_le_pagine_senza_ricalcolo(client, ambiente):
+    from termopilota import live, registro
+    _, _, ricalcoli = ambiente
+    client.post("/api/webhook/smartthings/tok-segreto", json=_evento_attributo(
+        "powerConsumptionReport", "powerConsumption", {"energy": 141081, "power": 0, "deltaEnergy": 0}))
+    [r] = registro.leggi(categorie=["evento"], livello_min="debug")
+    assert r["livello"] == "debug" and "141081 Wh (potenza 0 W)" in r["messaggio"]
+    assert live.stato()["versione"] == 1 and ricalcoli == []
+
+
+def _apici_spaiati(script: str) -> list:
+    """Righe JS con un numero dispari di apici singoli non escapati, fuori da
+    stringhe "..." e `...` (euristica: basta per gli script inline dei template)."""
+    import re
+    spaiate = []
+    script = re.sub(r"\\.", "", script)                    # caratteri escapati
+    script = re.sub(r"`[^`]*`", "``", script)              # template literal, anche su piu' righe
+    for riga in script.splitlines():
+        codice = re.sub(r'"[^"]*"', '""', riga)
+        if "//" in codice and codice.count("'", 0, codice.index("//")) % 2 == 0:
+            codice = codice[:codice.index("//")]
+        if codice.count("'") % 2:
+            spaiate.append(riga.strip())
+    return spaiate
+
+
+@pytest.mark.parametrize("url", ["/admin/credentials", "/admin/", "/admin/zones", "/registro", "/automazione"])
+def test_script_inline_senza_apici_spaiati(admin_client, url):
+    # Regressione: "da quando l'app" in una stringa con apici singoli bloccava
+    # tutti i pulsanti della pagina Credenziali
+    import re
+    html = admin_client.get(url).get_data(as_text=True)
+    for script in re.findall(r"<script>(.*?)</script>", html, re.S):
+        assert _apici_spaiati(script) == []
