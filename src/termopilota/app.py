@@ -1426,17 +1426,56 @@ def api_webhook_smartthings(token):
         d = e.get("deviceEvent") or {}
         if d.get("deviceId") in ac:
             per_dispositivo.setdefault(d["deviceId"], []).append(d)
+    da_aggiornare, comandati = [], []
     for device_id, cambi in per_dispositivo.items():
-        valori = ", ".join(f"{c.get('attribute')} {c.get('value')}{(' ' + c['unit']) if c.get('unit') else ''}"
-                           for c in cambi[:12])
+        tipo = tipo_eventi_smartthings(cambi)
+        valori = ", ".join(f"{c.get('attribute')} {_valore_evento(c.get('value'))}"
+                           f"{(' ' + c['unit']) if c.get('unit') else ''}" for c in cambi[:12])
         registro.scrivi("evento", f"SmartThings: {valori}", oggetto=ac[device_id].get("nome"),
-                        dati={"sorgente": "webhook", "eventi": [
+                        livello="info" if tipo == "comando" else "debug",
+                        dati={"sorgente": "webhook", "tipo": tipo, "eventi": [
                             {k: c.get(k) for k in ("capability", "attribute", "value", "unit", "componentId",
                                                    "stateChange")} for c in cambi]})
-    idents = sorted(per_dispositivo)
-    if idents:
-        live.notifica("smartthings", idents, dispositivi.invalida, _ricalcolo_per(cfg, "ac", idents))
+        if tipo != "altro":
+            da_aggiornare.append(device_id)
+        if tipo == "comando":
+            comandati.append(device_id)
+    if da_aggiornare:
+        # Solo un cambio di comando (accensione, modalita', temperatura...) puo' far
+        # ripartire l'automazione; le misure aggiornano solo le pagine
+        live.notifica("smartthings", sorted(da_aggiornare), dispositivi.invalida,
+                      _ricalcolo_per(cfg, "ac", comandati) if comandati else None)
     return jsonify({"eventData": {}})
+
+
+# Attributi SmartThings che riflettono un comando (dall'app, dal telecomando o
+# nostro) e misure che vale la pena mostrare subito; il resto (avanzamento
+# della pulizia, diagnostica...) va nel registro come debug e basta
+ATTRIBUTI_COMANDO = {
+    "switch", "airConditionerMode", "coolingSetpoint", "fanMode", "fanOscillationMode", "acOptionalMode",
+    "lighting", "autoCleaningMode", "beep", "volume", "airConditionerOdorControllerState",
+    "acTropicalNightModeLevel", "alarmThreshold",
+}
+ATTRIBUTI_MISURA = {"temperature", "humidity", "powerConsumption", "dustFilterStatus"}
+
+
+def tipo_eventi_smartthings(cambi: list) -> str:
+    """'comando', 'misura' o 'altro' per un gruppo di eventi dello stesso AC."""
+    attributi = {c.get("attribute") for c in cambi}
+    if attributi & ATTRIBUTI_COMANDO:
+        return "comando"
+    if attributi & ATTRIBUTI_MISURA:
+        return "misura"
+    return "altro"
+
+
+def _valore_evento(valore) -> str:
+    """Valore leggibile nel messaggio: i dict (es. powerConsumption) riassunti."""
+    if isinstance(valore, dict):
+        if "energy" in valore:
+            return f"{valore.get('energy')} Wh (potenza {valore.get('power')} W)"
+        return "{…}"
+    return str(valore)
 
 
 def _url_webhook_smartthings(cfg: dict) -> str:

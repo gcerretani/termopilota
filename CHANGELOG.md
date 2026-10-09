@@ -7,6 +7,17 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.4.1] - 2026-10-09
+
+### Corretto
+- Credenziali API: i pulsanti "Attiva notifiche", "Disattiva" e "Rigenera URL" non facevano nulla
+  (un apostrofo nel testo bloccava lo script della pagina).
+- Eventi SmartThings meno rumorosi: solo i cambi di comando (accensione, modalità, temperatura,
+  ventola, modalità speciali, display, pulizia…) vanno nel registro come info e possono far
+  ripartire l'automazione. Le misure (temperatura, umidità, consumi) sono debug e aggiornano solo le
+  pagine; il resto, come l'avanzamento della pulizia automatica ogni 20 secondi, è solo debug.
+  I valori complessi come il consumo sono riassunti nel messaggio.
+
 ## [1.4.0] - 2026-10-09
 
 ### Aggiunto
@@ -300,7 +311,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.4.0...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.1
 [1.4.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.0
 [1.3.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.3.0
 [1.2.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.2.2
