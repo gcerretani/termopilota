@@ -72,7 +72,7 @@
         <div class="tp-kpi">
           <div class="tp-kpi-label"><i class="bi bi-calendar-day"></i>Oggi</div>
           <div class="tp-kpi-value" id="statOreVal">{{ ore_gas_oggi }}h / {{ ore_ac_oggi }}h</div>
-          <div class="tp-kpi-sub">caldaia / pompa</div>
+          <div class="tp-kpi-sub">caldaia / pompa<span id="statConsumoAc">{% if consumo_ac_oggi is not none %} · AC {{ "%.1f"|format(consumo_ac_oggi) }} kWh{% endif %}</span></div>
         </div>
         <a class="tp-kpi text-decoration-none" href="{{ url_for('pagina_storico') }}" id="kpiRisparmio">
           <div class="tp-kpi-label"><span class="tp-kpi-dot" style="--dot:var(--green)"></span>Risparmio</div>
@@ -153,28 +153,13 @@
           <h2 class="tp-card-title"><i class="bi bi-house-check"></i>Stanze</h2>
           <a class="tp-card-link" href="{{ url_for('pagina_automazione') }}">Automazione <i class="bi bi-chevron-right"></i></a>
         </div>
-        {% if stato_stanze_dashboard.errore %}
-        <div class="alert alert-warning py-2 small mb-2">{{ stato_stanze_dashboard.errore }}</div>
-        {% endif %}
-        {% if stato_stanze_dashboard.zone and stato_stanze_dashboard.zone|length > 0 %}
-        <div class="tp-list">
-          {% for z in stato_stanze_dashboard.zone %}
-          <div class="tp-list-item">
-            <span class="tp-list-icon"><i class="bi bi-door-open"></i></span>
-            <div class="tp-list-body">
-              <div class="tp-list-title text-truncate">{{ z.nome }}</div>
-              <div class="tp-list-sub">
-                {% if z.setpoint is not none %}setpoint {{ "%.1f"|format(z.setpoint) }}°C{% else %}setpoint —{% endif %}
-                {% if z.modalita %} · {% if z.modalita == 'manual' %}Manuale{% elif z.modalita == 'schedule' %}Automatico{% else %}{{ z.modalita }}{% endif %}{% endif %}
-              </div>
-            </div>
-            <div class="tp-list-end fs-5 fw-light">{% if z.t_stanza is not none %}{{ "%.1f"|format(z.t_stanza) }}°{% else %}<span class="tp-muted">—</span>{% endif %}</div>
-          </div>
-          {% endfor %}
+        <div id="stanzeErrore"></div>
+        <div class="tp-list" id="stanzeLista">
+          {% if not stato_stanze_dashboard.zone %}
+          <div class="tp-muted small">Nessuna zona configurata{% if current_user.is_admin %} — <a href="/admin/zones">aggiungine una</a>{% endif %}.</div>
+          {% endif %}
         </div>
-        {% else %}
-        <div class="tp-muted small">Nessuna zona configurata{% if current_user.is_admin %} — <a href="/admin/zones">aggiungine una</a>{% endif %}.</div>
-        {% endif %}
+        <a class="tp-card-link d-inline-flex mt-3" href="{{ url_for('pagina_dispositivi') }}"><i class="bi bi-cpu me-1"></i>Tutti i dispositivi <i class="bi bi-chevron-right"></i></a>
       </section>
     </div>
   </div>
@@ -186,6 +171,7 @@
 <script>
   window.datiOrari = {{ raccomandazioni_json | safe }};
   window.generatoAlle = {{ generato_alle | tojson }};
+  window.stanze = {{ stato_stanze_dashboard | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/home.js') }}"></script>
 {% endblock %}

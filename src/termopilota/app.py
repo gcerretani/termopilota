@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import secrets
+import threading
 import time
 from datetime import datetime, timedelta
 from typing import Optional
@@ -32,6 +33,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import current_user, login_required, login_user, logout_user
 from termopilota.prezzi import calcola_prezzi
 from termopilota.automazione import get_servizio, avvia_se_attiva
+from termopilota import dispositivi
 from termopilota import pannello
 from termopilota import storico
 from termopilota.versione import VERSIONE
@@ -72,6 +74,10 @@ def configura_proxy(flask_app: Flask) -> None:
 app = Flask(__name__)
 configura_proxy(app)
 setup_auth(app)
+# Il cookie di sessione non parte nelle richieste POST da altri siti: con le API
+# JSON (vedi _json_richiesto) e' la protezione CSRF dei comandi ai dispositivi
+app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
+app.config.setdefault("REMEMBER_COOKIE_SAMESITE", "Lax")
 
 DEFAULT_CONFIG = {
     "gas_fisso_smc": 0.38,
@@ -117,6 +123,14 @@ DEFAULT_CONFIG = {
     "google_client_id": "",
     "google_client_secret": "",
     "zone": [],
+    # Automazione: simulazione (decide e registra senza inviare comandi), opzioni
+    # dell'AC quando lo accende TermoPilota, pausa dopo un comando manuale
+    "automazione_simulazione": False,
+    "ac_ventola": "auto",                # auto | low | medium | high | turbo
+    "ac_modalita_notte": "off",          # off | sleep | quiet | windFree | windFreeSleep
+    "notte_inizio": 22,
+    "notte_fine": 7,
+    "pausa_manuale_ore": 3.0,
     "cfr_station_id": "",
     "cfr_station_name": "",
     "lat": 0.0,
@@ -470,6 +484,7 @@ def index():
         ore_gas_oggi=dati["ore_gas_oggi"],
         ore_ac_oggi=dati["ore_ac_oggi"],
         stato_stanze_dashboard=stato_stanze_dashboard,
+        consumo_ac_oggi=consumo_ac_oggi(),
         errore_meteo=dati["errori"]["meteo"],
         errore_cfr=dati["errori"]["cfr"],
         generato_alle=dati["generato_alle"],
@@ -510,6 +525,23 @@ def pagina_impostazioni():
     return render_template("impostazioni.html")
 
 
+@app.route("/dispositivi")
+@login_required
+def pagina_dispositivi():
+    return render_template("dispositivi.html")
+
+
+TIPI_DISPOSITIVO = ("ac", "stanza", "casa")
+
+
+@app.route("/dispositivi/<tipo>/<ident>")
+@login_required
+def pagina_dispositivo(tipo, ident):
+    if tipo not in TIPI_DISPOSITIVO:
+        abort(404)
+    return render_template("dispositivo.html", tipo=tipo, ident=ident)
+
+
 @app.route("/sw.js")
 def service_worker():
     # Servito dalla root cosi' lo scope del service worker copre tutta l'app.
@@ -520,39 +552,56 @@ def service_worker():
 # ─── API JSON ────────────────────────────────────────────────────────────────
 
 def leggi_stato_stanze_dashboard(cfg: dict) -> dict:
+    """Stanze delle zone configurate per la Home: termostato, condizionatore e
+    decisione dell'automazione, dalla fotografia condivisa dei dispositivi."""
     zone_cfg = cfg.get("zone", []) or []
-    zone = [{
-        "nome": z.get("nome", "Zona"),
-        "room_id": z.get("room_id", ""),
-        "ac_device_id": z.get("ac_device_id", ""),
-        "t_stanza": None,
-        "setpoint": None,
-        "modalita": None,
-        "sta_riscaldando": None,
-    } for z in zone_cfg]
-
-    if not zone:
+    if not zone_cfg:
         return {"zone": [], "errore": None}
 
-    home_id = cfg.get("legrand_plant_id", "")
+    snap = dispositivi.snapshot(cfg)
+    servizio = get_servizio().stato()
+    decisioni = {z.get("room_id"): z for z in servizio["zone"]}
+    pause = servizio.get("pause", {})
+    zone = []
+    for z in zone_cfg:
+        rid, acid = z.get("room_id", ""), z.get("ac_device_id", "")
+        st = snap["stanze"].get(rid) or {}
+        ac = (snap["ac"].get(acid) or {}).get("stato") or {}
+        decisione = decisioni.get(rid) or {}
+        zone.append({
+            "nome": z.get("nome", "Zona"),
+            "room_id": rid,
+            "ac_device_id": acid,
+            "t_stanza": st.get("temperatura_attuale"),
+            "setpoint": st.get("setpoint"),
+            "target": st.get("target"),
+            "modalita": st.get("modalita"),
+            "umidita": st.get("umidita"),
+            "sta_riscaldando": st.get("sta_riscaldando"),
+            "richiesta_calore_pct": st.get("richiesta_calore_pct"),
+            "finestra_aperta": st.get("finestra_aperta"),
+            "raggiungibile": st.get("raggiungibile"),
+            "ac": {
+                "nome": snap["ac"][acid]["nome"],
+                "acceso": ac.get("acceso"),
+                "modalita": ac.get("modalita"),
+                "setpoint": ac.get("setpoint_riscaldamento"),
+                "umidita": ac.get("umidita"),
+                "filtro_stato": ac.get("filtro_stato"),
+            } if ac else None,
+            "inclusa": z.get("automazione", True) is not False,
+            "stato_automazione": decisione.get("stato"),
+            "motivo": decisione.get("motivo"),
+            "pausa_fino": pause.get(rid),
+        })
+
+    errore = None
     bt = get_thermostat("netatmo", cfg)
-
-    if not bt or not bt.autenticato or not home_id:
-        return {"zone": zone, "errore": "Configura credenziali Netatmo e Plant ID per leggere lo stato stanze."}
-
-    try:
-        stati = bt.stato_tutte_stanze(home_id)
-        for z in zone:
-            if not z["room_id"]:
-                continue
-            stato = stati.get(z["room_id"], {})
-            z["t_stanza"] = stato.get("temperatura_attuale")
-            z["setpoint"] = stato.get("setpoint")
-            z["modalita"] = stato.get("modalita")
-            z["sta_riscaldando"] = stato.get("sta_riscaldando")
-        return {"zone": zone, "errore": None}
-    except Exception as e:
-        return {"zone": zone, "errore": f"Netatmo non raggiungibile: {e}"}
+    if not bt or not bt.autenticato or not cfg.get("legrand_plant_id", ""):
+        errore = "Configura credenziali Netatmo e Plant ID per leggere lo stato stanze."
+    elif snap["errori"]:
+        errore = "; ".join(snap["errori"])
+    return {"zone": zone, "errore": errore}
 
 
 def scopri_termostati(cfg: dict) -> dict:
@@ -624,7 +673,18 @@ def scopri_condizionatori(cfg: dict) -> dict:
 @app.route("/api/dashboard")
 @login_required
 def api_dashboard():
-    return jsonify(dati_dashboard(carica_config()))
+    cfg = carica_config()
+    dati = dati_dashboard(cfg)
+    dati["stanze"] = leggi_stato_stanze_dashboard(cfg)
+    dati["consumo_ac_oggi_kwh"] = consumo_ac_oggi()
+    return jsonify(dati)
+
+
+def consumo_ac_oggi() -> Optional[float]:
+    """kWh misurati oggi da tutti i condizionatori (None senza letture)."""
+    oggi = datetime.now().date().isoformat()
+    giorno = storico.consumi_misurati(oggi, oggi).get(oggi)
+    return round(giorno["kwh"], 2) if giorno else None
 
 
 @app.route("/api/pannello")
@@ -682,7 +742,10 @@ def api_storico():
     cfg = carica_config()
     potenza = max(0.5, min(30.0, float(cfg.get("potenza_termica_kw") or 4.0)))
     punti = storico.leggi_campioni(da, a, risoluzione, potenza)
-    return jsonify({"da": da, "a": a, "risoluzione": risoluzione, "punti": punti})
+    return jsonify({"da": da, "a": a, "risoluzione": risoluzione, "punti": punti,
+                    # Consumo reale dei condizionatori (contatore): per AC e per giorno
+                    "energia_ac": storico.energia_ac(da, a, risoluzione),
+                    "misurati": storico.consumi_misurati(da, a)})
 
 
 @app.route("/api/risparmi")
@@ -728,6 +791,35 @@ def api_temp_cfr():
     return jsonify({"errore": "Dati CFR non disponibili"}), 503
 
 
+VENTOLE_AC = ("auto", "low", "medium", "high", "turbo")
+MODALITA_NOTTE_AC = ("off", "sleep", "quiet", "windFree", "windFreeSleep")
+
+
+def _limita(valore, predefinito: float, minimo: float, massimo: float) -> float:
+    try:
+        return max(minimo, min(massimo, float(valore)))
+    except (TypeError, ValueError):
+        return predefinito
+
+
+def normalizza_zone(zone: list) -> list:
+    """Zone dall'editor: solo i campi noti, con tipi e limiti controllati."""
+    risultato = []
+    for z in zone:
+        if not isinstance(z, dict):
+            continue
+        risultato.append({
+            "nome": str(z.get("nome") or "Zona")[:60],
+            "room_id": str(z.get("room_id") or ""),
+            "ac_device_id": str(z.get("ac_device_id") or ""),
+            "automazione": z.get("automazione", True) is not False,
+            "modalita": "affiancata" if z.get("modalita") == "affiancata" else "esclusiva",
+            "riserva_gas_delta": _limita(z.get("riserva_gas_delta", 1.5), 1.5, 0.5, 5.0),
+            "offset_ac": _limita(z.get("offset_ac", 0.0), 0.0, -3.0, 3.0),
+        })
+    return risultato
+
+
 @app.route("/api/config", methods=["GET", "POST"])
 @login_required
 def api_config():
@@ -770,7 +862,24 @@ def api_config():
         if dati.get("pannello_modello") in pannello.MODELLI:
             cfg["pannello_modello"] = dati["pannello_modello"]
         if "zone" in dati and isinstance(dati["zone"], list):
-            cfg["zone"] = dati["zone"]
+            cfg["zone"] = normalizza_zone(dati["zone"])
+        if "automazione_simulazione" in dati:
+            cfg["automazione_simulazione"] = bool(dati["automazione_simulazione"])
+        if dati.get("ac_ventola") in VENTOLE_AC:
+            cfg["ac_ventola"] = dati["ac_ventola"]
+        if dati.get("ac_modalita_notte") in MODALITA_NOTTE_AC:
+            cfg["ac_modalita_notte"] = dati["ac_modalita_notte"]
+        for campo, minimo, massimo in (("notte_inizio", 0, 23), ("notte_fine", 0, 23)):
+            if campo in dati:
+                try:
+                    cfg[campo] = max(minimo, min(massimo, int(float(dati[campo]))))
+                except (ValueError, TypeError):
+                    pass
+        if "pausa_manuale_ore" in dati:
+            try:
+                cfg["pausa_manuale_ore"] = max(0.25, min(24.0, float(dati["pausa_manuale_ore"])))
+            except (ValueError, TypeError):
+                pass
 
         # Clamp di sicurezza lato server
         cfg["efficienza_caldaia"] = max(0.05, min(1.0, float(cfg.get("efficienza_caldaia") or 0.96)))
@@ -817,7 +926,69 @@ def api_automazione_toggle():
         servizio.avvia()
     else:
         servizio.ferma()
+        # Termostati al programma e AC accesi da TermoPilota spenti, senza far
+        # aspettare la risposta alle chiamate verso i dispositivi
+        threading.Thread(target=servizio.rilascia_tutto, daemon=True, name="rilascio").start()
     return jsonify({"automazione_attiva": attiva_ora})
+
+
+def _json_richiesto():
+    """Corpo JSON della richiesta, o (None, risposta 415). Un form di un altro
+    sito non puo' inviare application/json senza preflight CORS."""
+    if not request.is_json:
+        return None, (jsonify({"errore": "Serve una richiesta JSON"}), 415)
+    dati = request.get_json(silent=True)
+    if not isinstance(dati, dict):
+        return None, (jsonify({"errore": "Corpo JSON non valido"}), 400)
+    return dati, None
+
+
+def _zona_configurata(cfg: dict, room_id: str) -> Optional[dict]:
+    return next((z for z in cfg.get("zone", []) if room_id and z.get("room_id") == room_id), None)
+
+
+def _pausa_dopo_comando(cfg: dict, zone: list, ore=None) -> Optional[dict]:
+    """Un comando manuale su un dispositivo di zone automatizzate le mette in
+    pausa, altrimenti il ciclo successivo annullerebbe la modifica."""
+    if not cfg.get("automazione_attiva"):
+        return None
+    zone = [z for z in zone if z.get("automazione", True) is not False and z.get("room_id")]
+    if not zone:
+        return None
+    ore = _limita(cfg.get("pausa_manuale_ore", 3.0) if ore is None else ore, 3.0, 0.0, 24.0)
+    if ore <= 0:
+        return None
+    fine = get_servizio().imposta_pausa([z["room_id"] for z in zone], ore)
+    return {"fino": fine, "zone": [z.get("nome", "Zona") for z in zone]}
+
+
+@app.route("/api/automazione/zona/<room_id>/pausa", methods=["POST"])
+@login_required
+def api_zona_pausa(room_id):
+    dati, errore = _json_richiesto()
+    if errore:
+        return errore
+    if not _zona_configurata(carica_config(), room_id):
+        return jsonify({"errore": "Zona non trovata"}), 404
+    ore = _limita(dati.get("ore"), -1, 0.0, 24.0)
+    if ore < 0:
+        return jsonify({"errore": "ore deve essere un numero tra 0 e 24"}), 400
+    return jsonify({"pausa_fino": get_servizio().imposta_pausa([room_id], ore)})
+
+
+@app.route("/api/automazione/zona/<room_id>/attiva", methods=["POST"])
+@login_required
+def api_zona_attiva(room_id):
+    dati, errore = _json_richiesto()
+    if errore:
+        return errore
+    cfg = carica_config()
+    zona = _zona_configurata(cfg, room_id)
+    if not zona:
+        return jsonify({"errore": "Zona non trovata"}), 404
+    zona["automazione"] = bool(dati.get("attiva"))
+    salva_config(cfg)
+    return jsonify({"automazione": zona["automazione"]})
 
 
 @app.route("/api/dispositivi")
@@ -851,6 +1022,170 @@ def api_dispositivi_termostati():
 @login_required
 def api_dispositivi_condizionatori():
     return jsonify(scopri_condizionatori(carica_config()))
+
+
+# ─── Pagina Dispositivi: stato completo e comandi manuali ────────────────────
+
+@app.route("/api/dispositivi/stato")
+@login_required
+def api_dispositivi_stato():
+    cfg = carica_config()
+    riepilogo = dispositivi.riepilogo(dispositivi.snapshot(cfg))
+    oggi = datetime.now().date().isoformat()
+    kwh_oggi = {e["id"]: e["kwh"] for e in storico.energia_ac(oggi, oggi, "giornaliera")}
+    for ac in riepilogo["ac"]:
+        ac["kwh_oggi"] = kwh_oggi.get(ac["id"])
+        ac["zone"] = [z.get("nome") for z in dispositivi.zone_collegate(cfg, "ac", ac["id"])]
+    for st in riepilogo["stanze"]:
+        st["zone"] = [z.get("nome") for z in dispositivi.zone_collegate(cfg, "stanza", st["id"])]
+    return jsonify(riepilogo)
+
+
+@app.route("/api/dispositivi/<tipo>/<ident>")
+@login_required
+def api_dispositivo(tipo, ident):
+    if tipo not in TIPI_DISPOSITIVO:
+        return jsonify({"errore": "Tipo di dispositivo non valido"}), 404
+    cfg = carica_config()
+    snap = dispositivi.snapshot(cfg)
+    decisioni = {z.get("room_id"): z for z in get_servizio().stato()["zone"]}
+    zone = dispositivi.zone_collegate(cfg, tipo, ident)
+    risposta = {"tipo": tipo, "id": ident, "errori": snap["errori"], "letto_alle": snap["letto_alle"],
+                "zone": [{"nome": z.get("nome"), "room_id": z.get("room_id"),
+                          "automazione": z.get("automazione", True) is not False,
+                          "decisione": decisioni.get(z.get("room_id"))} for z in zone],
+                "is_admin": bool(current_user.is_admin)}
+    if tipo == "ac":
+        ac = snap["ac"].get(ident)
+        if not ac:
+            return jsonify({"errore": "Condizionatore non trovato", **risposta}), 404
+        risposta.update({"nome": ac["nome"], "stato": ac["stato"], "grezzo": ac["grezzo"],
+                         "ocf": ac["ocf"], "errore": ac["errore"],
+                         "controlli": dispositivi.controlli_ac(cfg, ident, current_user.is_admin)})
+    elif tipo == "stanza":
+        st = snap["stanze"].get(ident)
+        if not st:
+            return jsonify({"errore": "Stanza non trovata", **risposta}), 404
+        risposta.update({"nome": st["nome"],
+                         "stato": {k: v for k, v in st.items() if k not in ("grezzo", "moduli", "_campi")},
+                         "moduli": [{k: v for k, v in m.items() if k != "grezzo"} for m in st["moduli"]],
+                         "grezzo": {"stanza": st["grezzo"], "moduli": [m["grezzo"] for m in st["moduli"]]},
+                         "casa": {k: v for k, v in (snap["casa"] or {}).items() if k != "grezzo"}})
+    else:
+        casa = snap["casa"]
+        if not casa or casa.get("id") != ident:
+            return jsonify({"errore": "Casa non trovata", **risposta}), 404
+        risposta.update({"nome": casa.get("name") or "Casa",
+                         "stato": {k: v for k, v in casa.items() if k != "grezzo"},
+                         "grezzo": casa["grezzo"]})
+    return jsonify(risposta)
+
+
+@app.route("/api/dispositivi/<tipo>/<ident>/storico")
+@login_required
+def api_dispositivo_storico(tipo, ident):
+    if tipo not in ("ac", "stanza"):
+        return jsonify({"errore": "Storico disponibile solo per condizionatori e stanze"}), 404
+    oggi = datetime.now().date()
+    da = request.args.get("da", (oggi - timedelta(days=1)).isoformat())
+    a = request.args.get("a", oggi.isoformat())
+    risoluzione = request.args.get("risoluzione", "grezza")
+    if risoluzione not in ("grezza", "oraria", "giornaliera"):
+        return jsonify({"errore": "risoluzione deve essere 'grezza', 'oraria' o 'giornaliera'"}), 400
+    try:
+        datetime.strptime(da, "%Y-%m-%d")
+        datetime.strptime(a, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"errore": "date nel formato YYYY-MM-DD"}), 400
+    punti = storico.leggi_letture(tipo, ident, da, a, risoluzione)
+    risposta = {"da": da, "a": a, "risoluzione": risoluzione, "punti": punti}
+    if tipo == "ac" and risoluzione == "grezza":
+        risposta["energia"] = storico.energia_ac(da, a, "oraria", ident)
+    return jsonify(risposta)
+
+
+def _esito_comando(funzione):
+    try:
+        return funzione(), None
+    except dispositivi.ErroreComando as e:
+        return None, (jsonify({"errore": str(e)}), e.codice)
+    except Exception as e:
+        logger.warning("Comando dispositivo fallito: %s", e)
+        return None, (jsonify({"errore": f"Dispositivo non raggiungibile: {e}"}), 502)
+
+
+@app.route("/api/dispositivi/ac/<ident>/comando", methods=["POST"])
+@login_required
+def api_comando_ac(ident):
+    dati, errore = _json_richiesto()
+    if errore:
+        return errore
+    cfg = carica_config()
+    esito, errore = _esito_comando(lambda: dispositivi.comando_ac(
+        cfg, ident, str(dati.get("chiave", "")), dati.get("valore"), current_user.is_admin))
+    if errore:
+        return errore
+    pausa = _pausa_dopo_comando(cfg, dispositivi.zone_collegate(cfg, "ac", ident), dati.get("pausa_ore"))
+    return jsonify({"status": "ok", "comando": esito, "pausa": pausa})
+
+
+@app.route("/api/dispositivi/stanza/<ident>/setpoint", methods=["POST"])
+@login_required
+def api_setpoint_stanza(ident):
+    dati, errore = _json_richiesto()
+    if errore:
+        return errore
+    cfg = carica_config()
+    fine, errore = _esito_comando(lambda: dispositivi.setpoint_stanza(
+        cfg, ident, dati.get("temp"), dati.get("durata_min", 180)))
+    if errore:
+        return errore
+    pausa = _pausa_dopo_comando(cfg, dispositivi.zone_collegate(cfg, "stanza", ident),
+                                max(0.25, (fine - time.time()) / 3600))
+    return jsonify({"status": "ok", "fine": fine, "pausa": pausa})
+
+
+@app.route("/api/dispositivi/stanza/<ident>/ripristina", methods=["POST"])
+@login_required
+def api_ripristina_stanza(ident):
+    _, errore = _json_richiesto()
+    if errore:
+        return errore
+    cfg = carica_config()
+    _, errore = _esito_comando(lambda: dispositivi.ripristina_stanza(cfg, ident))
+    if errore:
+        return errore
+    pausa = _pausa_dopo_comando(cfg, dispositivi.zone_collegate(cfg, "stanza", ident))
+    return jsonify({"status": "ok", "pausa": pausa})
+
+
+@app.route("/api/dispositivi/casa/modalita", methods=["POST"])
+@login_required
+def api_modalita_casa():
+    dati, errore = _json_richiesto()
+    if errore:
+        return errore
+    cfg = carica_config()
+    _, errore = _esito_comando(lambda: dispositivi.modalita_casa(
+        cfg, str(dati.get("modalita", "")), dati.get("durata_min")))
+    if errore:
+        return errore
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/dispositivi/casa/programma", methods=["POST"])
+@login_required
+def api_programma_casa():
+    if not current_user.is_admin:
+        return jsonify({"errore": "Solo gli amministratori possono cambiare programma"}), 403
+    dati, errore = _json_richiesto()
+    if errore:
+        return errore
+    cfg = carica_config()
+    _, errore = _esito_comando(lambda: dispositivi.programma_casa(cfg, str(dati.get("schedule_id", ""))))
+    if errore:
+        return errore
+    return jsonify({"status": "ok"})
 
 
 # ─── OAuth callback Netatmo / SmartThings ────────────────────────────────────
@@ -959,7 +1294,9 @@ def admin_before_request():
 @admin_bp.route("/")
 def admin_settings():
     cfg = carica_config()
-    return render_template("admin/settings.html", cfg=cfg)
+    return render_template("admin/settings.html", cfg=cfg,
+                           potenza_misurata=storico.potenza_media_ac(),
+                           ventole_ac=VENTOLE_AC, modalita_notte_ac=MODALITA_NOTTE_AC)
 
 
 @admin_bp.route("/credentials")
@@ -1082,10 +1419,10 @@ def account():
 
 # ─── Avvio servizi in background (compatibile gunicorn --preload) ────────────
 
-def _campione_corrente() -> Optional[dict]:
-    """Produce il campione dell'ora corrente per lo storico (o None se i dati
-    non sono disponibili — il campionatore ritentera' al prossimo giro)."""
-    cfg = carica_config()
+def raccomandazione_ora_corrente(cfg: dict) -> Optional[dict]:
+    """Riga dell'ora corrente del motore delle raccomandazioni (con CFR e
+    pannello), piu' i prezzi: la usano storico e automazione. None se i dati
+    non sono disponibili."""
     try:
         prezzi = calcola_prezzi(cfg)
         misura_cfr = scarica_temp_cfr(cfg.get("cfr_station_id", ""))
@@ -1093,12 +1430,28 @@ def _campione_corrente() -> Optional[dict]:
         previsioni = scarica_previsioni(cfg.get("lat", 0.0), cfg.get("lon", 0.0))
         raccomandazioni = calcola_raccomandazioni(previsioni, cfg, temp_cfr, prezzi, pannello.kw_per_ora(cfg))
     except Exception as e:
-        logger.warning("Campione storico non disponibile: %s", e)
+        logger.warning("Raccomandazione dell'ora corrente non disponibile: %s", e)
         return None
     ora_str = datetime.now().strftime("%Y-%m-%dT%H:00")
     attuale = next((r for r in raccomandazioni if r["ora"] == ora_str), None)
     if attuale is None:
         return None
+    return {**attuale, "prezzi": prezzi}
+
+
+def _letture_dispositivi() -> list:
+    """Letture per lo storico (ogni 15 min): niente se non ci sono dispositivi."""
+    cfg = carica_config()
+    return dispositivi.letture_per_storico(dispositivi.snapshot(cfg))
+
+
+def _campione_corrente() -> Optional[dict]:
+    """Produce il campione dell'ora corrente per lo storico (o None se i dati
+    non sono disponibili — il campionatore ritentera' al prossimo giro)."""
+    attuale = raccomandazione_ora_corrente(carica_config())
+    if attuale is None:
+        return None
+    prezzi = attuale["prezzi"]
     return {
         "temp_esterna": attuale["temp_esterna"],
         "fonte_temp": attuale["fonte_temp"],
@@ -1120,9 +1473,13 @@ def _avvia_servizi():
         if not os.path.exists(CONFIG_FILE):
             salva_config(DEFAULT_CONFIG)
         # I test importano l'app senza thread in background ne' chiamate di rete
+        get_servizio().imposta_fornitore(raccomandazione_ora_corrente)
+        # Tabelle dello storico (anche le nuove su un DB esistente): Home e
+        # Dispositivi le leggono anche senza campionatore
+        storico.inizializza_db()
         if os.environ.get("TERMOPILOTA_SENZA_SERVIZI") != "1":
             avvia_se_attiva()
-            storico.avvia_campionatore(_campione_corrente)
+            storico.avvia_campionatore(_campione_corrente, _letture_dispositivi)
         _servizi_avviati = True
 
 

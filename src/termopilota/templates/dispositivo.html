@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}{{ {'ac': 'Condizionatore', 'stanza': 'Stanza', 'casa': 'Casa'}[tipo] }}{% endblock %}
+
+{% block head_extra %}
+{% if tipo != 'casa' %}<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>{% endif %}
+{% endblock %}
+
+{% block indietro %}<a href="{{ url_for('pagina_dispositivi') }}" class="tp-icon-btn tp-back" aria-label="Torna ai dispositivi"><i class="bi bi-chevron-left"></i></a>{% endblock %}
+
+{% block azioni %}
+<span id="aggiornatoAlle" class="aggiornato-chip d-none d-sm-inline-flex"></span>
+{% endblock %}
+
+{% block content %}
+<div class="tp-page" id="paginaDispositivo" data-tipo="{{ tipo }}" data-id="{{ ident }}">
+
+  <div id="erroriDispositivi"></div>
+
+  <!-- Valori principali -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <div class="min-w-0">
+        <h2 class="tp-card-title"><i class="bi bi-{{ {'ac': 'snow', 'stanza': 'thermometer-half', 'casa': 'house-gear'}[tipo] }}"></i><span id="nomeDispositivo">Caricamento…</span></h2>
+        <div class="tp-card-sub" id="sottotitoloDispositivo"></div>
+      </div>
+    </div>
+    <div class="tp-dati" id="datiPrincipali"></div>
+    <div id="zoneCollegate" class="mt-3"></div>
+  </section>
+
+  <!-- Controlli -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <div>
+        <h2 class="tp-card-title"><i class="bi bi-sliders"></i>Controlli</h2>
+        <div class="tp-card-sub">Un comando manuale mette in pausa l'automazione delle zone collegate</div>
+      </div>
+    </div>
+    <div id="msgDispositivi"></div>
+    <div id="controlli"><div class="tp-muted small">Caricamento…</div></div>
+  </section>
+
+  {% if tipo != 'casa' %}
+  <!-- Grafici -->
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="tp-section-title m-0">Andamento</div>
+    <div class="tp-segmented" role="group" aria-label="Intervallo">
+      <button type="button" class="active" data-intervallo="24h" aria-pressed="true">24 ore</button>
+      <button type="button" data-intervallo="7g" aria-pressed="false">7 giorni</button>
+      <button type="button" data-intervallo="30g" aria-pressed="false">30 giorni</button>
+    </div>
+  </div>
+  <div id="graficiVuoti" class="alert alert-prezzi mb-0" style="display:none;">
+    <i class="bi bi-hourglass-split me-2"></i>
+    Nessuna lettura ancora per questo intervallo: TermoPilota registra i dispositivi ogni 15 minuti.
+  </div>
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <div>
+            <h2 class="tp-card-title"><i class="bi bi-thermometer-half"></i>Temperature</h2>
+            <div class="tp-card-sub">°C</div>
+          </div>
+          <div class="tp-legend" id="legendaTemperature"></div>
+        </div>
+        <div class="tp-chart"><canvas id="graficoTemperatureDispositivo" role="img" aria-label="Temperature del dispositivo"></canvas></div>
+      </section>
+    </div>
+    <div class="col-lg-6">
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <div>
+            <h2 class="tp-card-title" id="titoloAttivita"><i class="bi bi-activity"></i>Attività</h2>
+            <div class="tp-card-sub" id="sottotitoloAttivita"></div>
+          </div>
+        </div>
+        <div class="tp-chart"><canvas id="graficoAttivita" role="img" aria-label="Attività del dispositivo"></canvas></div>
+      </section>
+    </div>
+    <div class="col-lg-6">
+      <section class="tp-card h-100">
+        <div class="tp-card-header">
+          <div>
+            <h2 class="tp-card-title"><i class="bi bi-droplet"></i>Umidità</h2>
+            <div class="tp-card-sub">%</div>
+          </div>
+        </div>
+        <div class="tp-chart tp-chart-sm"><canvas id="graficoUmidita" role="img" aria-label="Umidità"></canvas></div>
+      </section>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Tutti i valori -->
+  <section class="tp-card">
+    <div class="tp-card-header">
+      <div>
+        <h2 class="tp-card-title"><i class="bi bi-list-ul"></i>Tutti i valori</h2>
+        <div class="tp-card-sub">Come li restituisce l'API, in sola lettura</div>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="form-check form-switch m-0">
+          <input class="form-check-input" type="checkbox" role="switch" id="mostraVuoti">
+          <label class="form-check-label small" for="mostraVuoti">Mostra vuoti</label>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="copiaJson"><i class="bi bi-clipboard me-1"></i>Copia JSON</button>
+      </div>
+    </div>
+    <div id="tuttiValori"><div class="tp-muted small">Caricamento…</div></div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if tipo != 'casa' %}<script src="{{ url_for('static', filename='js/grafici.js') }}"></script>{% endif %}
+<script src="{{ url_for('static', filename='js/dispositivi.js') }}"></script>
+{% endblock %}

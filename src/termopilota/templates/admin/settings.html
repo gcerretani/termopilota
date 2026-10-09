@@ -185,7 +185,9 @@
       <div class="col-md-4">
         <label class="form-label">Assorbimento elettrico pompa di calore (kW)</label>
         <input type="number" step="0.1" class="form-control" id="pompaPotenza" value="{{ cfg.pompa_potenza_elettrica_kw }}">
-        <div class="form-text">Potenza elettrica media quando riscalda</div>
+        <div class="form-text">Potenza elettrica media quando riscalda{% if potenza_misurata %}.
+          <span class="text-success">Misurata dai condizionatori negli ultimi 30 giorni: <strong>{{ potenza_misurata }} kW</strong></span>
+          <a href="#" onclick="document.getElementById('pompaPotenza').value='{{ potenza_misurata }}'; return false;">usa questo valore</a>{% endif %}</div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Consumo base del resto della casa (kW)</label>
@@ -216,6 +218,47 @@
         <input type="number" step="0.001" class="form-control" id="soglia" value="{{ cfg.soglia_delta_risparmio }}">
         <div class="form-text">L'AC si attiva solo se il risparmio supera questa soglia</div>
       </div>
+      <div class="col-md-3">
+        <label class="form-label">Pausa dopo un comando manuale (ore)</label>
+        <input type="number" step="0.5" min="0.25" max="24" class="form-control" id="pausaManuale" value="{{ cfg.pausa_manuale_ore }}">
+        <div class="form-text">Dalla pagina Dispositivi: la zona non viene toccata per questo tempo</div>
+      </div>
+      <div class="col-md-3">
+        <div class="form-check form-switch mt-md-4">
+          <input class="form-check-input" type="checkbox" role="switch" id="simulazione" {% if cfg.automazione_simulazione %}checked{% endif %}>
+          <label class="form-check-label" for="simulazione">Simulazione</label>
+        </div>
+        <div class="form-text">Decide e registra nel log senza inviare comandi: per collaudare le regole</div>
+      </div>
+    </div>
+
+    <!-- Condizionatori -->
+    <p class="small fw-bold text-muted mb-2 text-uppercase" style="letter-spacing:.5px;">Condizionatori accesi dall'automazione</p>
+    {% set etichette_ac = {'auto': 'Automatica', 'low': 'Bassa', 'medium': 'Media', 'high': 'Alta', 'turbo': 'Turbo',
+                           'off': 'Nessuna', 'sleep': 'Notte', 'quiet': 'Silenziosa', 'windFree': 'WindFree',
+                           'windFreeSleep': 'WindFree notte'} %}
+    <div class="row g-3 mb-3">
+      <div class="col-md-3">
+        <label class="form-label">Ventola</label>
+        <select class="form-select" id="acVentola">
+          {% for v in ventole_ac %}<option value="{{ v }}" {% if cfg.ac_ventola == v %}selected{% endif %}>{{ etichette_ac[v] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Modalità di notte</label>
+        <select class="form-select" id="acModalitaNotte">
+          {% for v in modalita_notte_ac %}<option value="{{ v }}" {% if cfg.ac_modalita_notte == v %}selected{% endif %}>{{ etichette_ac[v] }}</option>{% endfor %}
+        </select>
+        <div class="form-text">Applicata solo se il condizionatore la supporta</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">Notte dalle (ora)</label>
+        <input type="number" step="1" min="0" max="23" class="form-control" id="notteInizio" value="{{ cfg.notte_inizio }}">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">alle (ora)</label>
+        <input type="number" step="1" min="0" max="23" class="form-control" id="notteFine" value="{{ cfg.notte_fine }}">
+      </div>
     </div>
 
     <div class="mt-3">
@@ -243,6 +286,12 @@ async function salvaImpostazioni() {
     note_bolletta:              document.getElementById('noteBolletta').value,
     intervallo_controllo_minuti: parseFloat(document.getElementById('intervallo').value),
     soglia_delta_risparmio:     parseFloat(document.getElementById('soglia').value),
+    pausa_manuale_ore:          parseFloat(document.getElementById('pausaManuale').value),
+    automazione_simulazione:    document.getElementById('simulazione').checked,
+    ac_ventola:                 document.getElementById('acVentola').value,
+    ac_modalita_notte:          document.getElementById('acModalitaNotte').value,
+    notte_inizio:               parseInt(document.getElementById('notteInizio').value),
+    notte_fine:                 parseInt(document.getElementById('notteFine').value),
     potenza_termica_kw:         parseFloat(document.getElementById('potenzaTermica').value),
     gas_tariffa:                document.getElementById('gasTariffa').value,
     gas_commodity_fisso_smc:    parseFloat(document.getElementById('gasCommodityFisso').value) || 0,

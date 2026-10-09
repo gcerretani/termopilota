@@ -73,6 +73,52 @@
     set('prezzoLuceTot', dati.prezzi.luce_totale_kwh);
   }
 
+  // ── Stanze: termostato, condizionatore e decisione dell'automazione ────
+  function rigaStanza(z) {
+    const s = z.stato_automazione;
+    const icona = z.finestra_aperta ? ['danger', 'wind']
+      : (s === 'ac' || s === 'affiancata') ? ['ac', 'snow']
+      : z.sta_riscaldando ? ['gas', 'fire'] : ['', 'door-open'];
+    const sub = [];
+    if (z.target !== null && z.target !== undefined) sub.push(`target ${gradi(z.target)}`);
+    if (z.setpoint !== null && z.setpoint !== undefined && z.setpoint !== z.target) sub.push(`termostato ${gradi(z.setpoint)}`);
+    if (z.umidita !== null && z.umidita !== undefined) sub.push(`<i class="bi bi-droplet"></i> ${percento(z.umidita)}`);
+    if (z.richiesta_calore_pct) sub.push(`<i class="bi bi-fire"></i> richiesta ${percento(z.richiesta_calore_pct)}`);
+    if (z.ac) sub.push(z.ac.acceso
+      ? `<i class="bi bi-snow"></i> ${escapeHtml(z.ac.nome)} ${gradi(z.ac.setpoint, 0)}`
+      : `<i class="bi bi-snow"></i> AC spento`);
+    const tag = [];
+    if (s) tag.push(badgeStatoZona(s));
+    else if (!z.inclusa) tag.push(badgeStatoZona('esclusa'));
+    if (z.pausa_fino && s !== 'pausa') tag.push(`<span class="tp-badge-stato"><i class="bi bi-pause-circle"></i>pausa fino alle ${oraDaEpoch(z.pausa_fino)}</span>`);
+    if (z.raggiungibile === false) tag.push('<span class="tp-badge-stato danger"><i class="bi bi-wifi-off"></i>non raggiungibile</span>');
+    if (z.ac && z.ac.filtro_stato && z.ac.filtro_stato !== 'normal') {
+      tag.push('<span class="tp-badge-stato danger"><i class="bi bi-funnel"></i>filtro AC da pulire</span>');
+    }
+    const link = z.room_id ? `/dispositivi/stanza/${encodeURIComponent(z.room_id)}` : null;
+    const tagApertura = link ? `a class="tp-list-item" href="${link}"` : 'div class="tp-list-item"';
+    return `<${tagApertura} title="${escapeHtml(z.motivo || '')}">
+      <span class="tp-list-icon ${icona[0]}"><i class="bi bi-${icona[1]}"></i></span>
+      <div class="tp-list-body">
+        <div class="tp-list-title text-truncate">${escapeHtml(z.nome)}</div>
+        <div class="tp-list-sub">${sub.join(' · ') || '—'}</div>
+        ${tag.length ? `<div class="tp-list-tags">${tag.join('')}</div>` : ''}
+      </div>
+      <div class="tp-list-end fs-5 fw-light">${gradi(z.t_stanza)}</div>
+    </${link ? 'a' : 'div'}>`;
+  }
+
+  function renderStanze(stanze) {
+    const lista = document.getElementById('stanzeLista');
+    if (!lista || !stanze) return;
+    const errore = document.getElementById('stanzeErrore');
+    if (errore) {
+      errore.innerHTML = stanze.errore
+        ? `<div class="alert alert-warning py-2 small mb-2">${escapeHtml(stanze.errore)}</div>` : '';
+    }
+    if (stanze.zone && stanze.zone.length) lista.innerHTML = stanze.zone.map(rigaStanza).join('');
+  }
+
   async function aggiorna() {
     try {
       const res = await fetch('/api/dashboard');
@@ -84,6 +130,11 @@
       }
       renderHero(dati.attuale, dati.cfr_info);
       renderKpi(dati);
+      renderStanze(dati.stanze);
+      const consumo = document.getElementById('statConsumoAc');
+      if (consumo && dati.consumo_ac_oggi_kwh !== null && dati.consumo_ac_oggi_kwh !== undefined) {
+        consumo.textContent = ` · AC ${dati.consumo_ac_oggi_kwh.toFixed(1)} kWh`;
+      }
       segnalaAggiornamento(`Aggiornato alle ${dati.generato_alle}`, false);
     } catch (e) {
       console.warn('Refresh dashboard fallito:', e);
@@ -115,6 +166,7 @@
   }
 
   renderStriscia();
+  renderStanze(window.stanze);
   if (window.generatoAlle) segnalaAggiornamento(`Aggiornato alle ${window.generatoAlle}`, false);
   caricaRisparmio();
   caricaPannello();

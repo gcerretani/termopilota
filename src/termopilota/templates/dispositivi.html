@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Dispositivi{% endblock %}
+
+{% block indietro %}<a href="{{ url_for('pagina_automazione') }}" class="tp-icon-btn tp-back" aria-label="Torna ad Automazione"><i class="bi bi-chevron-left"></i></a>{% endblock %}
+
+{% block azioni %}
+<span id="aggiornatoAlle" class="aggiornato-chip d-none d-sm-inline-flex"></span>
+{% endblock %}
+
+{% block content %}
+<div class="tp-page" id="paginaDispositivi">
+
+  <div id="erroriDispositivi"></div>
+  <div id="msgDispositivi"></div>
+
+  <!-- Casa Netatmo -->
+  <section class="tp-card" id="casaCard" style="display:none;">
+    <div class="tp-card-header">
+      <div>
+        <h2 class="tp-card-title"><i class="bi bi-house-gear"></i><span id="casaNome">Casa</span></h2>
+        <div class="tp-card-sub" id="casaSub"></div>
+      </div>
+      <a class="tp-card-link" id="casaLink" href="#">Tutti i valori <i class="bi bi-chevron-right"></i></a>
+    </div>
+    <div id="casaControlli"></div>
+  </section>
+
+  <!-- Condizionatori -->
+  <div>
+    <div class="tp-section-title mb-2">Condizionatori</div>
+    <div id="listaAc" class="row g-3">
+      <div class="col-12"><div class="tp-card tp-muted small">Caricamento…</div></div>
+    </div>
+  </div>
+
+  <!-- Stanze -->
+  <div>
+    <div class="tp-section-title mb-2">Stanze (termostati)</div>
+    <div id="listaStanze" class="row g-3">
+      <div class="col-12"><div class="tp-card tp-muted small">Caricamento…</div></div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>window.utenteAdmin = {{ current_user.is_admin | tojson }};</script>
+<script src="{{ url_for('static', filename='js/dispositivi.js') }}"></script>
+{% endblock %}

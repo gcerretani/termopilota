@@ -2,6 +2,10 @@
 
 {% block title %}Automazione{% endblock %}
 
+{% block azioni %}
+<a class="tp-icon-btn" href="{{ url_for('pagina_dispositivi') }}" title="Dispositivi" aria-label="Dispositivi"><i class="bi bi-cpu"></i></a>
+{% endblock %}
+
 {% block content %}
 <div class="tp-page">
 
@@ -11,16 +15,21 @@
       <span class="tp-list-icon green"><i class="bi bi-lightning-charge-fill"></i></span>
       <div class="flex-grow-1 min-w-0">
         <label class="tp-card-title" for="autoToggle">Automazione riscaldamento</label>
-        <div class="mt-1"><span id="autoStatusBadge" class="tp-pill-status">caricamento…</span></div>
+        <div class="mt-1 d-flex flex-wrap gap-2">
+          <span id="autoStatusBadge" class="tp-pill-status">caricamento…</span>
+          {% if cfg.automazione_simulazione %}<span class="tp-badge-stato"><i class="bi bi-eyeglasses"></i>Simulazione: nessun comando inviato</span>{% endif %}
+        </div>
       </div>
       <div class="form-check form-switch">
         <input class="form-check-input" type="checkbox" role="switch" id="autoToggle" onchange="toggleAutomazione(this)" aria-label="Attiva automazione">
       </div>
     </div>
     <p class="tp-muted small mb-0 mt-3">
-      Quando attiva, ogni <strong>{{ cfg.intervallo_controllo_minuti }} minuti</strong> controlla la temperatura esterna
-      e i prezzi energia: se il condizionatore è più economico spegne il termostato BTicino e accende il Samsung
-      corrispondente, e viceversa.
+      Ogni <strong>{{ cfg.intervallo_controllo_minuti|round|int }} minuti</strong> confronta il costo di caldaia e pompa di calore
+      per le zone incluse. Se conviene il condizionatore, lo accende al target del programma Netatmo e chiude il termostato
+      (modalità <em>esclusiva</em>) oppure lo abbassa lasciando la caldaia di riserva (modalità <em>affiancata</em>).
+      Un comando manuale dalla pagina Dispositivi mette in pausa la zona per {{ '%g'|format(cfg.pausa_manuale_ore|default(3)) }} h.
+      Spegnendo l'automazione i termostati tornano al programma e i condizionatori accesi da TermoPilota si spengono.
     </p>
   </section>
 
@@ -32,6 +41,7 @@
         Nessuna zona configurata{% if current_user.is_admin %} — <a href="/admin/zones">aggiungine una</a>{% endif %}.
       </div></div>
     </div>
+    <div id="msgZone" class="mt-2"></div>
   </div>
 
   <!-- Log eventi -->
@@ -46,5 +56,9 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+  window.zoneConfigurate = {{ cfg.zone | tojson }};
+  window.automazioneSimulazione = {{ cfg.automazione_simulazione | tojson }};
+</script>
 <script src="{{ url_for('static', filename='js/automazione.js') }}"></script>
 {% endblock %}

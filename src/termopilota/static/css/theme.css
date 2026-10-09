@@ -517,6 +517,23 @@ details summary { cursor: pointer; }
 }
 .tp-badge-fonte.gas { color: var(--gas-color); background: color-mix(in srgb, var(--gas-color) 14%, transparent); }
 .tp-badge-fonte.ac  { color: var(--ac-color);  background: color-mix(in srgb, var(--ac-color) 14%, transparent); }
+
+/* Stato dell'automazione di una zona (vedi STATI_ZONA in app.js) */
+.tp-badge-stato {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .72rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: .15rem .55rem;
+  white-space: nowrap;
+  color: var(--text-muted);
+  background: var(--panel-2);
+}
+.tp-badge-stato.gas    { color: var(--gas-color); background: color-mix(in srgb, var(--gas-color) 14%, transparent); }
+.tp-badge-stato.ac     { color: var(--ac-color);  background: color-mix(in srgb, var(--ac-color) 14%, transparent); }
+.tp-badge-stato.danger { color: var(--danger);    background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .badge-gas { background-color: var(--gas-color); }
 .badge-ac  { background-color: var(--ac-color); }
 
@@ -553,6 +570,10 @@ details summary { cursor: pointer; }
 .tp-list-title { font-weight: 600; font-size: .92rem; }
 .tp-list-sub { font-size: .78rem; color: var(--text-muted); }
 .tp-list-end { text-align: right; font-weight: 700; white-space: nowrap; }
+.tp-list-tags { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .3rem; }
+a.tp-list-item { color: var(--text); text-decoration: none; }
+a.tp-list-item:hover .tp-list-title { color: var(--accent); }
+.tp-list-item .bi-chevron-right { color: var(--text-faint); }
 
 /* Lista impostazioni con link (stile app) */
 .tp-menu { padding: .35rem; }
@@ -684,6 +705,33 @@ tr.evidenziata > * { background: var(--highlight) !important; font-weight: 600; 
 .zona-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--border); }
 .zona-card.gas::before { background: var(--gas-color); }
 .zona-card.ac::before  { background: var(--ac-color); }
+.zona-card.affiancata::before { background: linear-gradient(var(--ac-color) 60%, var(--gas-color)); }
+.zona-card.affiancata .zona-progress > div { background: var(--ac-color); }
+.zona-card .zona-azioni { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .75rem; }
+.zona-card .zona-azioni .form-switch { margin: 0; }
+.zona-card .zona-azioni .form-check-label { margin-left: .4rem; }
+
+/* ── Dispositivi ─────────────────────────────────────────────────────────── */
+.tp-dati {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: .75rem;
+}
+.tp-dato { background: var(--panel-2); border-radius: var(--radius-sm); padding: .6rem .75rem; min-width: 0; }
+.tp-dato-label { font-size: .72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
+.tp-dato-valore { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tp-controllo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: .7rem 0; border-bottom: 1px solid var(--border-soft); }
+.tp-controllo:last-child { border-bottom: 0; }
+.tp-controllo-label { font-weight: 600; font-size: .9rem; }
+.tp-stepper { display: inline-flex; align-items: center; gap: .5rem; }
+.tp-stepper output { min-width: 3.5rem; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tp-valori { width: 100%; font-size: .82rem; }
+.tp-valori td { padding: .3rem .4rem; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+.tp-valori td:first-child { color: var(--text-muted); width: 45%; overflow-wrap: anywhere; }
+.tp-valori td:last-child { font-family: var(--bs-font-monospace); overflow-wrap: anywhere; }
+.tp-valori tr.vuoto { display: none; }
+.tp-valori.mostra-vuoti tr.vuoto { display: table-row; color: var(--text-faint); }
+.tp-valori-gruppo { font-weight: 700; font-size: .8rem; padding: .9rem 0 .3rem; color: var(--text-soft); }
 .zona-temp { font-size: 1.9rem; font-weight: 300; letter-spacing: -1px; line-height: 1; }
 .zona-progress { height: 6px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
 .zona-progress > div { height: 100%; border-radius: 999px; background: var(--chart-neutral); }

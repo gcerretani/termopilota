@@ -32,12 +32,18 @@ def app_flask():
 
 @pytest.fixture(autouse=True)
 def stato_pulito(app_flask, monkeypatch):
-    """Config e storico puliti e nessuna rete, per ogni test."""
+    """Config, storico, stato dell'automazione e fotografia dei dispositivi
+    puliti e nessuna rete, per ogni test."""
     from termopilota import app as modulo_app
-    from termopilota import pannello
+    from termopilota import automazione, dispositivi, pannello
     from termopilota import storico
-    if os.path.exists(modulo_app.CONFIG_FILE):
-        os.remove(modulo_app.CONFIG_FILE)
+    from termopilota.percorsi import STATO_AUTOMAZIONE_FILE
+    for percorso in (modulo_app.CONFIG_FILE, STATO_AUTOMAZIONE_FILE):
+        if os.path.exists(percorso):
+            os.remove(percorso)
+    dispositivi._cache.update(dati=None, timestamp=0.0)
+    servizio = automazione.get_servizio()
+    servizio.stato_zone, servizio.log_eventi, servizio._stato_simulato = [], [], None
     monkeypatch.setattr(storico, "DB_FILE", os.path.join(_DATI_TEST, "storico-test.db"))
     if os.path.exists(storico.DB_FILE):
         os.remove(storico.DB_FILE)

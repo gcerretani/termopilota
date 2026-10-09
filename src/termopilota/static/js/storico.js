@@ -56,7 +56,57 @@
     ...extra,
   });
 
-  function aggiornaGrafici(punti, risoluzione) {
+  // Un colore per condizionatore (fino a quattro, poi si ripetono)
+  const COLORI_AC = [['ac', '--ac-color'], ['neutro', '--chart-neutral'], ['verde', '--green'], ['gas', '--gas-color']];
+
+  function etichettaPeriodo(periodo) {
+    const base = `${periodo.slice(8, 10)}/${periodo.slice(5, 7)}`;
+    return periodo.length > 10 ? `${base} ${periodo.slice(11, 13)}:00` : base;
+  }
+
+  function graficoConsumo(energia, risoluzione) {
+    const wrap = document.getElementById('consumoAcWrap');
+    if (!wrap) return;
+    wrap.style.display = energia.length ? '' : 'none';
+    if (!energia.length) return;
+    // Tutti i periodi tra il primo e l'ultimo, anche quelli senza consumo
+    const presenti = [...new Set(energia.map(e => e.periodo))].sort();
+    const periodi = [];
+    const orario = presenti[0].length > 10;
+    const formato = (d) => orario ? `${giornoLocale(d)}T${String(d.getHours()).padStart(2, '0')}` : giornoLocale(d);
+    const verso = (p) => new Date(orario ? `${p}:00:00` : `${p}T00:00:00`);
+    for (let d = verso(presenti[0]); formato(d) <= presenti[presenti.length - 1] && periodi.length < 2000;) {
+      periodi.push(formato(d));
+      if (orario) d.setHours(d.getHours() + 1); else d.setDate(d.getDate() + 1);
+    }
+    const ac = [...new Map(energia.map(e => [e.id, e.nome || 'Condizionatore'])).entries()];
+    const totale = energia.reduce((s, e) => s + e.kwh, 0);
+    const sub = document.getElementById('consumoAcSub');
+    if (sub) sub.textContent = `kWh elettrici misurati dal contatore · totale ${totale.toFixed(1)} kWh`;
+    const opz = G.opzioniBase({ tickY: v => `${v} kWh`, maxTickX: risoluzione === 'oraria' ? (G.mobile() ? 4 : 7) : undefined });
+    opz.scales.x.stacked = true;
+    opz.scales.y.stacked = true;
+    opz.plugins.mirino = false;
+    opz.plugins.tooltip = { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)} kWh` } };
+    creaOAggiornaGrafico('graficoConsumo', {
+      type: 'bar',
+      data: {
+        labels: periodi.map(etichettaPeriodo),
+        datasets: ac.map(([id, nome], i) => {
+          const [chiave, variabile] = COLORI_AC[i % COLORI_AC.length];
+          const valori = new Map(energia.filter(e => e.id === id).map(e => [e.periodo, e.kwh]));
+          return {
+            label: nome, coloreVar: variabile, data: periodi.map(p => valori.get(p) || 0),
+            backgroundColor: G.colore(chiave), hoverBackgroundColor: G.colore(chiave),
+            borderRadius: 3, maxBarThickness: 28,
+          };
+        }),
+      },
+      options: opz,
+    }, 'legendaConsumo');
+  }
+
+  function aggiornaGrafici(punti, risoluzione, misurati = {}) {
     const labels = etichette(punti, risoluzione);
     const oraria = risoluzione === 'oraria';
     const maxTickX = oraria ? (G.mobile() ? 4 : 7) : undefined;
@@ -141,18 +191,27 @@
       cumulato += g.risparmio_eur || 0;
       return Math.round(cumulato * 100) / 100;
     });
+    const datasetRisparmio = [
+      { label: 'Stimato', coloreVar: '--green', data: serieCumulata, ...serie('verde', { fill: true, tension: 0.25 }) },
+    ];
+    if (Object.keys(misurati).length) {
+      let cumulatoMisurato = 0;
+      datasetRisparmio.push({
+        label: 'Misurato (contatore AC)', coloreVar: '--ac-color',
+        data: giorni.map(g => {
+          cumulatoMisurato += (misurati[g.giorno] || {}).risparmio_eur || 0;
+          return Math.round(cumulatoMisurato * 100) / 100;
+        }),
+        ...serie('ac', { tension: 0.25, borderDash: [5, 4] }),
+      });
+    }
     const opzRisparmio = G.opzioniBase({ tickY: v => formatoEuro(v) });
-    opzRisparmio.plugins.tooltip = { callbacks: { label: ctx => ` ${formatoEuro(ctx.parsed.y)}` } };
+    opzRisparmio.plugins.tooltip = { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${formatoEuro(ctx.parsed.y)}` } };
     creaOAggiornaGrafico('graficoRisparmio', {
       type: 'line',
-      data: {
-        labels: labelsGiorni,
-        datasets: [
-          { label: 'Risparmio cumulativo', data: serieCumulata, ...serie('verde', { fill: true, tension: 0.25 }) },
-        ],
-      },
+      data: { labels: labelsGiorni, datasets: datasetRisparmio },
       options: opzRisparmio,
-    });
+    }, datasetRisparmio.length > 1 ? 'legendaRisparmio' : null);
   }
 
   async function caricaStorico(range) {
@@ -165,7 +224,8 @@
       if (vuoto) vuoto.style.display = dati.punti.length === 0 ? '' : 'none';
       // La risoluzione cambia la forma dei dati: si ricreano i grafici
       Object.keys(grafici).forEach(id => { grafici[id].destroy(); delete grafici[id]; });
-      aggiornaGrafici(dati.punti, risoluzione);
+      aggiornaGrafici(dati.punti, risoluzione, dati.misurati || {});
+      graficoConsumo(dati.energia_ac || [], risoluzione);
     } catch (e) {
       console.warn('Storico non disponibile:', e);
     }
@@ -185,6 +245,10 @@
       set('risparmioOggi', formatoEuro(r.oggi_eur));
       set('risparmioSettimana', formatoEuro(r.settimana_eur));
       set('risparmioOre', `${r.ore_ac_stagione} ore in pompa di calore dal ${r.inizio_stagione.slice(8, 10)}/${r.inizio_stagione.slice(5, 7)} · stima con ${r.potenza_kw} kW termici`);
+      if (r.misure_disponibili) {
+        set('risparmioMisurato', `Misurato dal contatore dei condizionatori: ${formatoEuro(r.stagione_reale_eur)} · `
+          + `${r.kwh_ac_stagione.toFixed(1)} kWh, ${formatoEuro(r.costo_ac_stagione_eur)} di elettricità`);
+      }
     } catch (e) { /* silenzioso */ }
   }
 

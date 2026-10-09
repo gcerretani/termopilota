@@ -34,6 +34,19 @@
     </div>
   </div>
 
+  <!-- Casa -->
+  <div class="tp-section-title">Casa</div>
+  <div class="tp-card tp-menu">
+    <a class="tp-list-item" href="{{ url_for('pagina_dispositivi') }}">
+      <span class="tp-list-icon ac"><i class="bi bi-cpu"></i></span>
+      <div class="tp-list-body">
+        <div class="tp-list-title">Dispositivi</div>
+        <div class="tp-list-sub">Termostati e condizionatori: tutti i valori, grafici e comandi manuali</div>
+      </div>
+      <i class="bi bi-chevron-right"></i>
+    </a>
+  </div>
+
   {% if current_user.is_admin %}
   <!-- Amministrazione -->
   <div class="tp-section-title">Amministrazione</div>
