@@ -267,3 +267,55 @@ def test_script_inline_senza_apici_spaiati(admin_client, url):
     html = admin_client.get(url).get_data(as_text=True)
     for script in re.findall(r"<script>(.*?)</script>", html, re.S):
         assert _apici_spaiati(script) == []
+
+
+def test_stato_notifiche_netatmo_e_conferma(admin_client, client, ambiente):
+    from termopilota import app as modulo_app
+    from termopilota import live, registro
+    _, bt, _ = ambiente
+    bt.registra_webhook = lambda url: True
+    bt.rimuovi_webhook = lambda: True
+    stato = lambda: admin_client.get("/api/live/configurazione").get_json()["stato_netatmo"]
+    assert stato()["attivo"] is False
+    admin_client.post("/api/live/netatmo/attiva", json={})
+    s = stato()
+    assert s["attivo"] is True and s["dal"] and s["confermato"] is None
+    # Netatmo conferma con webhook_activation: niente notifica ai dispositivi
+    _evento_netatmo(client, {"push_type": "webhook_activation", "user_id": "u1"})
+    assert stato()["confermato"] is not None
+    assert live.stato()["versione"] == 0
+    assert "confermato la registrazione" in registro.leggi(categorie=["evento"])[0]["messaggio"]
+    admin_client.post("/api/live/netatmo/disattiva", json={})
+    assert stato() == {"attivo": False, "dal": None, "confermato": None}
+    assert modulo_app.carica_config()["netatmo_webhook"]["attivo"] is False
+
+
+def test_conferma_netatmo_senza_stato_salvato_attiva(admin_client, client, ambiente):
+    # Webhook registrato con una versione precedente: la conferma basta a mostrarlo attivo
+    _evento_netatmo(client, {"push_type": "webhook_activation"})
+    s = admin_client.get("/api/live/configurazione").get_json()["stato_netatmo"]
+    assert s["attivo"] is True and s["confermato"] is not None
+
+
+@pytest.mark.parametrize("sottoscrizioni, attesa", [
+    ([{"device": {"deviceId": "ac-1"}}], {"attivo": True, "parziale": False, "sottoscritti": 1}),
+    ([], {"attivo": False, "parziale": False, "sottoscritti": 0}),
+    ([{"device": {"deviceId": "altro"}}], {"attivo": False, "parziale": False, "sottoscritti": 0}),
+])
+def test_stato_sottoscrizioni_smartthings(ambiente, sottoscrizioni, attesa):
+    from termopilota import app as modulo_app
+    st, _, _ = ambiente
+    st.sottoscrizioni = lambda: sottoscrizioni
+    s = modulo_app.stato_sottoscrizioni_smartthings(modulo_app.carica_config(), st)
+    assert {k: s[k] for k in attesa} == attesa and s["condizionatori"] == 1
+
+
+def test_stato_sottoscrizioni_non_leggibile(ambiente):
+    from termopilota import app as modulo_app
+    st, _, _ = ambiente
+
+    def guasto():
+        raise RuntimeError("SmartThings 401")
+    st.sottoscrizioni = guasto
+    s = modulo_app.stato_sottoscrizioni_smartthings(modulo_app.carica_config(), st)
+    assert s["attivo"] is None and "401" in s["errore"]

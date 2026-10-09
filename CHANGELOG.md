@@ -7,6 +7,17 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.4.2] - 2026-10-09
+
+### Modificato
+- Credenziali API: le notifiche di Netatmo e gli eventi di SmartThings hanno un **interruttore** che
+  mostra subito se sono attivi, al posto dei pulsanti "Attiva" e "Disattiva".
+  - SmartThings: lo stato viene letto dall'API (sottoscrizioni attive, "2 condizionatori su 2").
+  - Netatmo, che non permette di leggerlo: TermoPilota ricorda quando le ha attivate e mostra se
+    Netatmo ha confermato la registrazione (messaggio `webhook_activation`).
+- Il messaggio di conferma di Netatmo non fa più rileggere i dispositivi: nel registro compare come
+  "Netatmo ha confermato la registrazione delle notifiche".
+
 ## [1.4.1] - 2026-10-09
 
 ### Corretto
@@ -311,7 +322,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.4.1...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.2
 [1.4.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.1
 [1.4.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.0
 [1.3.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.3.0
