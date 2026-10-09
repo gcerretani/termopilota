@@ -867,3 +867,18 @@ details.tp-card[open] > summary .bi-chevron-down { transform: rotate(180deg); }
 /* Selettore di posizione su mappa (Admin → Impostazioni) */
 .tp-mappa { height: 260px; border-radius: var(--radius-sm, .5rem); border: 1px solid var(--border-soft); overflow: hidden; z-index: 0; }
 html[data-theme="dark"] .tp-mappa .leaflet-tile-pane { filter: brightness(.8) contrast(1.1) saturate(.8); }
+
+/* Registro eventi */
+.tp-registro-filtri { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; align-items: center; }
+.tp-registro-filtri .tp-segmented { flex-wrap: wrap; }
+.tp-registro-riga { display: flex; gap: .75rem; align-items: flex-start; padding: .55rem 0; border-bottom: 1px solid var(--border-soft); font-size: .86rem; }
+.tp-registro-riga:last-child { border-bottom: 0; }
+.tp-registro-riga.espandibile { cursor: pointer; }
+.tp-registro-riga.liv-debug { opacity: .7; }
+.tp-registro-riga.liv-warning .tp-registro-cat, .tp-registro-riga.liv-errore .tp-registro-cat { color: var(--danger); }
+.tp-registro-cat { flex: 0 0 auto; width: 1.4rem; text-align: center; color: var(--text-muted); }
+.tp-registro-cat.cat-automazione { color: var(--green); }
+.tp-registro-cat.cat-comando { color: var(--ac-color); }
+.tp-registro-cat.cat-evento { color: var(--gas-color); }
+.tp-registro-dati { margin: .5rem 0 0; padding: .5rem .75rem; max-height: 320px; overflow: auto; font-size: .75rem;
+  background: var(--panel-2); border-radius: var(--radius-sm); white-space: pre-wrap; word-break: break-word; cursor: text; }

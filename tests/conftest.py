@@ -44,7 +44,7 @@ def stato_pulito(app_flask, monkeypatch):
     dispositivi._cache.update(dati=None, timestamp=0.0)
     live.azzera()
     servizio = automazione.get_servizio()
-    servizio.stato_zone, servizio.log_eventi, servizio._stato_simulato = [], [], None
+    servizio.stato_zone, servizio._stato_simulato = [], None
     monkeypatch.setattr(storico, "DB_FILE", os.path.join(_DATI_TEST, "storico-test.db"))
     if os.path.exists(storico.DB_FILE):
         os.remove(storico.DB_FILE)

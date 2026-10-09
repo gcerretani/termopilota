@@ -36,6 +36,8 @@ from termopilota.prezzi import calcola_prezzi
 from termopilota.automazione import get_servizio, avvia_se_attiva
 from termopilota import dispositivi
 from termopilota import live
+from termopilota import osservatore
+from termopilota import registro
 from termopilota import pannello
 from termopilota import storico
 from termopilota.versione import VERSIONE
@@ -136,6 +138,7 @@ DEFAULT_CONFIG = {
     "notte_inizio": 22,
     "notte_fine": 7,
     "pausa_manuale_ore": 3.0,
+    "netatmo_polling_secondi": 120,
     "cfr_station_id": "",
     "cfr_station_name": "",
     "lat": 0.0,
@@ -834,6 +837,9 @@ def api_config():
             return jsonify({"errore": "Solo gli amministratori possono modificare la configurazione"}), 403
         dati = request.get_json()
         cfg = carica_config()
+        prima = json.loads(json.dumps(cfg))
+        # I segreti tornano al browser come "***": quel valore non va salvato
+        dati = {k: v for k, v in (dati or {}).items() if v != SEGRETO_MASCHERATO}
         campi_float = ("gas_fisso_smc", "gas_totale_smc_manuale",
                        "luce_fisso_kwh", "luce_totale_kwh_manuale",
                        "temperatura_minima_ac", "setpoint_interno", "efficienza_caldaia",
@@ -886,6 +892,11 @@ def api_config():
                 cfg["pausa_manuale_ore"] = max(0.25, min(24.0, float(dati["pausa_manuale_ore"])))
             except (ValueError, TypeError):
                 pass
+        if "netatmo_polling_secondi" in dati:
+            try:
+                cfg["netatmo_polling_secondi"] = int(max(60, min(900, float(dati["netatmo_polling_secondi"]))))
+            except (ValueError, TypeError):
+                pass
 
         # Clamp di sicurezza lato server
         cfg["efficienza_caldaia"] = max(0.05, min(1.0, float(cfg.get("efficienza_caldaia") or 0.96)))
@@ -909,8 +920,40 @@ def api_config():
         _cache_meteo["timestamp"] = 0.0
         _cache_cfr["timestamp"] = 0.0
         get_servizio().ricalcola()    # zone e soglie nuove al ciclo subito, non tra 15 min
+        cambiate = sorted(k for k in set(prima) | set(cfg)
+                          if k != "ultima_modifica_fissi" and prima.get(k) != cfg.get(k))
+        if cambiate:
+            # Solo i nomi delle chiavi: i valori possono contenere segreti
+            _registra_comando(f"Configurazione salvata: {', '.join(cambiate)}", dati={"chiavi": cambiate})
         return jsonify({"status": "ok", "messaggio": "Configurazione salvata"})
-    return jsonify(carica_config())
+    return jsonify(maschera_segreti(carica_config()))
+
+
+SEGRETO_MASCHERATO = "***"
+
+
+def maschera_segreti(cfg: dict) -> dict:
+    """Configurazione senza token, secret e password (sostituiti da '***')."""
+    risultato = {}
+    for k, v in cfg.items():
+        sensibile = any(s in k.lower() for s in ("token", "secret", "password", "subscription_key"))
+        risultato[k] = (SEGRETO_MASCHERATO if v else v) if sensibile else v
+    return risultato
+
+
+def _registra_comando(messaggio: str, *, oggetto: Optional[str] = None, dati=None, livello: str = "info") -> None:
+    """Riga 'comando' del registro con l'utente che ha fatto l'azione."""
+    utente = current_user.username if current_user and current_user.is_authenticated else None
+    registro.scrivi("comando", messaggio, livello=livello, oggetto=oggetto, dati=dati, utente=utente)
+
+
+def _nome_dispositivo(cfg: dict, tipo: str, ident: str) -> str:
+    snap = dispositivi.snapshot(cfg)
+    if tipo == "ac":
+        return (snap["ac"].get(ident) or {}).get("nome") or "Condizionatore"
+    if tipo == "stanza":
+        return (snap["stanze"].get(ident) or {}).get("nome") or f"Stanza {ident}"
+    return (snap.get("casa") or {}).get("name") or "Casa"
 
 
 # ─── Route Automazione ────────────────────────────────────────────────────────
@@ -936,6 +979,7 @@ def api_automazione_toggle():
         # Termostati al programma e AC accesi da TermoPilota spenti, senza far
         # aspettare la risposta alle chiamate verso i dispositivi
         threading.Thread(target=servizio.rilascia_tutto, daemon=True, name="rilascio").start()
+    _registra_comando("Automazione " + ("attivata" if attiva_ora else "disattivata"))
     return jsonify({"automazione_attiva": attiva_ora})
 
 
@@ -975,12 +1019,15 @@ def api_zona_pausa(room_id):
     dati, errore = _json_richiesto()
     if errore:
         return errore
-    if not _zona_configurata(carica_config(), room_id):
+    zona = _zona_configurata(carica_config(), room_id)
+    if not zona:
         return jsonify({"errore": "Zona non trovata"}), 404
     ore = _limita(dati.get("ore"), -1, 0.0, 24.0)
     if ore < 0:
         return jsonify({"errore": "ore deve essere un numero tra 0 e 24"}), 400
-    return jsonify({"pausa_fino": get_servizio().imposta_pausa([room_id], ore)})
+    fine = get_servizio().imposta_pausa([room_id], ore)
+    _registra_comando(f"Zona in pausa per {ore:g} h" if ore > 0 else "Pausa annullata", oggetto=zona.get("nome"))
+    return jsonify({"pausa_fino": fine})
 
 
 @app.route("/api/automazione/zona/<room_id>/attiva", methods=["POST"])
@@ -996,6 +1043,8 @@ def api_zona_attiva(room_id):
     zona["automazione"] = bool(dati.get("attiva"))
     salva_config(cfg)
     get_servizio().zona_modificata(room_id, zona["automazione"])
+    _registra_comando("Zona inclusa nell'automazione" if zona["automazione"] else "Zona esclusa dall'automazione",
+                      oggetto=zona.get("nome"))
     return jsonify({"automazione": zona["automazione"]})
 
 
@@ -1112,14 +1161,22 @@ def api_dispositivo_storico(tipo, ident):
     return jsonify(risposta)
 
 
-def _esito_comando(funzione):
+def _esito_comando(funzione, descrizione: Optional[str] = None, oggetto: Optional[str] = None, dati=None):
+    """Esegue un comando; con `descrizione` lo registra (riuscito o fallito)."""
     try:
-        return funzione(), None
+        esito = funzione()
     except dispositivi.ErroreComando as e:
+        if descrizione:
+            _registra_comando(f"{descrizione}: non riuscito ({e})", oggetto=oggetto, dati=dati, livello="warning")
         return None, (jsonify({"errore": str(e)}), e.codice)
     except Exception as e:
         logger.warning("Comando dispositivo fallito: %s", e)
+        if descrizione:
+            _registra_comando(f"{descrizione}: non riuscito ({e})", oggetto=oggetto, dati=dati, livello="warning")
         return None, (jsonify({"errore": f"Dispositivo non raggiungibile: {e}"}), 502)
+    if descrizione:
+        _registra_comando(descrizione, oggetto=oggetto, dati=dati)
+    return esito, None
 
 
 @app.route("/api/dispositivi/ac/<ident>/comando", methods=["POST"])
@@ -1130,7 +1187,9 @@ def api_comando_ac(ident):
         return errore
     cfg = carica_config()
     esito, errore = _esito_comando(lambda: dispositivi.comando_ac(
-        cfg, ident, str(dati.get("chiave", "")), dati.get("valore"), current_user.is_admin))
+        cfg, ident, str(dati.get("chiave", "")), dati.get("valore"), current_user.is_admin),
+        f"Comando {dati.get('chiave')} = {dati.get('valore')}", _nome_dispositivo(cfg, "ac", ident),
+        {"device_id": ident})
     if errore:
         return errore
     pausa = _pausa_dopo_comando(cfg, dispositivi.zone_collegate(cfg, "ac", ident), dati.get("pausa_ore"))
@@ -1145,7 +1204,9 @@ def api_setpoint_stanza(ident):
         return errore
     cfg = carica_config()
     fine, errore = _esito_comando(lambda: dispositivi.setpoint_stanza(
-        cfg, ident, dati.get("temp"), dati.get("durata_min", 180)))
+        cfg, ident, dati.get("temp"), dati.get("durata_min", 180)),
+        f"Temperatura manuale {dati.get('temp')} °C per {dati.get('durata_min', 180)} min",
+        _nome_dispositivo(cfg, "stanza", ident), {"room_id": ident})
     if errore:
         return errore
     pausa = _pausa_dopo_comando(cfg, dispositivi.zone_collegate(cfg, "stanza", ident),
@@ -1160,7 +1221,8 @@ def api_ripristina_stanza(ident):
     if errore:
         return errore
     cfg = carica_config()
-    _, errore = _esito_comando(lambda: dispositivi.ripristina_stanza(cfg, ident))
+    _, errore = _esito_comando(lambda: dispositivi.ripristina_stanza(cfg, ident), "Ritorno al programma",
+                               _nome_dispositivo(cfg, "stanza", ident), {"room_id": ident})
     if errore:
         return errore
     pausa = _pausa_dopo_comando(cfg, dispositivi.zone_collegate(cfg, "stanza", ident))
@@ -1175,7 +1237,8 @@ def api_modalita_casa():
         return errore
     cfg = carica_config()
     _, errore = _esito_comando(lambda: dispositivi.modalita_casa(
-        cfg, str(dati.get("modalita", "")), dati.get("durata_min")))
+        cfg, str(dati.get("modalita", "")), dati.get("durata_min")),
+        f"Modalità casa {dati.get('modalita')}", _nome_dispositivo(cfg, "casa", ""))
     if errore:
         return errore
     return jsonify({"status": "ok"})
@@ -1190,7 +1253,9 @@ def api_programma_casa():
     if errore:
         return errore
     cfg = carica_config()
-    _, errore = _esito_comando(lambda: dispositivi.programma_casa(cfg, str(dati.get("schedule_id", ""))))
+    _, errore = _esito_comando(lambda: dispositivi.programma_casa(cfg, str(dati.get("schedule_id", ""))),
+                               "Cambio programma", _nome_dispositivo(cfg, "casa", ""),
+                               {"schedule_id": dati.get("schedule_id")})
     if errore:
         return errore
     return jsonify({"status": "ok"})
@@ -1203,7 +1268,9 @@ def api_boost_stanza(ident):
     if errore:
         return errore
     cfg = carica_config()
-    fine, errore = _esito_comando(lambda: dispositivi.boost_stanza(cfg, ident, dati.get("durata_min", 30)))
+    fine, errore = _esito_comando(lambda: dispositivi.boost_stanza(cfg, ident, dati.get("durata_min", 30)),
+                                  f"Boost per {dati.get('durata_min', 30)} min",
+                                  _nome_dispositivo(cfg, "stanza", ident), {"room_id": ident})
     if errore:
         return errore
     pausa = _pausa_dopo_comando(cfg, dispositivi.zone_collegate(cfg, "stanza", ident),
@@ -1232,13 +1299,11 @@ def api_comando_avanzato_ac(ident):
         return errore
     cfg = carica_config()
     esito, errore = _esito_comando(lambda: dispositivi.comando_avanzato_ac(
-        cfg, ident, str(dati.get("capability", "")), str(dati.get("comando", "")), dati.get("argomenti", [])))
+        cfg, ident, str(dati.get("capability", "")), str(dati.get("comando", "")), dati.get("argomenti", [])),
+        f"Comando avanzato {dati.get('capability')}.{dati.get('comando')}{dati.get('argomenti', [])}",
+        _nome_dispositivo(cfg, "ac", ident), {"device_id": ident})
     if errore:
         return errore
-    nome = (dispositivi.snapshot(cfg)["ac"].get(ident) or {}).get("nome", "Condizionatore")
-    get_servizio()._log_evento(nome, "comando avanzato",
-                               f"{esito['capability']}.{esito['comando']}{esito['argomenti']} "
-                               f"da {current_user.username}")
     pausa = _pausa_dopo_comando(cfg, dispositivi.zone_collegate(cfg, "ac", ident), dati.get("pausa_ore"))
     return jsonify({"status": "ok", "comando": esito, "pausa": pausa})
 
@@ -1266,23 +1331,49 @@ def api_webhook_netatmo():
     """Eventi Netatmo (pubblico, firmato con il client secret: X-Netatmo-secret)."""
     cfg = carica_config()
     corpo = request.get_data(cache=False)
-    if not netatmo_firma_valida(cfg.get("legrand_client_secret", ""), corpo,
-                                request.headers.get("X-Netatmo-secret")):
-        live.rifiutato("netatmo", "firma non valida")
-        return jsonify({"errore": "firma non valida"}), 403
+    firma = request.headers.get("X-Netatmo-secret")
     try:
         evento = json.loads(corpo or b"{}")
     except ValueError:
         evento = {}
     if not isinstance(evento, dict):
-        evento = {}
+        evento = {"corpo": corpo[:2000].decode("utf-8", "replace")}
+    if not netatmo_firma_valida(cfg.get("legrand_client_secret", ""), corpo, firma):
+        live.rifiutato("netatmo", "firma non valida" if firma else "firma assente")
+        registro.scrivi("sistema", "Webhook Netatmo rifiutato: " + ("firma non valida" if firma else "firma assente"),
+                        livello="warning", dati={"content_type": request.content_type, "byte": len(corpo),
+                                                 "header_firma": bool(firma), "corpo": evento})
+        return jsonify({"errore": "firma non valida"}), 403
     home_id = evento.get("home_id") or (evento.get("home") or {}).get("id")
     if home_id and home_id != cfg.get("legrand_plant_id"):
+        registro.scrivi("evento", "Webhook Netatmo di un'altra casa, ignorato", livello="debug", dati=evento)
         return jsonify({"status": "ignorato"})
-    idents = [i for i in (evento.get("room_id"), (evento.get("room") or {}).get("id")) if i]
+    idents = stanze_evento_netatmo(evento)
+    nomi = {rid: (dispositivi.snapshot(cfg)["stanze"].get(rid) or {}).get("nome", rid) for rid in idents}
+    tipo = evento.get("event_type") or evento.get("push_type") or "evento"
+    registro.scrivi("evento", f"Netatmo (webhook): {tipo}", oggetto=", ".join(nomi.values()) or None,
+                    dati={"sorgente": "webhook", **evento})
     live.notifica("netatmo", idents or [home_id or "casa"], dispositivi.invalida,
                   _ricalcolo_per(cfg, "stanza", idents) if idents else None)
     return jsonify({"status": "ok"})
+
+
+def stanze_evento_netatmo(evento: dict) -> list:
+    """room_id citati in un evento Netatmo, anche in campi annidati (rooms, home.rooms)."""
+    trovate = []
+
+    def aggiungi(valore):
+        if isinstance(valore, (str, int)) and str(valore) not in trovate:
+            trovate.append(str(valore))
+    aggiungi(evento.get("room_id"))
+    for contenitore in (evento, evento.get("home") or {}):
+        stanza = contenitore.get("room")
+        if isinstance(stanza, dict):
+            aggiungi(stanza.get("id"))
+        for s in contenitore.get("rooms") or []:
+            if isinstance(s, dict):
+                aggiungi(s.get("id"))
+    return trovate
 
 
 def _host_smartthings(url: str) -> bool:
@@ -1304,17 +1395,22 @@ def api_webhook_smartthings(token):
         url = (dati.get("confirmationData") or {}).get("confirmationUrl", "")
         if not _host_smartthings(url):
             live.rifiutato("smartthings", "URL di conferma non SmartThings")
+            registro.scrivi("sistema", "Conferma SmartThings rifiutata: URL non SmartThings",
+                            livello="warning", dati={"url": url})
             return jsonify({"errore": "URL di conferma non valido"}), 400
         try:
             requests.get(url, timeout=10).raise_for_status()
         except Exception as e:
             live.rifiutato("smartthings", f"conferma fallita: {e}")
+            registro.scrivi("sistema", f"Conferma del Target URL SmartThings fallita: {e}", livello="warning")
             return jsonify({"errore": "conferma fallita"}), 502
-        logger.info("Target URL SmartThings confermato")
+        registro.scrivi("evento", "Target URL SmartThings confermato", dati={"sorgente": "webhook"})
         return jsonify({"targetUrl": request.base_url})
     if tipo == "PING":
+        registro.scrivi("evento", "Ping SmartThings", livello="debug")
         return jsonify({"pingData": dati.get("pingData")})
     if tipo != "EVENT":
+        registro.scrivi("evento", f"Messaggio SmartThings ignorato: {tipo}", livello="debug", dati=dati)
         return jsonify({"status": "ignorato"})
     evento = dati.get("eventData") or {}
     installata = ((evento.get("installedApp") or {}).get("installedAppId")
@@ -1322,10 +1418,22 @@ def api_webhook_smartthings(token):
     nostra = (cfg.get("smartthings_token_data") or {}).get("installed_app_id")
     if nostra and installata and installata != nostra:
         live.rifiutato("smartthings", "installedAppId diverso")
+        registro.scrivi("sistema", "Evento SmartThings rifiutato: installedAppId diverso", livello="warning")
         return jsonify({"errore": "app non riconosciuta"}), 403
-    noti = set(dispositivi.snapshot(cfg)["ac"])
-    idents = sorted({(e.get("deviceEvent") or {}).get("deviceId") for e in evento.get("events", []) or []}
-                    & noti)
+    ac = dispositivi.snapshot(cfg)["ac"]
+    per_dispositivo: dict = {}
+    for e in evento.get("events", []) or []:
+        d = e.get("deviceEvent") or {}
+        if d.get("deviceId") in ac:
+            per_dispositivo.setdefault(d["deviceId"], []).append(d)
+    for device_id, cambi in per_dispositivo.items():
+        valori = ", ".join(f"{c.get('attribute')} {c.get('value')}{(' ' + c['unit']) if c.get('unit') else ''}"
+                           for c in cambi[:12])
+        registro.scrivi("evento", f"SmartThings: {valori}", oggetto=ac[device_id].get("nome"),
+                        dati={"sorgente": "webhook", "eventi": [
+                            {k: c.get(k) for k in ("capability", "attribute", "value", "unit", "componentId",
+                                                   "stateChange")} for c in cambi]})
+    idents = sorted(per_dispositivo)
     if idents:
         live.notifica("smartthings", idents, dispositivi.invalida, _ricalcolo_per(cfg, "ac", idents))
     return jsonify({"eventData": {}})
@@ -1392,10 +1500,55 @@ def api_live_azione(sorgente, azione):
             st.sottoscrivi_dispositivo(ac_id)
         return len(st.sottoscrizioni())
 
-    esito, errore = _esito_comando(esegui)
+    esito, errore = _esito_comando(
+        esegui, f"Notifiche {sorgente} " + ("attivate" if azione == "attiva" else "disattivate"))
     if errore:
         return errore
     return jsonify({"status": "ok", "sottoscrizioni": esito})
+
+
+@app.route("/api/live/smartthings/rigenera-token", methods=["POST"])
+@login_required
+def api_live_rigenera_token():
+    """Nuovo token per l'URL del webhook SmartThings: il vecchio smette di funzionare
+    e il Target URL dell'app va reimpostato con la CLI."""
+    if not current_user.is_admin:
+        return jsonify({"errore": "Solo gli amministratori"}), 403
+    _, errore = _json_richiesto()
+    if errore:
+        return errore
+    nuovo = secrets.token_urlsafe(24)
+    aggiorna_config_atomico(CONFIG_FILE, lambda c: c.update({"smartthings_webhook_token": nuovo}))
+    _registra_comando("Token del webhook SmartThings rigenerato: reimpostare il Target URL")
+    return jsonify({"status": "ok", "smartthings_url": request.url_root.rstrip("/")
+                    + f"/api/webhook/smartthings/{nuovo}"})
+
+
+# ─── Registro eventi ─────────────────────────────────────────────────────────
+
+@app.route("/registro")
+@login_required
+def pagina_registro():
+    return render_template("registro.html", pagina_registro=True)
+
+
+@app.route("/api/registro")
+@login_required
+def api_registro():
+    categorie = [c for c in request.args.get("categorie", "").split(",") if c in registro.CATEGORIE]
+    try:
+        prima_di = float(request.args["prima_di"]) if request.args.get("prima_di") else None
+        limite = int(request.args.get("limite", 100))
+    except ValueError:
+        return jsonify({"errore": "prima_di e limite devono essere numeri"}), 400
+    righe = registro.leggi(categorie=categorie or None, livello_min=request.args.get("livello", "info"),
+                           oggetto=request.args.get("oggetto") or None, testo=request.args.get("q") or None,
+                           prima_di=prima_di, limite=limite)
+    if not current_user.is_admin:
+        for r in righe:     # i dettagli tecnici (corpi dei webhook, ID) solo agli admin
+            r["dati"] = None
+    return jsonify({"righe": righe, "oggetti": registro.oggetti(), "categorie": registro.CATEGORIE,
+                    "livelli": registro.LIVELLI})
 
 
 # ─── OAuth callback Netatmo / SmartThings ────────────────────────────────────
@@ -1688,8 +1841,11 @@ def _avvia_servizi():
         # Dispositivi le leggono anche senza campionatore
         storico.inizializza_db()
         if os.environ.get("TERMOPILOTA_SENZA_SERVIZI") != "1":
+            registro.collega_logging()
+            registro.scrivi("sistema", f"Avvio di TermoPilota {VERSIONE}")
             avvia_se_attiva()
             storico.avvia_campionatore(_campione_corrente, _letture_dispositivi)
+            osservatore.avvia(carica_config, _ricalcolo_per)
         _servizi_avviati = True
 
 

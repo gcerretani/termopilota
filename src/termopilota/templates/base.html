@@ -30,7 +30,7 @@
 {%- macro voci_nav() -%}
   {{ voce_nav(ep == 'index', url_for('index'), 'house', 'Home') }}
   {{ voce_nav(ep == 'pagina_previsioni', url_for('pagina_previsioni'), 'bar-chart', 'Previsioni') }}
-  {{ voce_nav(ep in ('pagina_automazione', 'pagina_dispositivi', 'pagina_dispositivo'), url_for('pagina_automazione'), 'lightning-charge', 'Automazione') }}
+  {{ voce_nav(ep in ('pagina_automazione', 'pagina_dispositivi', 'pagina_dispositivo', 'pagina_registro'), url_for('pagina_automazione'), 'lightning-charge', 'Automazione') }}
   {{ voce_nav(ep == 'pagina_storico', url_for('pagina_storico'), 'calendar3-week', 'Storico') }}
   {{ voce_nav(sezione_impostazioni, url_for('pagina_impostazioni'), 'gear', 'Impostazioni') }}
 {%- endmacro -%}

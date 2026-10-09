@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Registro{% endblock %}
+
+{% block indietro %}<a href="{{ url_for('pagina_automazione') }}" class="tp-icon-btn tp-back" aria-label="Torna ad Automazione"><i class="bi bi-chevron-left"></i></a>{% endblock %}
+
+{% block azioni %}
+<button type="button" class="tp-icon-btn" id="scaricaRegistro" title="Scarica JSON" aria-label="Scarica il registro filtrato in JSON"><i class="bi bi-download"></i></button>
+{% endblock %}
+
+{% block content %}
+<div class="tp-page" id="paginaRegistro">
+
+  <section class="tp-card">
+    <div class="tp-registro-filtri">
+      <div class="tp-segmented" role="group" aria-label="Categorie" id="filtroCategorie">
+        <button type="button" class="active" data-categoria="" aria-pressed="true">Tutto</button>
+        <button type="button" data-categoria="automazione" aria-pressed="false">Automazione</button>
+        <button type="button" data-categoria="comando" aria-pressed="false">Comandi</button>
+        <button type="button" data-categoria="evento" aria-pressed="false">Eventi</button>
+        <button type="button" data-categoria="sistema" aria-pressed="false">Sistema</button>
+      </div>
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <select class="form-select form-select-sm w-auto" id="filtroLivello" aria-label="Livello minimo">
+          <option value="debug">Tutti i livelli (anche debug)</option>
+          <option value="info" selected>Info e superiori</option>
+          <option value="warning">Solo avvisi ed errori</option>
+          <option value="errore">Solo errori</option>
+        </select>
+        <select class="form-select form-select-sm w-auto" id="filtroOggetto" aria-label="Oggetto">
+          <option value="">Tutte le zone e i dispositivi</option>
+        </select>
+        <input type="search" class="form-control form-control-sm w-auto" id="filtroTesto" placeholder="Cerca…" aria-label="Cerca nel registro">
+      </div>
+    </div>
+    <p class="small tp-muted mb-0 mt-2">
+      Cosa succede a TermoPilota: decisioni dell'automazione, comandi degli utenti, notifiche dei dispositivi
+      (SmartThings, Netatmo) e cambi trovati dal controllo periodico dei termostati, errori.
+      Si conservano 30 giorni (7 per il livello debug).{% if current_user.is_admin %} Tocca una riga per i dettagli tecnici.{% endif %}
+    </p>
+  </section>
+
+  <section class="tp-card">
+    <div id="registroVuoto" class="tp-muted small" style="display:none;">Nessuna voce per questi filtri.</div>
+    <div id="registroLista" class="tp-registro"></div>
+    <div class="text-center mt-3">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="caricaAltri" style="display:none;">Carica altri</button>
+    </div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>window.utenteAdmin = {{ current_user.is_admin | tojson }};</script>
+<script src="{{ url_for('static', filename='js/registro.js') }}"></script>
+{% endblock %}

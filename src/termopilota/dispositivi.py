@@ -55,6 +55,21 @@ def snapshot(cfg: dict, forza: bool = False) -> dict:
     return dati
 
 
+def aggiorna_netatmo(cfg: dict) -> tuple:
+    """Rilegge solo la parte Netatmo (polling): restituisce ({casa, stanze}, errori).
+
+    Se la fotografia e' in cache le sostituisce casa e stanze, senza toccare gli
+    AC e senza rinnovarne la scadenza."""
+    errori: list = []
+    nuovo = _leggi_netatmo(cfg, errori)
+    if not errori:
+        with _lock:
+            if _cache["dati"] is not None:
+                vecchi = [e for e in _cache["dati"].get("errori", []) if not e.startswith("Netatmo")]
+                _cache["dati"] = {**_cache["dati"], **nuovo, "errori": vecchi}
+    return nuovo, errori
+
+
 def _leggi(cfg: dict) -> dict:
     errori: list = []
     return {

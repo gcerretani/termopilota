@@ -19,7 +19,7 @@ from typing import Callable, Optional
 
 FINESTRA_COMANDO_NOSTRO_S = 30
 DEBOUNCE_RICALCOLO_S = 60
-SORGENTI = ("netatmo", "smartthings")
+SORGENTI = ("netatmo", "smartthings", "netatmo_polling")
 
 _lock = threading.Lock()
 _stato: dict = {}
@@ -52,10 +52,13 @@ def comando_nostro(ident: str) -> None:
             _comandi_nostri[ident] = time.time()
 
 
-def recente_nostro(ident: str, adesso: Optional[float] = None) -> bool:
+def recente_nostro(ident: str, adesso: Optional[float] = None,
+                   finestra: float = FINESTRA_COMANDO_NOSTRO_S) -> bool:
+    """True se abbiamo comandato `ident` negli ultimi `finestra` secondi (il
+    polling usa una finestra pari al suo intervallo)."""
     adesso = adesso or time.time()
     with _lock:
-        return adesso - _comandi_nostri.get(ident, 0) < FINESTRA_COMANDO_NOSTRO_S
+        return adesso - _comandi_nostri.get(ident, 0) < finestra
 
 
 def rifiutato(sorgente: str, motivo: str) -> None:
@@ -65,7 +68,7 @@ def rifiutato(sorgente: str, motivo: str) -> None:
 
 
 def notifica(sorgente: str, idents: list, invalida: Callable[[], None],
-             ricalcola: Optional[Callable[[], None]] = None) -> bool:
+             ricalcola: Optional[Callable[[], None]] = None, nostri: Optional[bool] = None) -> bool:
     """Registra un evento sui dispositivi `idents` (room_id o device_id).
 
     `ricalcola` (se indicato) viene chiamato al massimo una volta ogni
@@ -74,7 +77,8 @@ def notifica(sorgente: str, idents: list, invalida: Callable[[], None],
     global _ultimo_ricalcolo
     adesso = time.time()
     invalida()
-    nostri = all(recente_nostro(i, adesso) for i in idents) if idents else False
+    if nostri is None:
+        nostri = all(recente_nostro(i, adesso) for i in idents) if idents else False
     with _lock:
         _stato["versione"] += 1
         _stato[sorgente]["eventi"] += 1
