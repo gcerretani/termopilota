@@ -380,6 +380,37 @@ def consumi_misurati(da: str, a: str) -> dict:
     return {giorno: {k: round(v, 3) for k, v in g.items()} for giorno, g in giorni.items()}
 
 
+LETTURE_MINIME_DIFFERENZA = 8    # ~2 ore di AC acceso, prima di suggerire una correzione
+
+
+def differenza_sensori(room_id: str, ac_id: str, giorni: int = 7) -> dict:
+    """Quanto il sensore del condizionatore legge piu' (o meno) del termostato,
+    con l'AC acceso in riscaldamento: media di (T AC - T termostato) sulle letture
+    allineate a 15 minuti degli ultimi `giorni`.
+
+    `suggerita` e' la correzione del setpoint dell'AC (offset_ac) che compensa la
+    differenza: arrotondata a 0,5 °C, tra -3 e +3; None con poche letture."""
+    vuoto = {"media": None, "letture": 0, "suggerita": None}
+    if not room_id or not ac_id:
+        return vuoto
+    inizio = (datetime.now() - timedelta(days=giorni)).strftime("%Y-%m-%dT%H:%M")
+    with _connetti() as conn:
+        riga = conn.execute(
+            """SELECT AVG(a.t_ambiente - s.t_ambiente) AS media, COUNT(*) AS letture
+               FROM letture_dispositivi a
+               JOIN letture_dispositivi s ON s.ts = a.ts AND s.tipo = 'stanza' AND s.id = ?
+               WHERE a.tipo = 'ac' AND a.id = ? AND a.ts >= ? AND a.attivo = 1 AND a.modalita = 'heat'
+                 AND a.t_ambiente IS NOT NULL AND s.t_ambiente IS NOT NULL""",
+            (room_id, ac_id, inizio)).fetchone()
+    if not riga or not riga["letture"]:
+        return vuoto
+    media = round(riga["media"], 2)
+    suggerita = None
+    if riga["letture"] >= LETTURE_MINIME_DIFFERENZA:
+        suggerita = max(-3.0, min(3.0, round(media * 2) / 2))
+    return {"media": media, "letture": riga["letture"], "suggerita": suggerita}
+
+
 def potenza_media_ac(giorni: int = 30) -> Optional[float]:
     """Assorbimento medio (kW) dei condizionatori quando sono accesi, dalle letture
     consecutive entrambe ad AC acceso e distanti al massimo un'ora. None se

@@ -141,7 +141,7 @@ def pianifica(zone: list, contesto: dict, stato: dict, simulazione: bool = False
                 stato["ac"][acid] = sa
                 for rid in stanze_ac:
                     stato["stanze"].setdefault(rid, {})["pausa_fino"] = adesso + pausa_s
-                eventi.append((acid, "pausa", f"{motivo}: automazione in pausa sulle sue zone"))
+                eventi.append((acid, "pausa", f"{motivo}: automazione in pausa sulle sue stanze"))
 
     for zona in zone:
         nome = zona.get("nome", "Zona")
@@ -186,7 +186,7 @@ def pianifica(zone: list, contesto: dict, stato: dict, simulazione: bool = False
 
         categoria = None
         if not ui["automazione"]:
-            esito, fonte, motivo = "esclusa", None, "Zona esclusa dall'automazione"
+            esito, fonte, motivo = "esclusa", None, "Stanza esclusa dall'automazione"
             rilascia()
         elif pausa_fino:
             esito, fonte = "pausa", None
@@ -238,7 +238,7 @@ def pianifica(zone: list, contesto: dict, stato: dict, simulazione: bool = False
                 esito, fonte = "gas", "gas"
                 rilascia()
                 if not acid:
-                    categoria, motivo = "senza_ac", "Nessun condizionatore associato alla zona"
+                    categoria, motivo = "senza_ac", "Nessun condizionatore associato alla stanza"
                 elif t >= target:
                     categoria, motivo = "target", f"Target {_fmt(target)}°C raggiunto (T={_fmt(t)}°C)"
                 elif t_ext is None or t_ext < contesto["t_min_ac"]:
@@ -328,6 +328,22 @@ def rilascio(stato: dict) -> dict:
         if sa.get("acceso_da_noi"):
             ac.append({"device_id": acid, "tipo": "spegni"})
         stato["ac"][acid] = {"acceso_da_noi": False}
+    return {"netatmo": netatmo, "ac": ac, "stato": stato}
+
+
+def rilascio_zona(stato: dict, room_id: str, ac_device_id: str = "", ac_in_uso: bool = False) -> dict:
+    """Azioni per restituire una sola stanza (eliminata o con il termostato
+    cambiato): termostato al programma se l'override era nostro, AC spento se
+    l'avevamo acceso noi e nessun'altra stanza lo usa; pausa e stato azzerati."""
+    stato = copy.deepcopy(stato) if stato else stato_vuoto()
+    netatmo, ac = [], []
+    sz = stato.get("stanze", {}).pop(room_id, None) or {}
+    if sz.get("override"):
+        netatmo.append({"room_id": room_id, "zona": room_id, "tipo": "home"})
+    sa = stato.get("ac", {}).get(ac_device_id) if ac_device_id else None
+    if sa and sa.get("acceso_da_noi") and not ac_in_uso:
+        ac.append({"device_id": ac_device_id, "tipo": "spegni"})
+        stato["ac"][ac_device_id] = {"acceso_da_noi": False}
     return {"netatmo": netatmo, "ac": ac, "stato": stato}
 
 
@@ -547,6 +563,20 @@ class AutomazioneRiscaldamento:
         with self._lock:
             self.stato_zone = []
 
+    def rilascia_zona(self, room_id: str, ac_device_id: str = "", ac_in_uso: bool = False) -> None:
+        """Restituisce una sola stanza (vedi rilascio_zona) e la toglie dalla UI."""
+        cfg = self._carica_config()
+        with self._lock_stato:
+            piano = rilascio_zona(self.leggi_stato(), room_id, ac_device_id, ac_in_uso)
+            if piano["netatmo"] or piano["ac"]:
+                self._esegui(cfg, piano, piano["stato"])
+            self._salva_stato(piano["stato"])
+            if self._stato_simulato is not None:
+                self._stato_simulato.get("stanze", {}).pop(room_id, None)
+        with self._lock:
+            self.stato_zone = [z for z in self.stato_zone if z.get("room_id") != room_id]
+        self.ricalcola()
+
     # ── Pause ─────────────────────────────────────────────────────────────────
 
     def imposta_pausa(self, room_ids: list, ore: float) -> Optional[float]:
@@ -580,7 +610,7 @@ class AutomazioneRiscaldamento:
                     if inclusa:
                         z["stato"], z["fonte"], z["motivo"] = None, None, "Aggiornamento in corso…"
                     else:
-                        z["stato"], z["fonte"], z["motivo"] = "esclusa", None, "Zona esclusa dall'automazione"
+                        z["stato"], z["fonte"], z["motivo"] = "esclusa", None, "Stanza esclusa dall'automazione"
         self.ricalcola()
 
     # ── Utilità ───────────────────────────────────────────────────────────────

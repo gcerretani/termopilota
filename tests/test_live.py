@@ -259,12 +259,14 @@ def _apici_spaiati(script: str) -> list:
     return spaiate
 
 
-@pytest.mark.parametrize("url", ["/admin/credentials", "/admin/", "/admin/zones", "/registro", "/automazione"])
-def test_script_inline_senza_apici_spaiati(admin_client, url):
+@pytest.mark.parametrize("url", ["/admin/credentials", "/admin/", "/admin/zones", "/registro", "/automazione", "/stanze/stanza-1"])
+def test_script_inline_senza_apici_spaiati(admin_client, ambiente, url):
     # Regressione: "da quando l'app" in una stringa con apici singoli bloccava
     # tutti i pulsanti della pagina Credenziali
     import re
-    html = admin_client.get(url).get_data(as_text=True)
+    risposta = admin_client.get(url)
+    assert risposta.status_code == 200
+    html = risposta.get_data(as_text=True)
     for script in re.findall(r"<script>(.*?)</script>", html, re.S):
         assert _apici_spaiati(script) == []
 

@@ -96,7 +96,7 @@
     if (z.ac && z.ac.filtro_stato && z.ac.filtro_stato !== 'normal') {
       tag.push('<span class="tp-badge-stato danger"><i class="bi bi-funnel"></i>filtro AC da pulire</span>');
     }
-    const link = z.room_id ? `/dispositivi/stanza/${encodeURIComponent(z.room_id)}` : null;
+    const link = z.room_id ? `/stanze/${encodeURIComponent(z.room_id)}` : null;
     const tagApertura = link ? `a class="tp-list-item" href="${link}"` : 'div class="tp-list-item"';
     return `<${tagApertura} title="${escapeHtml(z.motivo || '')}">
       <span class="tp-list-icon ${icona[0]}"><i class="bi bi-${icona[1]}"></i></span>

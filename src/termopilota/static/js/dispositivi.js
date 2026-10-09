@@ -120,7 +120,7 @@
         <span><i class="bi bi-plug"></i> oggi ${kwh(ac.kwh_oggi)}</span>
         ${s.filtro_stato && s.filtro_stato !== 'normal' ? '<span class="text-danger"><i class="bi bi-funnel"></i> filtro</span>' : ''}
       </div>
-      ${ac.zone && ac.zone.length ? `<div class="small tp-faint mt-2">Zone: ${escapeHtml(ac.zone.join(', '))}</div>` : ''}
+      ${ac.zone && ac.zone.length ? `<div class="small tp-faint mt-2">Stanze: ${escapeHtml(ac.zone.join(', '))}</div>` : ''}
     </a></div>`;
   }
 
@@ -146,7 +146,7 @@
         <span><i class="bi bi-wifi"></i> ${qualitaWifi(modulo.wifi)}</span>
         ${modulo.firmware !== undefined && modulo.firmware !== null ? `<span><i class="bi bi-cpu"></i> fw ${escapeHtml(modulo.firmware)}</span>` : ''}
       </div>
-      ${st.zone && st.zone.length ? `<div class="small tp-faint mt-2">Zone: ${escapeHtml(st.zone.join(', '))}</div>` : ''}
+      ${st.zone && st.zone.length ? `<div class="small tp-faint mt-2">Stanze: ${escapeHtml(st.zone.join(', '))}</div>` : ''}
     </a></div>`;
   }
 
@@ -187,15 +187,15 @@
     return `<div class="tp-list">${zone.map(z => {
       const d = z.decisione || {};
       const stato = !z.automazione ? 'esclusa' : (d.stato === 'esclusa' ? null : d.stato);
-      return `<div class="tp-list-item">
-        <span class="tp-list-icon"><i class="bi bi-diagram-3"></i></span>
+      return `<a class="tp-list-item" href="/stanze/${enc(z.room_id)}">
+        <span class="tp-list-icon"><i class="bi bi-door-open"></i></span>
         <div class="tp-list-body">
-          <div class="tp-list-title">Zona ${escapeHtml(z.nome)}</div>
+          <div class="tp-list-title">Stanza ${escapeHtml(z.nome)}</div>
           <div class="tp-list-sub">${escapeHtml(!z.automazione ? 'Esclusa dall\'automazione'
             : (!stato ? 'Aggiornamento in corso…' : d.motivo || 'In attesa del prossimo controllo'))}</div>
         </div>
         ${stato ? badgeStatoZona(stato, d.simulazione) : ''}
-      </div>`;
+      </a>`;
     }).join('')}</div>`;
   }
 

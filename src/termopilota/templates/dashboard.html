@@ -156,7 +156,7 @@
         <div id="stanzeErrore"></div>
         <div class="tp-list" id="stanzeLista">
           {% if not stato_stanze_dashboard.zone %}
-          <div class="tp-muted small">Nessuna zona configurata{% if current_user.is_admin %} — <a href="/admin/zones">aggiungine una</a>{% endif %}.</div>
+          <div class="tp-muted small">Nessuna stanza configurata{% if current_user.is_admin %} — <a href="/admin/zones">aggiungine una</a>{% endif %}.</div>
           {% endif %}
         </div>
         <a class="tp-card-link d-inline-flex mt-3" href="{{ url_for('pagina_dispositivi') }}"><i class="bi bi-cpu me-1"></i>Tutti i dispositivi <i class="bi bi-chevron-right"></i></a>

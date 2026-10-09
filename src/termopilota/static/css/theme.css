@@ -882,3 +882,8 @@ html[data-theme="dark"] .tp-mappa .leaflet-tile-pane { filter: brightness(.8) co
 .tp-registro-cat.cat-evento { color: var(--gas-color); }
 .tp-registro-dati { margin: .5rem 0 0; padding: .5rem .75rem; max-height: 320px; overflow: auto; font-size: .75rem;
   background: var(--panel-2); border-radius: var(--radius-sm); white-space: pre-wrap; word-break: break-word; cursor: text; }
+
+/* Pagina della stanza: termostato e condizionatore affiancati */
+.tp-stanza-blocchi { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .75rem; }
+.tp-stanza-blocco { padding: .75rem .9rem; border-radius: var(--radius-sm); background: var(--panel-2); display: flex; flex-direction: column; gap: .2rem; }
+.tp-stanza-valore { font-size: 2rem; font-weight: 300; line-height: 1.1; font-variant-numeric: tabular-nums; }

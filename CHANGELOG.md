@@ -7,6 +7,34 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.5.0] - 2026-10-09
+
+### Aggiunto
+- **Pagina della stanza** (`/stanze/<id>`, dalla Home, da Automazione e da Dispositivi): termostato e
+  condizionatore insieme.
+  - Le due temperature affiancate, con la differenza, il target del programma, umidità, finestra,
+    richiesta di calore, filtro.
+  - **Cosa fa TermoPilota**, con il calcolo esplicito: a quanto mette il condizionatore (target +
+    correzione) e il termostato (7 °C in esclusiva, target − riserva in affiancata), i costi del
+    momento, le altre stanze servite dallo stesso condizionatore; interruttore "inclusa" e pausa.
+  - Comandi della stanza: temperatura manuale, boost e programma del termostato; accensione,
+    modalità e temperatura del condizionatore.
+  - Grafico combinato: temperatura del termostato e del sensore dell'AC, setpoint dell'AC e target;
+    e "chi scalda" (condizionatore acceso, richiesta di calore della caldaia).
+  - **Correzione suggerita**: quanto il sensore del condizionatore legge in più rispetto al termostato
+    con l'AC acceso (media degli ultimi 7 giorni), con il pulsante per usarla.
+  - Ultimi eventi della stanza dal registro e, per gli amministratori, le impostazioni.
+
+### Modificato
+- In interfaccia le "zone" si chiamano **stanze**.
+- Le impostazioni di una stanza (termostato, condizionatore, modalità, riserva, correzione, nome) si
+  modificano dalla sua pagina; Admin → Stanze elenca le stanze e ne crea di nuove (si sceglie il
+  termostato tra quelli liberi e il condizionatore). Cambiando il termostato o eliminando una
+  stanza, TermoPilota restituisce al programma il termostato che stava gestendo e spegne il
+  condizionatore se l'aveva acceso lui e nessun'altra stanza lo usa.
+- Il registro si può filtrare per più oggetti insieme (la stanza, il suo termostato e il suo
+  condizionatore).
+
 ## [1.4.3] - 2026-10-09
 
 ### Modificato
@@ -342,7 +370,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.4.3...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.5.0
 [1.4.3]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.3
 [1.4.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.2
 [1.4.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.1
