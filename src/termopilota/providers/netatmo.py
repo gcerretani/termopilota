@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
-from termopilota.providers import ThermostatProvider, register_thermostat, aggiorna_config_atomico
+from termopilota.providers import ThermostatProvider, aggiorna_config_atomico, chiamata, register_thermostat
 from termopilota.percorsi import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,16 @@ class ErroreNetatmo(Exception):
 
 MODALITA_CASA = ("schedule", "away", "hg")
 DURATA_MANUALE_DEFAULT_S = 12 * 3600
+TIMEOUT_S = 15                   # durante i disservizi Netatmo risponde lento, ma risponde
+DATI_CASA_TTL_S = 900            # homesdata (stanze, moduli, programmi) cambia di rado
+
+# homesdata condiviso tra i client (se ne crea uno per richiesta): il polling e le
+# pagine chiedono cosi' solo homestatus. Si rinnova dopo un cambio di programma.
+_dati_casa: dict = {"homes": None, "ts": 0.0}
+
+
+def invalida_dati_casa() -> None:
+    _dati_casa.update(homes=None, ts=0.0)
 
 
 def ora_casa(timezone: Optional[str]) -> datetime:
@@ -192,28 +202,35 @@ class NetatmoClient(ThermostatProvider):
 
     # ── Lettura ───────────────────────────────────────────────────────────────
 
-    def _homesdata(self) -> list:
-        resp = requests.get(f"{NETATMO_BASE}/homesdata", headers=self._headers(), timeout=10)
+    def _homesdata(self, forza: bool = False) -> list:
+        if (not forza and _dati_casa["homes"] is not None
+                and time.time() - _dati_casa["ts"] < DATI_CASA_TTL_S):
+            return _dati_casa["homes"]
+        resp = chiamata("netatmo", "get", f"{NETATMO_BASE}/homesdata",
+                        headers=self._headers(), timeout=TIMEOUT_S)
         resp.raise_for_status()
-        return resp.json().get("body", {}).get("homes", [])
+        homes = resp.json().get("body", {}).get("homes", [])
+        _dati_casa.update(homes=homes, ts=time.time())
+        return homes
 
     def _homestatus(self, home_id: str) -> dict:
         """Corpo di homestatus: {'home': {...}, 'errors': [{'code', 'id'}]}. I moduli
         in `errors` (es. codice 6, non raggiungibile) mancano da home.rooms/modules."""
-        resp = requests.get(
+        resp = chiamata(
+            "netatmo", "get",
             f"{NETATMO_BASE}/homestatus",
             headers=self._headers(),
             params={"home_id": home_id},
-            timeout=10,
+            timeout=TIMEOUT_S,
         )
         resp.raise_for_status()
         return resp.json().get("body", {})
 
     def lista_impianti(self) -> list:
-        return [{"id": h["id"], "name": h.get("name", "Casa")} for h in self._homesdata()]
+        return [{"id": h["id"], "name": h.get("name", "Casa")} for h in self._homesdata(forza=True)]
 
     def lista_moduli(self, home_id: str) -> list:
-        home = next((h for h in self._homesdata() if h["id"] == home_id), None)
+        home = next((h for h in self._homesdata(forza=True) if h["id"] == home_id), None)
         if not home:
             return []
         rooms = []
@@ -241,12 +258,13 @@ class NetatmoClient(ThermostatProvider):
 
     def _post(self, endpoint: str, *, data: Optional[dict] = None, json: Optional[dict] = None) -> bool:
         """POST di un comando; su errore solleva ErroreNetatmo con il messaggio di Netatmo."""
-        resp = requests.post(
+        resp = chiamata(
+            "netatmo", "post",
             f"{NETATMO_BASE}/{endpoint}",
             headers=self._headers(),
             data=data,
             json=json,
-            timeout=10,
+            timeout=TIMEOUT_S,
         )
         if resp.status_code in (200, 204):
             return True
@@ -286,7 +304,10 @@ class NetatmoClient(ThermostatProvider):
         return self._post("setthermmode", data=parametri)
 
     def cambia_programma(self, home_id: str, schedule_id: str) -> bool:
-        return self._post("switchhomeschedule", data={"home_id": home_id, "schedule_id": schedule_id})
+        try:
+            return self._post("switchhomeschedule", data={"home_id": home_id, "schedule_id": schedule_id})
+        finally:
+            invalida_dati_casa()      # il programma selezionato sta in homesdata
 
     # ── Webhook ───────────────────────────────────────────────────────────────
 

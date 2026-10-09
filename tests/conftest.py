@@ -41,7 +41,10 @@ def stato_pulito(app_flask, monkeypatch):
     for percorso in (modulo_app.CONFIG_FILE, STATO_AUTOMAZIONE_FILE):
         if os.path.exists(percorso):
             os.remove(percorso)
-    dispositivi._cache.update(dati=None, timestamp=0.0)
+    dispositivi.azzera()
+    from termopilota.providers import azzera_chiamate, netatmo
+    azzera_chiamate()
+    netatmo.invalida_dati_casa()
     live.azzera()
     servizio = automazione.get_servizio()
     servizio.stato_zone, servizio._stato_simulato = [], None

@@ -7,6 +7,26 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.4.3] - 2026-10-09
+
+### Modificato
+- **Meno chiamate a Netatmo**, per stare lontani dal limite di 500 richieste l'ora:
+  - un evento SmartThings fa rileggere solo i condizionatori, non più anche i termostati (prima ogni
+    evento svuotava tutta la fotografia dei dispositivi);
+  - stanze, moduli e programmi della casa (`homesdata`) si rileggono ogni 15 minuti invece che a ogni
+    lettura, quindi il polling e le pagine fanno una chiamata invece di due; si rinnovano subito dopo
+    un cambio di programma da TermoPilota.
+- **Chiamate nell'ultima ora** a Netatmo e SmartThings mostrate in Credenziali API.
+- Se Netatmo o SmartThings segnalano il limite di richieste superato, TermoPilota non le chiama per
+  10 minuti e lo scrive nel registro.
+- Registro più pulito durante i disservizi di Netatmo: un tentativo fallito e poi riuscito non è più
+  un avviso, e c'è un solo avviso per disservizio ("Netatmo non risponde…", poi "risponde di nuovo
+  dopo N min") invece di uno per ogni lettura.
+- Un termostato che Netatmo non raggiunge più compare come "termostato non raggiungibile (segnalato da
+  Netatmo)" e poi "di nuovo raggiungibile", non più come cambio "esterno" con setpoint e modalità
+  che diventano "—". Non fa ripartire l'automazione.
+- Timeout delle chiamate Netatmo da 10 a 15 secondi.
+
 ## [1.4.2] - 2026-10-09
 
 ### Modificato
@@ -322,7 +342,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.4.2...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.4.3...HEAD
+[1.4.3]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.3
 [1.4.2]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.2
 [1.4.1]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.1
 [1.4.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.0

@@ -17,8 +17,8 @@ import time
 from datetime import datetime
 from typing import Optional
 
-from termopilota import live
-from termopilota.providers import get_heatpump, get_thermostat
+from termopilota import live, registro
+from termopilota.providers import LimiteChiamate, get_heatpump, get_thermostat
 from termopilota.providers.netatmo import (
     ErroreNetatmo, descrivi_errore_modulo, normalizza_stanza, ora_casa, programma_attivo, setpoint_programmato,
 )
@@ -33,51 +33,91 @@ SNAPSHOT_TTL = 60
 SETPOINT_MIN, SETPOINT_MAX = 5.0, 30.0
 DURATA_MIN_MINUTI, DURATA_MAX_MINUTI = 5, 24 * 60
 
-_cache: dict = {"dati": None, "timestamp": 0.0}
+# Due parti con scadenze indipendenti: un evento SmartThings rilegge solo gli AC,
+# uno Netatmo (o il polling) solo casa e stanze. Cosi' le chiamate a Netatmo
+# restano lontane dal limite di 500 l'ora.
+PARTI = ("ac", "netatmo")
+_cache: dict = {}
 _lock = threading.Lock()
+_stato_netatmo = {"in_errore_dal": None}     # un solo avviso per disservizio
 
 
-def invalida() -> None:
+def azzera() -> None:
+    """Svuota la cache (test)."""
     with _lock:
-        _cache["timestamp"] = 0.0
+        _cache.clear()
+        _cache.update(dati=None, ts={p: 0.0 for p in PARTI}, errori={p: [] for p in PARTI})
+    _stato_netatmo["in_errore_dal"] = None
+
+
+azzera()
+
+
+def invalida(parte: Optional[str] = None) -> None:
+    """Fa rileggere una parte ('ac' o 'netatmo') o tutto alla prossima richiesta."""
+    with _lock:
+        for p in ([parte] if parte else PARTI):
+            _cache["ts"][p] = 0.0
 
 
 def snapshot(cfg: dict, forza: bool = False) -> dict:
     """{ac: {id: ...}, casa: {...} | None, stanze: {room_id: ...}, errori: [...], letto_alle}."""
+    adesso = time.time()
     with _lock:
-        if (not forza and _cache["dati"] is not None
-                and time.time() - _cache["timestamp"] < SNAPSHOT_TTL):
-            return _cache["dati"]
-    dati = _leggi(cfg)
+        precedente = _cache["dati"]
+        da_leggere = [p for p in PARTI
+                      if forza or precedente is None or adesso - _cache["ts"][p] >= SNAPSHOT_TTL]
+        if not da_leggere:
+            return precedente
+    letto, errori = {}, {}
+    if "ac" in da_leggere:
+        errori["ac"] = []
+        letto["ac"] = _leggi_ac(cfg, errori["ac"])
+    if "netatmo" in da_leggere:
+        errori["netatmo"] = []
+        letto.update(_leggi_netatmo(cfg, errori["netatmo"]))
     with _lock:
-        _cache["dati"] = dati
-        _cache["timestamp"] = time.time()
-    return dati
+        base = _cache["dati"] or {"ac": {}, "casa": None, "stanze": {}}
+        _cache["errori"].update(errori)
+        _cache["dati"] = {**base, **letto,
+                          "errori": [e for p in PARTI for e in _cache["errori"][p]],
+                          "letto_alle": datetime.now().isoformat(timespec="seconds")}
+        for p in da_leggere:
+            _cache["ts"][p] = time.time()
+        return _cache["dati"]
 
 
 def aggiorna_netatmo(cfg: dict) -> tuple:
     """Rilegge solo la parte Netatmo (polling): restituisce ({casa, stanze}, errori).
-
-    Se la fotografia e' in cache le sostituisce casa e stanze, senza toccare gli
-    AC e senza rinnovarne la scadenza."""
+    Se riesce aggiorna la fotografia in cache, senza toccare gli AC."""
     errori: list = []
     nuovo = _leggi_netatmo(cfg, errori)
     if not errori:
         with _lock:
             if _cache["dati"] is not None:
-                vecchi = [e for e in _cache["dati"].get("errori", []) if not e.startswith("Netatmo")]
-                _cache["dati"] = {**_cache["dati"], **nuovo, "errori": vecchi}
+                _cache["errori"]["netatmo"] = []
+                _cache["dati"] = {**_cache["dati"], **nuovo,
+                                  "errori": list(_cache["errori"]["ac"])}
+                _cache["ts"]["netatmo"] = time.time()
     return nuovo, errori
 
 
-def _leggi(cfg: dict) -> dict:
-    errori: list = []
-    return {
-        "ac": _leggi_ac(cfg, errori),
-        **_leggi_netatmo(cfg, errori),
-        "errori": errori,
-        "letto_alle": datetime.now().isoformat(timespec="seconds"),
-    }
+def _netatmo_fallito(errore: Exception) -> None:
+    """Avviso nel registro solo all'inizio di un disservizio (non per ogni lettore)."""
+    if _stato_netatmo["in_errore_dal"] is None:
+        _stato_netatmo["in_errore_dal"] = time.time()
+        limite = isinstance(errore, LimiteChiamate)
+        registro.scrivi("sistema", ("Netatmo: " if limite else "Netatmo non risponde: ") + str(errore),
+                        livello="warning", dati={"errore": str(errore), "limite": limite})
+    else:
+        logger.info("Netatmo ancora non disponibile: %s", errore)
+
+
+def _netatmo_riuscito() -> None:
+    inizio = _stato_netatmo["in_errore_dal"]
+    if inizio is not None:
+        _stato_netatmo["in_errore_dal"] = None
+        registro.scrivi("sistema", f"Netatmo risponde di nuovo (dopo {max(1, round((time.time() - inizio) / 60))} min)")
 
 
 def _leggi_ac(cfg: dict, errori: list) -> dict:
@@ -126,11 +166,14 @@ def _leggi_netatmo(cfg: dict, errori: list) -> dict:
             completo = bt.stato_casa(home_id)
             break
         except Exception as e:
-            logger.warning("Lettura Netatmo fallita (tentativo %d): %s", tentativo + 1, e)
-            if tentativo:
+            # Il primo tentativo fallito non e' un problema: solo nel log del container
+            if tentativo or isinstance(e, LimiteChiamate):
                 errori.append(f"Netatmo: {e}")
+                _netatmo_fallito(e)
                 return vuoto
+            logger.info("Lettura Netatmo fallita (tentativo 1, riprovo): %s", e)
             time.sleep(2)
+    _netatmo_riuscito()
     dati = completo.get("dati") or {}
     stato = completo.get("stato") or {}
     adesso = ora_casa(dati.get("timezone"))
@@ -261,7 +304,7 @@ def comando_avanzato_ac(cfg: dict, device_id: str, capability: str, comando: str
         raise ErroreComando(str(e))
     live.comando_nostro(device_id)
     ok = st.esegui_comando(device_id, capability, comando, argomenti)
-    invalida()
+    invalida("ac")
     if not ok:
         raise ErroreComando("Il condizionatore ha rifiutato il comando", 502)
     return {"capability": capability, "comando": comando, "argomenti": argomenti}
@@ -281,7 +324,7 @@ def comando_ac(cfg: dict, device_id: str, chiave: str, valore, is_admin: bool) -
         raise ErroreComando(str(e))
     live.comando_nostro(device_id)
     ok = st.esegui_comando(device_id, capability, comando, argomenti)
-    invalida()
+    invalida("ac")
     if not ok:
         raise ErroreComando("Il condizionatore ha rifiutato il comando", 502)
     return {"capability": capability, "comando": comando, "argomenti": argomenti}
@@ -292,7 +335,7 @@ def _comando_netatmo(invia) -> bool:
     try:
         return invia()
     except ErroreNetatmo as e:
-        invalida()
+        invalida("netatmo")
         raise ErroreComando(f"Netatmo: {e}", 502)
 
 
@@ -317,7 +360,7 @@ def setpoint_stanza(cfg: dict, room_id: str, temp, durata_min) -> int:
     fine = _fine(durata_min)
     live.comando_nostro(room_id)
     ok = _comando_netatmo(lambda: bt.imposta_modalita(home_id, room_id, "manual", setpoint=temp, fine=fine))
-    invalida()
+    invalida("netatmo")
     if not ok:
         raise ErroreComando("Netatmo ha rifiutato il comando", 502)
     return fine
@@ -329,7 +372,7 @@ def boost_stanza(cfg: dict, room_id: str, durata_min) -> int:
     fine = _fine(durata_min)
     live.comando_nostro(room_id)
     ok = _comando_netatmo(lambda: bt.imposta_modalita(home_id, room_id, "max", fine=fine))
-    invalida()
+    invalida("netatmo")
     if not ok:
         raise ErroreComando("Netatmo ha rifiutato il comando", 502)
     return fine
@@ -339,7 +382,7 @@ def ripristina_stanza(cfg: dict, room_id: str) -> None:
     bt, home_id = _client_netatmo(cfg)
     live.comando_nostro(room_id)
     ok = _comando_netatmo(lambda: bt.imposta_modalita(home_id, room_id, "home"))
-    invalida()
+    invalida("netatmo")
     if not ok:
         raise ErroreComando("Netatmo ha rifiutato il comando", 502)
 
@@ -350,7 +393,7 @@ def modalita_casa(cfg: dict, modo: str, durata_min=None) -> None:
         raise ErroreComando("Modalità non valida")
     fine = _fine(durata_min) if durata_min and modo != "schedule" else None
     ok = _comando_netatmo(lambda: bt.imposta_modalita_casa(home_id, modo, fine))
-    invalida()
+    invalida("netatmo")
     if not ok:
         raise ErroreComando("Netatmo ha rifiutato il comando", 502)
 
@@ -361,7 +404,7 @@ def programma_casa(cfg: dict, schedule_id: str) -> None:
     if schedule_id not in {p["id"] for p in casa.get("programmi", [])}:
         raise ErroreComando("Programma non trovato", 404)
     ok = _comando_netatmo(lambda: bt.cambia_programma(home_id, schedule_id))
-    invalida()
+    invalida("netatmo")
     if not ok:
         raise ErroreComando("Netatmo ha rifiutato il comando", 502)
 

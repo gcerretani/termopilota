@@ -32,7 +32,7 @@ from urllib.parse import urlencode
 
 import requests
 
-from termopilota.providers import HeatPumpProvider, register_heatpump, aggiorna_config_atomico
+from termopilota.providers import HeatPumpProvider, aggiorna_config_atomico, chiamata, register_heatpump
 from termopilota.percorsi import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
@@ -149,7 +149,7 @@ class SmartThingsClient(HeatPumpProvider):
     # ── Lettura dispositivi ───────────────────────────────────────────────────
 
     def lista_dispositivi_ac(self) -> list:
-        resp = requests.get(f"{ST_BASE}/devices", headers=self._headers(), timeout=10)
+        resp = chiamata("smartthings", "get", f"{ST_BASE}/devices", headers=self._headers(), timeout=10)
         resp.raise_for_status()
         dispositivi = resp.json().get("items", [])
         ac_list = []
@@ -177,7 +177,8 @@ class SmartThingsClient(HeatPumpProvider):
     def stato_completo(self, device_id: str) -> dict:
         """Componente `main` dello stato, cosi' come lo restituisce l'API:
         {capability: {attributo: {value, unit, timestamp}}}."""
-        resp = requests.get(
+        resp = chiamata(
+            "smartthings", "get",
             f"{ST_BASE}/devices/{device_id}/status",
             headers=self._headers(),
             timeout=10,
@@ -194,7 +195,7 @@ class SmartThingsClient(HeatPumpProvider):
         chiave = (capability, versione)
         if chiave not in _definizioni:
             try:
-                resp = requests.get(f"{ST_BASE}/capabilities/{capability}/{versione}",
+                resp = chiamata("smartthings", "get", f"{ST_BASE}/capabilities/{capability}/{versione}",
                                     headers=self._headers(), timeout=10)
                 resp.raise_for_status()
                 _definizioni[chiave] = resp.json()
@@ -206,7 +207,8 @@ class SmartThingsClient(HeatPumpProvider):
     # ── Comandi ───────────────────────────────────────────────────────────────
 
     def _comando(self, device_id: str, commands: list) -> bool:
-        resp = requests.post(
+        resp = chiamata(
+            "smartthings", "post",
             f"{ST_BASE}/devices/{device_id}/commands",
             headers={**self._headers(), "Content-Type": "application/json"},
             json={"commands": commands},
@@ -257,7 +259,8 @@ class SmartThingsClient(HeatPumpProvider):
 
     def sottoscrivi_dispositivo(self, device_id: str) -> None:
         """Eventi di tutti gli attributi del componente main, solo ai cambi di stato."""
-        resp = requests.post(self._url_sottoscrizioni(), headers=self._headers(), timeout=10, json={
+        resp = chiamata("smartthings", "post", self._url_sottoscrizioni(), headers=self._headers(),
+                        timeout=10, json={
             "sourceType": "DEVICE",
             "device": {"deviceId": device_id, "componentId": "main", "capability": "*",
                        "attribute": "*", "value": "*", "stateChangeOnly": True,
@@ -267,12 +270,12 @@ class SmartThingsClient(HeatPumpProvider):
             raise RuntimeError(f"SmartThings {resp.status_code}: {resp.text[:300]}")
 
     def sottoscrizioni(self) -> list:
-        resp = requests.get(self._url_sottoscrizioni(), headers=self._headers(), timeout=10)
+        resp = chiamata("smartthings", "get", self._url_sottoscrizioni(), headers=self._headers(), timeout=10)
         resp.raise_for_status()
         return resp.json().get("items", [])
 
     def rimuovi_sottoscrizioni(self) -> None:
-        resp = requests.delete(self._url_sottoscrizioni(), headers=self._headers(), timeout=10)
+        resp = chiamata("smartthings", "delete", self._url_sottoscrizioni(), headers=self._headers(), timeout=10)
         if resp.status_code not in (200, 204):
             raise RuntimeError(f"SmartThings {resp.status_code}: {resp.text[:300]}")
 
