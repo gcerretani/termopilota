@@ -6,6 +6,7 @@ delle fixture (ricavati da un impianto reale) e il registro dei comandi."""
 import copy
 import json
 import os
+import time
 
 CARTELLA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
@@ -78,10 +79,28 @@ class SmartThingsFinto:
 class NetatmoFinto:
     autenticato = True
 
-    def __init__(self, casa=None, esito=True):
+    def __init__(self, casa=None, esito=True, stazione=None, eta_misura_min=5):
         self.casa = casa if casa is not None else carica("netatmo_casa.json")
         self.esito = esito
         self.comandi = []
+        # getstationsdata; None = nessuna stazione (o token senza read_station)
+        self.stazione = stazione
+        self.eta_misura_min = eta_misura_min
+
+    def stato_stazioni(self):
+        """Moduli esterni come NetatmoClient.stato_stazioni, misurati `eta_misura_min` fa."""
+        from termopilota.providers.netatmo import TIPO_MODULO_ESTERNO, normalizza_modulo_esterno
+        if self.stazione is None:
+            return []
+        moduli = []
+        for s in self.stazione["body"]["devices"]:
+            for m in s.get("modules", []):
+                if m.get("type") == TIPO_MODULO_ESTERNO:
+                    m = copy.deepcopy(m)
+                    if m.get("dashboard_data"):
+                        m["dashboard_data"]["time_utc"] = int(time.time() - self.eta_misura_min * 60)
+                    moduli.append(normalizza_modulo_esterno(m, s))
+        return moduli
 
     def stato_casa(self, home_id):
         return copy.deepcopy(self.casa)

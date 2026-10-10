@@ -1,0 +1,62 @@
+{
+  "status": "ok",
+  "time_server": 1791640800,
+  "body": {
+    "devices": [
+      {
+        "_id": "70:ee:50:00:00:01",
+        "type": "NAMain",
+        "station_name": "Casa (Interno)",
+        "home_name": "Casa",
+        "module_name": "Interno",
+        "firmware": 202,
+        "wifi_status": 52,
+        "reachable": true,
+        "data_type": ["Temperature", "CO2", "Humidity", "Noise", "Pressure"],
+        "dashboard_data": {
+          "time_utc": 1791640500,
+          "Temperature": 21.4,
+          "CO2": 640,
+          "Humidity": 52,
+          "Noise": 38,
+          "Pressure": 1018.2,
+          "AbsolutePressure": 1004.6,
+          "min_temp": 20.1,
+          "max_temp": 21.9,
+          "temp_trend": "stable",
+          "pressure_trend": "up"
+        },
+        "modules": [
+          {
+            "_id": "02:00:00:00:00:01",
+            "type": "NAModule1",
+            "module_name": "Esterno",
+            "firmware": 53,
+            "last_seen": 1791640480,
+            "rf_status": 68,
+            "battery_vp": 5480,
+            "battery_percent": 74,
+            "reachable": true,
+            "data_type": ["Temperature", "Humidity"],
+            "dashboard_data": {
+              "time_utc": 1791640460,
+              "Temperature": 9.3,
+              "Humidity": 81,
+              "min_temp": 6.8,
+              "max_temp": 14.2,
+              "temp_trend": "down"
+            }
+          },
+          {
+            "_id": "03:00:00:00:00:01",
+            "type": "NAModule4",
+            "module_name": "Camera",
+            "reachable": true,
+            "dashboard_data": {"time_utc": 1791640470, "Temperature": 19.8, "Humidity": 55}
+          }
+        ]
+      }
+    ],
+    "user": {"administrative": {"unit": 0}}
+  }
+}

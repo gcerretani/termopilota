@@ -47,7 +47,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS campioni (
     ora TEXT PRIMARY KEY,        -- "YYYY-MM-DDTHH:00" (ora locale)
     temp_esterna REAL,
-    fonte_temp TEXT,             -- 'cfr' | 'previsione'
+    fonte_temp TEXT,             -- 'netatmo' | 'cfr' | 'previsione'
     cop REAL,
     costo_gas_kwh REAL,          -- €/kWh termico caldaia
     costo_ac_kwh REAL,           -- €/kWh termico pompa di calore
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS campioni (
 );
 CREATE TABLE IF NOT EXISTS letture_dispositivi (
     ts TEXT NOT NULL,            -- "YYYY-MM-DDTHH:MM" (ora locale)
-    tipo TEXT NOT NULL,          -- 'ac' | 'stanza'
+    tipo TEXT NOT NULL,          -- 'ac' | 'stanza' | 'meteo' (id 'cfr:<stazione>' = CFR)
     id TEXT NOT NULL,
     nome TEXT,
     t_ambiente REAL,

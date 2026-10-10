@@ -7,7 +7,7 @@ Sistema di controllo intelligente del riscaldamento domestico. Confronta in temp
 - **Dashboard** con raccomandazione in tempo reale (gas o AC) basata su temperatura esterna, COP e prezzi energia
 - **Previsioni 48 ore** con grafico comparativo costi gas vs AC
 - **Prezzi automatici**: commodity gas (TTF da Yahoo Finance) e luce (PUN da ENTSO-E)
-- **Temperatura reale** dalla stazione meteo CFR Toscana (configurabile)
+- **Temperatura reale** dal modulo esterno della stazione meteo Netatmo o dalla stazione CFR Toscana: la fonte preferita si sceglie, l'altra fa da riserva e, senza misure recenti, vale la previsione
 - **Automazione per stanza**: segue il programma dei termostati Netatmo e commuta tra caldaia e AC quando conviene; ogni stanza si include o esclude e si mette in pausa
 - **Pagina della stanza**: termostato e condizionatore insieme, cosa fa l'automazione e perché, comandi, grafico delle due temperature e correzione suggerita del setpoint dell'AC
 - **Modalita' esclusiva o affiancata**: con l'AC la caldaia non scalda la stanza, oppure AC e caldaia lavorano insieme con il termostato qualche grado sotto il target (la caldaia parte solo se l'AC non basta; con margine 0 in parallelo)
@@ -122,7 +122,7 @@ Temperatura di break-even (gas = AC): circa **-6C** con prezzi tipici.
 
 | Servizio | Scopo | Autenticazione |
 |---|---|---|
-| Netatmo (api.netatmo.com) | Termostati BTicino | OAuth2 (read_smarther, write_smarther) |
+| Netatmo (api.netatmo.com) | Termostati BTicino, stazione meteo | OAuth2 (read_smarther, write_smarther, read_station) |
 | SmartThings (api.smartthings.com) | Condizionatori Samsung | Personal Access Token |
 | ENTSO-E Transparency | Prezzo PUN luce | Token API gratuito |
 | Yahoo Finance | Prezzo TTF gas | Nessuna |

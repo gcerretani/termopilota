@@ -9,6 +9,11 @@
   let graficoCosti = null;
   let graficoTemp = null;
   const G = TPGrafici;
+  // Temperatura misurata dell'ora corrente (le altre ore sono previsione)
+  const FONTI_MISURATE = {
+    netatmo: { sigla: 'Netatmo', nome: 'stazione Netatmo' },
+    cfr: { sigla: 'CFR', nome: 'stazione CFR' },
+  };
 
   // ── Dati per i grafici ─────────────────────────────────────────────────
   function etichette() { return datiOrari.map(d => d.ora.slice(11, 16)); }
@@ -145,9 +150,10 @@
     if (tbody) {
       tbody.innerHTML = righe.length === 0 ? `<tr><td colspan="8">${vuoto}</td></tr>` : righe.map(d => {
         const isAdesso = d.ora === adesso;
-        const cfr = isAdesso && d.fonte_temp === 'cfr' ? ' <span class="badge text-bg-success">CFR</span>' : '';
+        const misurata = isAdesso && FONTI_MISURATE[d.fonte_temp]
+          ? ` <span class="badge text-bg-success">${FONTI_MISURATE[d.fonte_temp].sigla}</span>` : '';
         return `<tr class="${isAdesso ? 'evidenziata' : ''}">
-          <td>${d.ora.slice(11, 16)}${isAdesso ? ' <span class="badge text-bg-warning">ADESSO</span>' : ''}${cfr}</td>
+          <td>${d.ora.slice(11, 16)}${isAdesso ? ' <span class="badge text-bg-warning">ADESSO</span>' : ''}${misurata}</td>
           <td>${d.meteo_icon} <span class="tp-muted small">${escapeHtml(d.meteo_desc)}</span></td>
           <td>${d.temp_esterna.toFixed(1)}°C</td>
           <td>${d.cop.toFixed(2)}</td>
@@ -178,7 +184,7 @@
             <span>Caldaia <strong class="tp-gas">€${d.costo_gas_kwh.toFixed(4)}</strong></span>
             <span>Pompa <strong class="tp-ac">€${d.costo_ac_kwh.toFixed(4)}</strong></span>
             <span>Risparmio <strong>${d.risparmio_pct != null ? d.risparmio_pct.toFixed(0) + '%' : '—'}</strong></span>
-            ${isAdesso && d.fonte_temp === 'cfr' ? '<span>Temperatura <strong>stazione CFR</strong></span>' : ''}
+            ${isAdesso && FONTI_MISURATE[d.fonte_temp] ? `<span>Temperatura <strong>${FONTI_MISURATE[d.fonte_temp].nome}</strong></span>` : ''}
           </div>
         </details>`;
       }).join('');

@@ -64,9 +64,11 @@ def prezzo_luce_effettivo(prezzi: dict, copertura: float, modo: str) -> float:
     return totale * (1.0 - copertura)
 
 
-def calcola_raccomandazioni(previsioni: dict, cfg: dict, temp_cfr: Optional[float], prezzi: dict,
-                            pannello_kw: Optional[dict] = None) -> list:
-    """Raccomandazione oraria. `pannello_kw` e' {ora "YYYY-MM-DDTHH:00": kW}
+def calcola_raccomandazioni(previsioni: dict, cfg: dict, temp_attuale: Optional[float], prezzi: dict,
+                            pannello_kw: Optional[dict] = None, fonte_attuale: str = "cfr") -> list:
+    """Raccomandazione oraria. `temp_attuale` e' la temperatura esterna misurata
+    (fonte `fonte_attuale`: 'netatmo' o 'cfr'), che sostituisce la previsione
+    nell'ora corrente. `pannello_kw` e' {ora "YYYY-MM-DDTHH:00": kW}
     della produzione stimata del pannello adottato (None = nessuna compensazione)."""
     orario = previsioni["hourly"]
     modo_pannello = cfg.get("pannello_compensazione", "totale")
@@ -88,9 +90,9 @@ def calcola_raccomandazioni(previsioni: dict, cfg: dict, temp_cfr: Optional[floa
         wmo = orario["weathercode"][i]
 
         is_ora_corrente = (t == ora_corrente)
-        if is_ora_corrente and temp_cfr is not None:
-            te_calc = temp_cfr
-            fonte_temp = "cfr"
+        if is_ora_corrente and temp_attuale is not None:
+            te_calc = temp_attuale
+            fonte_temp = fonte_attuale
         else:
             te_calc = te
             fonte_temp = "previsione"

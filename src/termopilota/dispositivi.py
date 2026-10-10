@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
-Fotografia unica dei dispositivi (condizionatori SmartThings e stanze Netatmo)
-condivisa da dashboard, pagina Dispositivi, storico e automazione, piu' i
+Fotografia unica dei dispositivi (condizionatori SmartThings, stanze Netatmo e
+moduli esterni della stazione meteo Netatmo) condivisa da dashboard, pagina Dispositivi, storico e automazione, piu' i
 comandi manuali validati.
 
 La fotografia resta in cache SNAPSHOT_TTL secondi, cosi' le pagine aperte e
@@ -33,10 +33,12 @@ SNAPSHOT_TTL = 60
 SETPOINT_MIN, SETPOINT_MAX = 5.0, 30.0
 DURATA_MIN_MINUTI, DURATA_MAX_MINUTI = 5, 24 * 60
 
-# Due parti con scadenze indipendenti: un evento SmartThings rilegge solo gli AC,
-# uno Netatmo (o il polling) solo casa e stanze. Cosi' le chiamate a Netatmo
+# Parti con scadenze indipendenti: un evento SmartThings rilegge solo gli AC,
+# uno Netatmo (o il polling) solo casa e stanze. La stazione meteo misura ogni
+# 10 minuti circa: rileggerla ogni 5 basta. Cosi' le chiamate a Netatmo
 # restano lontane dal limite di 500 l'ora.
-PARTI = ("ac", "netatmo")
+PARTI = ("ac", "netatmo", "meteo")
+TTL_PARTI = {"ac": SNAPSHOT_TTL, "netatmo": SNAPSHOT_TTL, "meteo": 300}
 _cache: dict = {}
 _lock = threading.Lock()
 _stato_netatmo = {"in_errore_dal": None}     # un solo avviso per disservizio
@@ -55,22 +57,24 @@ azzera()
 
 
 def invalida(parte: Optional[str] = None) -> None:
-    """Fa rileggere una parte ('ac' o 'netatmo') o tutto alla prossima richiesta."""
+    """Fa rileggere una parte ('ac', 'netatmo' o 'meteo') o tutto alla prossima richiesta."""
     with _lock:
         for p in ([parte] if parte else PARTI):
             _cache["ts"][p] = 0.0
 
 
-def snapshot(cfg: dict, forza: bool = False) -> dict:
-    """{ac: {id: ...}, casa: {...} | None, stanze: {room_id: ...}, errori: [...], letto_alle, letti_alle}.
+def snapshot(cfg: dict, forza: bool = False, parti: Optional[tuple] = None) -> dict:
+    """{ac: {id: ...}, casa: {...} | None, stanze: {room_id: ...}, meteo: {id_modulo: ...},
+    errori: [...], letto_alle, letti_alle}.
 
-    `letti_alle` = {ac, netatmo}: l'ultima lettura riuscita di ciascuna parte
-    (resta quella vecchia se l'ultima e' fallita), per l'ora sulle pagine."""
+    `letti_alle` = {ac, netatmo, meteo}: l'ultima lettura riuscita di ciascuna parte
+    (resta quella vecchia se l'ultima e' fallita), per l'ora sulle pagine.
+    `parti` limita le parti da rileggere se scadute (le altre restano come sono)."""
     adesso = time.time()
     with _lock:
         precedente = _cache["dati"]
-        da_leggere = [p for p in PARTI
-                      if forza or precedente is None or adesso - _cache["ts"][p] >= SNAPSHOT_TTL]
+        da_leggere = [p for p in (parti or PARTI)
+                      if forza or precedente is None or adesso - _cache["ts"][p] >= TTL_PARTI[p]]
         if not da_leggere:
             return precedente
     letto, errori = {}, {}
@@ -80,8 +84,11 @@ def snapshot(cfg: dict, forza: bool = False) -> dict:
     if "netatmo" in da_leggere:
         errori["netatmo"] = []
         letto.update(_leggi_netatmo(cfg, errori["netatmo"]))
+    if "meteo" in da_leggere:
+        errori["meteo"] = []
+        letto["meteo"] = _leggi_meteo(cfg, errori["meteo"])
     with _lock:
-        base = _cache["dati"] or {"ac": {}, "casa": None, "stanze": {}}
+        base = _cache["dati"] or {"ac": {}, "casa": None, "stanze": {}, "meteo": {}}
         _cache["errori"].update(errori)
         adesso_iso = datetime.now().isoformat(timespec="seconds")
         for p in da_leggere:
@@ -106,7 +113,7 @@ def aggiorna_netatmo(cfg: dict) -> tuple:
                 _cache["errori"]["netatmo"] = []
                 _cache["letti_alle"]["netatmo"] = datetime.now().isoformat(timespec="seconds")
                 _cache["dati"] = {**_cache["dati"], **nuovo,
-                                  "errori": list(_cache["errori"]["ac"]),
+                                  "errori": [e for p in PARTI if p != "netatmo" for e in _cache["errori"][p]],
                                   "letti_alle": dict(_cache["letti_alle"])}
                 _cache["ts"]["netatmo"] = time.time()
     return nuovo, errori
@@ -246,6 +253,38 @@ def _leggi_netatmo(cfg: dict, errori: list) -> dict:
         })
         stanze[rid] = voce
     return {"casa": casa, "stanze": stanze}
+
+
+def _leggi_meteo(cfg: dict, errori: list) -> dict:
+    """Moduli esterni della stazione meteo: {id: {...normalizzato, ora_misura, errore}}.
+
+    Un errore qui non e' un disservizio dei termostati: solo nel log e negli
+    errori della fotografia (la temperatura esterna ripiega sulle altre fonti)."""
+    bt = get_thermostat("netatmo", cfg)
+    if not bt or not bt.autenticato or not hasattr(bt, "stato_stazioni"):
+        return {}
+    try:
+        moduli = bt.stato_stazioni()
+    except Exception as e:
+        logger.info("Lettura della stazione meteo Netatmo fallita: %s", e)
+        errori.append(f"Netatmo stazione meteo: {e}")
+        return {}
+    risultato = {}
+    for m in moduli:
+        ts = m.get("ts")
+        voce = {**m,
+                "ora_misura": (datetime.fromtimestamp(ts).isoformat(timespec="seconds") if ts else None),
+                "errore": None if m.get("raggiungibile") else "Modulo esterno non raggiungibile"}
+        risultato[voce["id"]] = voce
+    return risultato
+
+
+def modulo_meteo(snap: dict, modulo_id: str = "") -> Optional[dict]:
+    """Modulo esterno scelto in configurazione; se non indicato e ce n'e' uno solo, quello."""
+    moduli = snap.get("meteo") or {}
+    if modulo_id:
+        return moduli.get(modulo_id)
+    return next(iter(moduli.values())) if len(moduli) == 1 else None
 
 
 # ── Comandi ──────────────────────────────────────────────────────────────────
@@ -453,7 +492,21 @@ def letture_per_storico(snap: dict) -> list:
             "extra": {"richiesta_calore_pct": richiesta, "target": st.get("target"),
                       "finestra_aperta": st.get("finestra_aperta"), "caldaia_accesa": st.get("caldaia_accesa")},
         })
+    for m in (snap.get("meteo") or {}).values():
+        if m.get("temperatura") is None:
+            continue    # modulo non raggiungibile: nessuna misura
+        righe.append(riga_meteo(m["id"], m.get("nome"), m.get("temperatura"), m.get("umidita"),
+                                {"ora_misura": m.get("ora_misura"), "batteria_pct": m.get("batteria_pct"),
+                                 "segnale_radio": m.get("segnale_radio")}))
     return righe
+
+
+def riga_meteo(ident: str, nome, temperatura, umidita=None, extra: Optional[dict] = None) -> dict:
+    """Riga di letture_dispositivi per una fonte di temperatura esterna (modulo
+    Netatmo o, con id 'cfr:<stazione>', la stazione CFR per il confronto)."""
+    return {"tipo": "meteo", "id": ident, "nome": nome, "t_ambiente": temperatura, "umidita": umidita,
+            "setpoint": None, "attivo": None, "modalita": None, "energia_wh": None, "potenza_w": None,
+            "extra": extra or {}}
 
 
 def riepilogo(snap: dict) -> dict:
@@ -465,6 +518,8 @@ def riepilogo(snap: dict) -> dict:
                    | {"moduli": [{k: v for k, v in m.items() if k != "grezzo"} for m in s.get("moduli", [])]}
                    for s in snap.get("stanze", {}).values()],
         "casa": ({k: v for k, v in snap["casa"].items() if k != "grezzo"} if snap.get("casa") else None),
+        "meteo": [{k: v for k, v in m.items() if k not in ("grezzo", "_campi")}
+                  for m in (snap.get("meteo") or {}).values()],
         "errori": snap.get("errori", []),
         "letto_alle": snap.get("letto_alle"),
         "letti_alle": snap.get("letti_alle", {}),

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ {'ac': 'Condizionatore', 'stanza': 'Stanza', 'casa': 'Casa'}[tipo] }}{% endblock %}
+{% block title %}{{ {'ac': 'Condizionatore', 'stanza': 'Stanza', 'casa': 'Casa', 'meteo': 'Stazione meteo'}[tipo] }}{% endblock %}
 
 {% block head_extra %}
 {% if tipo != 'casa' %}<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>{% endif %}
@@ -17,7 +17,7 @@
   <section class="tp-card">
     <div class="tp-card-header">
       <div class="min-w-0">
-        <h2 class="tp-card-title"><i class="bi bi-{{ {'ac': 'snow', 'stanza': 'thermometer-half', 'casa': 'house-gear'}[tipo] }}"></i><span id="nomeDispositivo">Caricamento…</span></h2>
+        <h2 class="tp-card-title"><i class="bi bi-{{ {'ac': 'snow', 'stanza': 'thermometer-half', 'casa': 'house-gear', 'meteo': 'cloud-sun'}[tipo] }}"></i><span id="nomeDispositivo">Caricamento…</span></h2>
         <div class="tp-card-sub" id="sottotitoloDispositivo"></div>
         <div id="lettoDispositivo"></div>
       </div>
@@ -26,6 +26,7 @@
     <div id="zoneCollegate" class="mt-3"></div>
   </section>
 
+  {% if tipo != 'meteo' %}
   <!-- Controlli -->
   <section class="tp-card">
     <div class="tp-card-header">
@@ -37,6 +38,7 @@
     <div id="msgDispositivi"></div>
     <div id="controlli"><div class="tp-muted small">Caricamento…</div></div>
   </section>
+  {% endif %}
 
   {% if tipo == 'ac' and current_user.is_admin %}
   <!-- Comandi avanzati (admin) -->
@@ -78,6 +80,7 @@
         <div class="tp-chart"><canvas id="graficoTemperatureDispositivo" role="img" aria-label="Temperature del dispositivo"></canvas></div>
       </section>
     </div>
+    {% if tipo != 'meteo' %}
     <div class="col-lg-6">
       <section class="tp-card h-100">
         <div class="tp-card-header">
@@ -89,6 +92,7 @@
         <div class="tp-chart"><canvas id="graficoAttivita" role="img" aria-label="Attività del dispositivo"></canvas></div>
       </section>
     </div>
+    {% endif %}
     <div class="col-lg-6">
       <section class="tp-card h-100">
         <div class="tp-card-header">
