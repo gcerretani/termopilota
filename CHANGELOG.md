@@ -7,6 +7,9 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Modificato
+- **Python 3.14**: l'immagine Docker e la CI usano Python 3.14, ora la versione minima richiesta.
+
 ## [1.6.0] - 2026-10-09
 
 ### Modificato
