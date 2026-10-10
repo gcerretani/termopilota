@@ -19,12 +19,6 @@
     <strong>Errore previsioni meteo:</strong> {{ errore_meteo }} — Controlla la connessione internet.
   </div>
   {% endif %}
-  {% if errore_temp %}
-  <div class="alert alert-warning mb-0">
-    <i class="bi bi-wifi-off me-2"></i>
-    <strong>Temperatura esterna misurata non disponibile</strong> — uso la previsione. ({{ errore_temp }})
-  </div>
-  {% endif %}
 
   <!-- Grafico costo 48h + temperatura -->
   <section class="tp-card">

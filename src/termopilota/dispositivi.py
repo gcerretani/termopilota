@@ -20,7 +20,8 @@ from typing import Optional
 from termopilota import live, registro
 from termopilota.providers import LimiteChiamate, get_heatpump, get_thermostat
 from termopilota.providers.netatmo import (
-    ErroreNetatmo, descrivi_errore_modulo, normalizza_stanza, ora_casa, programma_attivo, setpoint_programmato,
+    ErroreNetatmo, TIPI_MODULI_METEO, descrivi_errore_modulo, normalizza_stanza, ora_casa, programma_attivo,
+    setpoint_programmato,
 )
 from termopilota.providers.smartthings import (
     CAPABILITY_ESCLUSE, CONTROLLI_AC, comandi_avanzati, controlli_disponibili, normalizza_stato,
@@ -219,9 +220,11 @@ def _leggi_netatmo(cfg: dict, errori: list) -> dict:
     stanze = {}
     for room in dati.get("rooms", []) or []:
         rid = room.get("id")
-        moduli_dati = [m for m in dati.get("modules", []) or [] if m.get("room_id") == rid]
+        # I moduli della stazione meteo (anche il modulo esterno nella stanza 'outdoor') non sono termostati
+        moduli_dati = [m for m in dati.get("modules", []) or []
+                       if m.get("room_id") == rid and m.get("type") not in TIPI_MODULI_METEO]
         if rid not in stato_stanze and not moduli_dati:
-            continue    # stanze senza termostato (es. 'outdoor')
+            continue    # stanze senza termostato (es. quella del modulo esterno della stazione meteo)
         grezzo = stato_stanze.get(rid) or {"id": rid, "reachable": False}
         voce = normalizza_stanza(grezzo)
         moduli = []
@@ -256,7 +259,7 @@ def _leggi_netatmo(cfg: dict, errori: list) -> dict:
 
 
 def _leggi_meteo(cfg: dict, errori: list) -> dict:
-    """Moduli esterni della stazione meteo: {id: {...normalizzato, ora_misura, errore}}.
+    """Sensori della stazione meteo: {id: {...normalizzato, ora_misura, errore}}.
 
     Un errore qui non e' un disservizio dei termostati: solo nel log e negli
     errori della fotografia (la temperatura esterna ripiega sulle altre fonti)."""
@@ -264,7 +267,7 @@ def _leggi_meteo(cfg: dict, errori: list) -> dict:
     if not bt or not bt.autenticato or not hasattr(bt, "stato_stazioni"):
         return {}
     try:
-        moduli = bt.stato_stazioni()
+        moduli = bt.stato_stazioni(cfg.get("legrand_plant_id") or None)
     except Exception as e:
         logger.info("Lettura della stazione meteo Netatmo fallita: %s", e)
         errori.append(f"Netatmo stazione meteo: {e}")
@@ -274,17 +277,19 @@ def _leggi_meteo(cfg: dict, errori: list) -> dict:
         ts = m.get("ts")
         voce = {**m,
                 "ora_misura": (datetime.fromtimestamp(ts).isoformat(timespec="seconds") if ts else None),
-                "errore": None if m.get("raggiungibile") else "Modulo esterno non raggiungibile"}
+                "errore": None if m.get("raggiungibile") else "Sensore non raggiungibile"}
         risultato[voce["id"]] = voce
     return risultato
 
 
 def modulo_meteo(snap: dict, modulo_id: str = "") -> Optional[dict]:
-    """Modulo esterno scelto in configurazione; se non indicato e ce n'e' uno solo, quello."""
+    """Sensore scelto in configurazione per la temperatura esterna; se non indicato, l'unico
+    modulo esterno della stazione (se ce n'e' piu' d'uno va scelto)."""
     moduli = snap.get("meteo") or {}
     if modulo_id:
         return moduli.get(modulo_id)
-    return next(iter(moduli.values())) if len(moduli) == 1 else None
+    esterni = [m for m in moduli.values() if m.get("esterno")]
+    return esterni[0] if len(esterni) == 1 else None
 
 
 # ── Comandi ──────────────────────────────────────────────────────────────────

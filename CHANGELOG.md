@@ -8,17 +8,24 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 ## [Non rilasciato]
 
 ### Aggiunto
-- **Stazione meteo Netatmo**: il modulo esterno diventa una fonte della temperatura esterna attuale,
-  più vicina e più frequente della stazione CFR. Compare in Dispositivi (temperatura, umidità,
-  minima e massima, batteria, segnale) con il grafico delle letture e la stazione CFR sovrapposta per
-  confronto. Serve il permesso `read_station`: in Credenziali API premi di nuovo "Autorizza con
-  Netatmo" (un avviso lo ricorda finché manca).
+- **Stazione meteo Netatmo** (facoltativa): il modulo esterno diventa una fonte della temperatura
+  esterna attuale, più vicina e più frequente della stazione CFR. I sensori della stazione si
+  riconoscono dal tipo di modulo, qualunque sia la stanza o il nome, e compaiono in Dispositivi
+  (temperatura, umidità, minima e massima, batteria, segnale) con il grafico delle letture e la
+  stazione CFR sovrapposta per confronto; senza stazione non compare niente. Per usarla premi di nuovo
+  "Autorizza con Netatmo" in Credenziali API (permesso `read_station`); se Netatmo non la espone
+  così, i valori si leggono dal modulo che la casa già elenca.
 
 ### Modificato
 - **Temperatura esterna**: in Impostazioni si sceglie la fonte preferita (Netatmo o CFR), l'altra fa
   da riserva; vale solo una misura recente (60 minuti di default, configurabile), altrimenti si usa la
   previsione. La Home e le Previsioni indicano la fonte in uso; Impostazioni mostra le due misure a
   confronto.
+
+### Corretto
+- **Stanze**: la stanza del modulo esterno della stazione meteo non compare più tra i termostati
+  (era segnata "non raggiungibile"). Una stanza si mostra solo se contiene un termostato.
+- **Pagina della stanza**: WiFi e firmware del modulo sono due riquadri separati.
 - **Python 3.14**: l'immagine Docker e la CI usano Python 3.14, ora la versione minima richiesta.
 
 
