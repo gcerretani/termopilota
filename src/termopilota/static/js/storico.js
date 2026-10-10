@@ -6,25 +6,8 @@
   const grafici = {};
   const G = TPGrafici;
 
-  function intervalloDaRange(range) {
-    const oggi = new Date();
-    const a = giornoLocale(oggi);
-    let da;
-    let risoluzione;
-    if (range === '7g') {
-      da = giornoLocale(new Date(Date.now() - 6 * 86400000));
-      risoluzione = 'oraria';
-    } else if (range === '30g') {
-      da = giornoLocale(new Date(Date.now() - 29 * 86400000));
-      risoluzione = 'giornaliera';
-    } else {
-      // Stagione termica: dal 1° ottobre (dell'anno scorso se siamo prima di ottobre)
-      const annoInizio = oggi.getMonth() >= 9 ? oggi.getFullYear() : oggi.getFullYear() - 1;
-      da = `${annoInizio}-10-01`;
-      risoluzione = 'giornaliera';
-    }
-    return { da, a, risoluzione };
-  }
+  // 7 giorni orari, 30 giorni e stagione giornalieri (come TPGrafici.periodo)
+  const intervalloDaRange = (range) => G.periodo(range === '7g' || range === '30g' ? range : 'stagione');
 
   function creaOAggiornaGrafico(id, config, legenda) {
     const canvas = document.getElementById(id);

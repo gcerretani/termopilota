@@ -289,18 +289,8 @@
   const grafici = {};
   let intervallo = '24h';
 
-  function periodoDa(i) {
-    const oggi = giornoLocale();
-    if (i === '7g') return { da: giornoLocale(new Date(Date.now() - 6 * 86400000)), a: oggi, risoluzione: 'oraria' };
-    if (i === '30g') return { da: giornoLocale(new Date(Date.now() - 29 * 86400000)), a: oggi, risoluzione: 'giornaliera' };
-    return { da: giornoLocale(new Date(Date.now() - 86400000)), a: oggi, risoluzione: 'grezza' };
-  }
-
-  function etichetta(periodo, risoluzione) {
-    if (risoluzione === 'grezza') return periodo.slice(11, 16);
-    const base = `${periodo.slice(8, 10)}/${periodo.slice(5, 7)}`;
-    return periodo.length > 10 ? `${base} ${periodo.slice(11, 13)}:00` : base;
-  }
+  const periodoDa = (i) => TPGrafici.periodo(i);
+  const etichetta = (p, risoluzione) => TPGrafici.etichettaPeriodo(p, risoluzione);
 
   function nuovoGrafico(id, config, legenda) {
     if (grafici[id]) grafici[id].destroy();
@@ -388,6 +378,8 @@
       document.getElementById('erroriStanza').innerHTML = (d.errori || []).length
         ? `<div class="alert alert-warning py-2 small mb-0">${d.errori.map(escapeHtml).join('<br>')}</div>` : '';
       renderStato(d);
+      document.getElementById('sezioneSensori').style.display = (d.sensori || []).length ? '' : 'none';
+      document.getElementById('sensoriStanza').innerHTML = htmlSensori(d.sensori);
       renderCalcolo(d);
       renderComandi(d);
       if (!document.getElementById('impostazioniStanza')?.dataset.renderizzato) {

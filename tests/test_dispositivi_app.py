@@ -204,10 +204,16 @@ def test_storico_dispositivo(admin_client, finti):
 
 def test_letture_per_lo_storico(finti):
     from termopilota import app as modulo_app
-    righe = {(r["tipo"], r["id"]): r for r in modulo_app._letture_dispositivi()}
+    tutte = modulo_app._letture_dispositivi()
+    righe = {(r["tipo"], r["id"]): r for r in tutte if "tipo" in r}
     assert righe[("ac", "ac-1")]["energia_wh"] == 169612
     assert righe[("stanza", "stanza-2")]["attivo"] == 1
     assert righe[("stanza", "stanza-1")]["extra"]["target"] is not None
+    # Le stesse misure, una riga per grandezza, nella tabella generica
+    misure = {(r["sorgente"], r["id"], r["grandezza"]): r["valore"] for r in tutte if "sorgente" in r}
+    assert misure[("ac", "ac-1", "energia")] == 169.612
+    assert misure[("stanza", "stanza-2", "richiesta_calore")] == righe[("stanza", "stanza-2")]["extra"]["richiesta_calore_pct"]
+    assert ("ac", "ac-1", "acceso") in misure and ("stanza", "stanza-1", "target") in misure
 
 
 def test_config_zone_normalizzate(admin_client):

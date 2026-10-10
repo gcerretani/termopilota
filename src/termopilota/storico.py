@@ -11,7 +11,10 @@ e in caso contrario chiede un campione alla callback passata da app.py
 
 Lo stesso thread registra ogni LETTURE_SECONDI anche le letture dei
 dispositivi (tabella letture_dispositivi): temperature, umidita', setpoint e
-il contatore di energia cumulativo dei condizionatori.
+il contatore di energia cumulativo dei condizionatori. Ogni misura numerica di
+ogni dispositivo (sensori compresi) va anche nella tabella generica `misure`,
+una riga per (sorgente, id, grandezza, ts), con il catalogo `serie` per i
+grafici: oltre MISURE_DETTAGLIO_GIORNI restano solo le medie orarie.
 
 Il risparmio conta solo il calore che i condizionatori hanno davvero prodotto
 in riscaldamento: ogni kWh termico dell'AC e' un kWh che la caldaia non ha
@@ -42,6 +45,18 @@ DB_FILE = os.path.join(DATA_DIR, "storico.db")
 CONTROLLO_SECONDI = 300      # ogni 5 min controlla se l'ora corrente manca
 LETTURE_SECONDI = 900        # letture dei dispositivi ogni 15 min
 RITENZIONE_GIORNI = 730      # ~2 stagioni termiche
+MISURE_DETTAGLIO_GIORNI = 90  # misure ogni 15 min; oltre, medie orarie
+MAX_SERIE = 8                # serie in una richiesta di grafico
+
+# Valori calcolati (tabella campioni) come serie 'sistema': colonna -> (etichetta, unita')
+SERIE_SISTEMA = {
+    "temp_esterna": ("Temperatura esterna usata", "°C"),
+    "cop": ("COP della pompa di calore", ""),
+    "costo_gas_kwh": ("Costo del calore, caldaia", "€/kWh"),
+    "costo_ac_kwh": ("Costo del calore, pompa di calore", "€/kWh"),
+    "gas_totale_smc": ("Prezzo del gas", "€/Smc"),
+    "luce_totale_kwh": ("Prezzo della luce", "€/kWh"),
+}
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS campioni (
@@ -71,6 +86,24 @@ CREATE TABLE IF NOT EXISTS letture_dispositivi (
     PRIMARY KEY (ts, tipo, id)
 );
 CREATE INDEX IF NOT EXISTS idx_letture_dispositivo ON letture_dispositivi (tipo, id, ts);
+CREATE TABLE IF NOT EXISTS misure (
+    ts TEXT NOT NULL,            -- "YYYY-MM-DDTHH:MM" (ora locale); oltre 90 giorni solo "HH:00"
+    sorgente TEXT NOT NULL,      -- 'ac' | 'stanza' | 'sensore' | 'cfr'
+    id TEXT NOT NULL,
+    grandezza TEXT NOT NULL,     -- 'temperatura', 'umidita', 'co2', 'setpoint', ...
+    valore REAL,
+    PRIMARY KEY (sorgente, id, grandezza, ts)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS serie (
+    sorgente TEXT NOT NULL,
+    id TEXT NOT NULL,
+    grandezza TEXT NOT NULL,
+    nome TEXT,                   -- nome del dispositivo all'ultima lettura
+    etichetta TEXT,
+    unita TEXT,
+    ultimo_ts TEXT,
+    PRIMARY KEY (sorgente, id, grandezza)
+);
 """
 
 
@@ -97,6 +130,27 @@ def inizializza_db() -> None:
     with _connetti() as conn:
         conn.executescript(_SCHEMA)
         conn.executescript(registro.SCHEMA)
+        _migra_letture_meteo(conn)
+
+
+def _migra_letture_meteo(conn) -> None:
+    """Le letture della stazione meteo e della CFR (1.7.0, tabella letture_dispositivi con
+    tipo 'meteo') passano nella tabella generica; poi si cancellano, quindi si fa una volta."""
+    vecchie = conn.execute("SELECT 1 FROM letture_dispositivi WHERE tipo = 'meteo' LIMIT 1").fetchone()
+    if not vecchie:
+        return
+    sorgente = "CASE WHEN id LIKE 'cfr:%' THEN 'cfr' ELSE 'sensore' END"
+    ident = "CASE WHEN id LIKE 'cfr:%' THEN substr(id, 5) ELSE id END"
+    for colonna, grandezza, etichetta, unita in (("t_ambiente", "temperatura", "Temperatura", "°C"),
+                                                 ("umidita", "umidita", "Umidità", "%")):
+        conn.execute(f"""INSERT OR IGNORE INTO misure (ts, sorgente, id, grandezza, valore)
+                         SELECT ts, {sorgente}, {ident}, ?, {colonna} FROM letture_dispositivi
+                         WHERE tipo = 'meteo' AND {colonna} IS NOT NULL""", (grandezza,))
+        conn.execute(f"""INSERT OR IGNORE INTO serie (sorgente, id, grandezza, nome, etichetta, unita, ultimo_ts)
+                         SELECT {sorgente}, {ident}, ?, MAX(nome), ?, ?, MAX(ts) FROM letture_dispositivi
+                         WHERE tipo = 'meteo' AND {colonna} IS NOT NULL GROUP BY id""",
+                     (grandezza, etichetta, unita))
+    conn.execute("DELETE FROM letture_dispositivi WHERE tipo = 'meteo'")
 
 
 def registra_campione(campione: dict) -> None:
@@ -124,6 +178,89 @@ def _pulisci_vecchi() -> None:
     with _connetti() as conn:
         conn.execute("DELETE FROM campioni WHERE ora < ?", (limite,))
         conn.execute("DELETE FROM letture_dispositivi WHERE ts < ?", (limite,))
+        conn.execute("DELETE FROM misure WHERE ts < ?", (limite,))
+        conn.execute("DELETE FROM serie WHERE ultimo_ts < ?", (limite,))
+        _compatta_misure(conn)
+
+
+def _compatta_misure(conn, adesso: Optional[datetime] = None) -> None:
+    """Oltre MISURE_DETTAGLIO_GIORNI le misure ogni 15 minuti diventano la media dell'ora,
+    registrata a "HH:00". Solo le ore che hanno ancora letture ai quarti d'ora."""
+    limite = ((adesso or datetime.now()) - timedelta(days=MISURE_DETTAGLIO_GIORNI)).strftime("%Y-%m-%dT%H:00")
+    conn.execute("DROP TABLE IF EXISTS temp.medie_orarie")
+    conn.execute("""CREATE TEMP TABLE medie_orarie AS
+                    SELECT substr(ts, 1, 13) || ':00' AS ts, sorgente, id, grandezza, AVG(valore) AS valore
+                    FROM misure WHERE ts < ?
+                    GROUP BY sorgente, id, grandezza, substr(ts, 1, 13)
+                    HAVING SUM(substr(ts, 15, 2) != '00') > 0""", (limite,))
+    conn.execute("""INSERT OR REPLACE INTO misure (ts, sorgente, id, grandezza, valore)
+                    SELECT ts, sorgente, id, grandezza, valore FROM medie_orarie""")
+    conn.execute("DELETE FROM misure WHERE ts < ? AND substr(ts, 15, 2) != '00'", (limite,))
+    conn.execute("DROP TABLE temp.medie_orarie")
+
+
+def registra_misure(ts: str, righe: list) -> None:
+    """Misure di un istante ("YYYY-MM-DDTHH:MM"): righe di dispositivi.misura()."""
+    if not righe:
+        return
+    with _connetti() as conn:
+        conn.executemany(
+            """INSERT OR REPLACE INTO misure (ts, sorgente, id, grandezza, valore)
+               VALUES (:ts, :sorgente, :id, :grandezza, :valore)""",
+            [{**r, "ts": ts} for r in righe],
+        )
+        conn.executemany(
+            """INSERT INTO serie (sorgente, id, grandezza, nome, etichetta, unita, ultimo_ts)
+               VALUES (:sorgente, :id, :grandezza, :nome, :etichetta, :unita, :ts)
+               ON CONFLICT (sorgente, id, grandezza) DO UPDATE SET
+                 nome = excluded.nome, etichetta = excluded.etichetta,
+                 unita = excluded.unita, ultimo_ts = excluded.ultimo_ts""",
+            [{**r, "ts": ts} for r in righe],
+        )
+
+
+def catalogo_serie() -> list[dict]:
+    """Serie registrate (misure dei dispositivi) e serie 'sistema' (dalla tabella campioni):
+    [{sorgente, id, grandezza, nome, etichetta, unita, ultimo_ts}]."""
+    with _connetti() as conn:
+        righe = [dict(r) for r in conn.execute(
+            "SELECT * FROM serie ORDER BY sorgente, nome, id, grandezza").fetchall()]
+        ultimo = conn.execute("SELECT MAX(ora) FROM campioni").fetchone()[0]
+    if ultimo:
+        righe += [{"sorgente": "sistema", "id": "termopilota", "grandezza": colonna, "nome": "TermoPilota",
+                   "etichetta": etichetta, "unita": unita, "ultimo_ts": ultimo}
+                  for colonna, (etichetta, unita) in SERIE_SISTEMA.items()]
+    return righe
+
+
+def leggi_serie(chiavi: list, da: str, a: str, risoluzione: str = "grezza") -> dict:
+    """{(sorgente, id, grandezza): [{periodo, valore}]} in [da, a] (date incluse).
+
+    'grezza': ogni misura ("YYYY-MM-DDTHH:MM"); 'oraria'/'giornaliera': medie per periodo."""
+    inizio, fine = f"{da}T00:00", f"{a}T23:59"
+    n = _LUNGHEZZA_PERIODO.get(risoluzione)
+    risultato = {}
+    with _connetti() as conn:
+        for chiave in chiavi:
+            sorgente, ident, grandezza = chiave
+            if sorgente == "sistema":
+                if grandezza not in SERIE_SISTEMA:
+                    risultato[chiave] = []
+                    continue
+                tabella, colonna_ts, valore, filtro, parametri = "campioni", "ora", grandezza, "", ()
+            else:
+                tabella, colonna_ts, valore = "misure", "ts", "valore"
+                filtro, parametri = " AND sorgente = ? AND id = ? AND grandezza = ?", (sorgente, ident, grandezza)
+            periodo = f"substr({colonna_ts}, 1, {n})" if n else colonna_ts
+            aggregato = f"AVG({valore})" if n else valore
+            righe = conn.execute(
+                f"""SELECT {periodo} AS periodo, {aggregato} AS valore FROM {tabella}
+                    WHERE {colonna_ts} BETWEEN ? AND ?{filtro} AND {valore} IS NOT NULL
+                    {"GROUP BY periodo" if n else ""} ORDER BY periodo""",
+                (inizio, fine, *parametri),
+            ).fetchall()
+            risultato[chiave] = [{"periodo": r["periodo"], "valore": round(r["valore"], 3)} for r in righe]
+    return risultato
 
 
 # ─── Query per API ────────────────────────────────────────────────────────────
@@ -528,8 +665,10 @@ class CampionatoreStorico:
         righe = self._produci_letture()
         self._ultime_letture = time.time()
         if righe:
+            # Le righe con 'sorgente' sono misure generiche, le altre letture dei dispositivi
             ts = adesso.replace(minute=adesso.minute - adesso.minute % 15).strftime("%Y-%m-%dT%H:%M")
-            registra_letture(ts, righe)
+            registra_letture(ts, [r for r in righe if "sorgente" not in r])
+            registra_misure(ts, [r for r in righe if "sorgente" in r])
 
     def _campiona(self) -> None:
         ora = datetime.now().strftime("%Y-%m-%dT%H:00")

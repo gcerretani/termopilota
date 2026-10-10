@@ -654,6 +654,16 @@ a.tp-list-item:hover .tp-list-title { color: var(--accent); }
   min-height: 30px;
 }
 .tp-legend-chip[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
+/* Esplora i dati: scelta delle serie */
+.tp-esplora-serie { display: flex; flex-direction: column; gap: .6rem; max-height: 320px; overflow-y: auto; }
+.tp-esplora-titolo { font-size: .74rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: .3rem; }
+.tp-serie-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text-soft);
+  font-size: .76rem; font-weight: 600; border-radius: 999px; padding: .25rem .65rem; min-height: 30px;
+}
+.tp-serie-chip[aria-pressed="true"] { border-color: var(--ac-color); background: color-mix(in srgb, var(--ac-color) 14%, var(--panel)); color: var(--text); }
+.tp-serie-chip:disabled { opacity: .45; }
 .tp-legend-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--sw); }
 .tp-legend-swatch.fascia { border-radius: 2px; background: color-mix(in srgb, var(--sw) 25%, transparent); border: 1px solid color-mix(in srgb, var(--sw) 40%, transparent); }
 .tp-legend-note { display: inline-flex; align-items: center; gap: .4rem; font-size: .74rem; color: var(--text-muted); }

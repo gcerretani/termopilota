@@ -144,17 +144,17 @@
         <input type="text" class="form-control" id="cfrStationName" value="{{ cfg.cfr_station_name }}" placeholder="es. Poggio al Vento">
       </div>
       <div class="col-md-3">
-        <label class="form-label">Modulo esterno Netatmo</label>
+        <label class="form-label">Sensore Netatmo</label>
         <select class="form-select" id="meteoModulo" data-valore="{{ cfg.meteo_modulo_id }}">
-          <option value="">Automatico (l'unico presente)</option>
+          <option value="">Automatico (l'unico modulo esterno)</option>
         </select>
         <div class="form-text">Stazione meteo Netatmo (serve il permesso <code>read_station</code>, in Credenziali API)</div>
       </div>
       <div class="col-md-3">
         <label class="form-label">Fonte preferita</label>
         <select class="form-select" id="prioritaTempEsterna">
-          <option value="netatmo" {{ 'selected' if cfg.priorita_temp_esterna != 'cfr' }}>Netatmo, poi CFR</option>
-          <option value="cfr" {{ 'selected' if cfg.priorita_temp_esterna == 'cfr' }}>CFR, poi Netatmo</option>
+          <option value="netatmo" {{ 'selected' if cfg.priorita_temp_esterna != 'cfr' }}>Sensore Netatmo, poi CFR</option>
+          <option value="cfr" {{ 'selected' if cfg.priorita_temp_esterna == 'cfr' }}>CFR, poi sensore Netatmo</option>
         </select>
         <div class="form-text">Senza misure recenti si usa la previsione</div>
       </div>
@@ -354,15 +354,17 @@ async function caricaFontiTemp() {
   const lista = document.getElementById('fontiTempEsterna');
   try {
     const stato = await apiGetJson('/api/dispositivi/stato');
-    for (const m of stato.meteo || []) {
-      const opt = new Option(`${m.nome} (${m.stazione})`, m.id);
+    // Qualsiasi sensore con una temperatura (di default l'unico modulo esterno)
+    for (const m of (stato.meteo || []).filter(m => m.temperatura !== null && m.temperatura !== undefined)) {
+      const dove = [m.esterno ? 'esterno' : tipoSensore(m.tipo), m.stanza].filter(Boolean).join(', ');
+      const opt = new Option(`${m.nome} (${dove})`, m.id);
       opt.selected = m.id === select.dataset.valore;
       select.add(opt);
     }
   } catch (e) { /* senza Netatmo resta solo "Automatico" */ }
   try {
     const t = await apiGetJson('/api/temp-esterna');
-    const nomi = { netatmo: 'Netatmo', cfr: 'CFR' };
+    const nomi = { netatmo: 'Sensore Netatmo', cfr: 'CFR' };
     lista.replaceChildren(...t.priorita.map(fonte => {
       const m = t.fonti[fonte];
       const li = document.createElement('li');

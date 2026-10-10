@@ -101,10 +101,13 @@ def test_senza_scope_della_stazione_nessuna_chiamata(http):
     assert http == []
 
 
-def test_stato_stazioni_solo_moduli_esterni(http):
-    [m] = _client(["read_smarther", "write_smarther", "read_station"]).stato_stazioni()
+def test_stato_stazioni_base_e_moduli(http):
+    moduli = {m["id"]: m for m in _client(["read_smarther", "write_smarther", "read_station"]).stato_stazioni()}
     assert http == [("getstationsdata", {"get_favorites": "false"})]
-    assert m["id"] == MODULO and m["nome"] == "Esterno" and m["stazione"] == "Casa (Interno)"
+    assert {i: (m["tipo"], m["esterno"]) for i, m in moduli.items()} == {
+        "70:ee:50:00:00:01": ("NAMain", False), MODULO: ("NAModule1", True), "03:00:00:00:00:01": ("NAModule4", False)}
+    m = moduli[MODULO]
+    assert m["nome"] == "Esterno" and m["stazione"] == "Casa (Interno)"
     assert (m["temperatura"], m["umidita"], m["minima"], m["massima"]) == (9.3, 81.0, 6.8, 14.2)
     assert m["ts"] == 1791640460 and m["batteria_pct"] == 74 and m["raggiungibile"] is True
 
@@ -198,27 +201,36 @@ def test_modulo_scelto_inesistente_non_vale(utente_client, finti, cfr):
 
 
 def test_elenco_e_dettaglio_del_modulo_esterno(utente_client, finti):
-    [m] = utente_client.get("/api/dispositivi/stato").get_json()["meteo"]
-    assert m["id"] == MODULO and m["in_uso"] is True and "grezzo" not in m
+    meteo = {m["id"]: m for m in utente_client.get("/api/dispositivi/stato").get_json()["meteo"]}
+    assert len(meteo) == 3 and [i for i, m in meteo.items() if m["in_uso"]] == [MODULO]   # solo l'esterno
+    assert "grezzo" not in meteo[MODULO]
     d = utente_client.get(f"/api/dispositivi/meteo/{MODULO}").get_json()
     assert d["nome"] == "Esterno" and d["stato"]["temperatura"] == 9.3 and d["stato"]["in_uso"] is True
     assert d["grezzo"]["dashboard_data"]["Humidity"] == 81 and d["letto_alle"]
     html = utente_client.get(f"/dispositivi/meteo/{MODULO}").get_data(as_text=True)
-    assert "Stazione meteo" in html and 'id="controlli"' not in html
+    assert "<title>Sensore" in html and 'id="controlli"' not in html
     assert utente_client.get("/api/dispositivi/meteo/nessuno").status_code == 404
 
 
-def test_letture_e_storico_con_la_cfr_per_confronto(utente_client, finti, cfr):
+def test_misure_e_serie_con_la_cfr_per_confronto(utente_client, finti, cfr):
     from termopilota import app as modulo_app
     from termopilota import storico
-    righe = modulo_app._letture_dispositivi()
-    meteo = {r["id"]: r for r in righe if r["tipo"] == "meteo"}
-    assert meteo[MODULO]["t_ambiente"] == 9.3 and meteo[MODULO]["umidita"] == 81.0
-    assert meteo["cfr:TOS01"]["t_ambiente"] == 11.0 and meteo["cfr:TOS01"]["nome"] == "Poggio"
+    righe = [r for r in modulo_app._letture_dispositivi() if "sorgente" in r]
+    misure = {(r["sorgente"], r["id"], r["grandezza"]): r for r in righe}
+    assert misure[("sensore", MODULO, "temperatura")]["valore"] == 9.3
+    assert misure[("sensore", MODULO, "umidita")]["valore"] == 81.0
+    assert misure[("sensore", "70:ee:50:00:00:01", "co2")]["unita"] == "ppm"      # la base, con la CO2
+    assert misure[("cfr", "TOS01", "temperatura")]["valore"] == 11.0
+    assert misure[("cfr", "TOS01", "temperatura")]["nome"] == "Poggio"
+    storico.registra_misure(datetime.now().strftime("%Y-%m-%dT%H:%M"), righe)
+    catalogo = {g["id"]: g for g in utente_client.get("/api/serie").get_json()["dispositivi"]}
+    assert {"temperatura", "umidita", "minima", "massima", "batteria", "segnale_radio"} <= {
+        s["grandezza"] for s in catalogo[MODULO]["serie"]}
     oggi = datetime.now().date().isoformat()
-    storico.registra_letture(datetime.now().strftime("%Y-%m-%dT%H:%M"), righe)
-    d = utente_client.get(f"/api/dispositivi/meteo/{MODULO}/storico?da={oggi}&a={oggi}").get_json()
-    assert d["punti"][0]["t_ambiente"] == 9.3 and d["cfr"][0]["t_ambiente"] == 11.0
+    d = utente_client.get(f"/api/serie/dati?s=sensore|{MODULO}|temperatura&s=cfr|TOS01|temperatura"
+                          f"&da={oggi}&a={oggi}").get_json()
+    assert [s["punti"][0]["valore"] for s in d["serie"]] == [9.3, 11.0]
+    assert d["serie"][0]["unita"] == "°C" and d["serie"][1]["nome"] == "Poggio"
 
 
 def test_campione_orario_con_fonte_netatmo(finti, cfr, monkeypatch):
@@ -231,9 +243,77 @@ def test_campione_orario_con_fonte_netatmo(finti, cfr, monkeypatch):
     assert campione["fonte_temp"] == "netatmo" and campione["temp_esterna"] == 9.3
 
 
-def test_credenziali_avvisano_dello_scope_mancante(admin_client):
+def test_credenziali_suggeriscono_lo_scope_senza_allarmi(admin_client):
     _imposta(legrand_token={"access_token": "t", "scope": ["read_smarther", "write_smarther"]})
     html = admin_client.get("/admin/credentials").get_data(as_text=True)
-    assert "read_station" in html and "stazione meteo" in html
+    assert "Facoltativo" in html and "read_station" in html and "alert-warning" not in html.split("Scopes:")[1][:600]
     _imposta(legrand_token={"access_token": "t", "scope": ["read_smarther", "write_smarther", "read_station"]})
-    assert "Per leggere la <strong>stazione meteo" not in admin_client.get("/admin/credentials").get_data(as_text=True)
+    assert "Facoltativo: per usare anche" not in admin_client.get("/admin/credentials").get_data(as_text=True)
+
+
+def test_senza_stazione_niente_avvisi_nelle_pagine(utente_client):
+    for url in ("/", "/previsioni"):
+        html = utente_client.get(url).get_data(as_text=True)
+        assert "non disponibile" not in html and "alert-warning" not in html, url
+
+
+# ─── Modulo esterno nella casa (homestatus), stanza 'outdoor' ────────────────
+
+# Come lo restituisce homestatus: la stanza 'outdoor' non c'e', il modulo si'
+MODULO_CASA = {"battery_level": 5812, "battery_state": "full", "bridge": "70:ee:50:b9:7c:a0",
+               "firmware_revision": 53, "humidity": 90, "id": "02:00:00:b9:29:3c", "last_seen": 1791632902,
+               "reachable": True, "rf_state": "medium", "rf_strength": 74, "temperature": 17.1,
+               "ts": 1791632594, "type": "NAModule1"}
+
+
+def _casa_con_stazione():
+    casa = carica("netatmo_casa.json")
+    casa["dati"]["rooms"] = [r for r in casa["dati"]["rooms"] if r["id"] != "esterno"] + [
+        {"id": "esterno", "name": "Esterno", "type": "outdoor", "module_ids": [MODULO_CASA["id"]]}]
+    casa["dati"]["modules"].append({"id": MODULO_CASA["id"], "type": "NAModule1", "name": "Modulo Esterno",
+                                    "room_id": "esterno"})
+    casa["dati"]["modules"].append({"id": "70:ee:50:b9:7c:a0", "type": "NAMain", "name": "Base",
+                                    "room_id": "stanza-1"})
+    casa["stato"]["modules"].append(MODULO_CASA)
+    return casa
+
+
+def test_stanza_esterno_e_stazione_non_sono_termostati(utente_client, monkeypatch):
+    from termopilota import app as modulo_app
+    from termopilota import dispositivi, providers
+    bt = NetatmoFinto(casa=_casa_con_stazione())
+    for modulo in (providers, dispositivi, modulo_app):
+        monkeypatch.setattr(modulo, "get_thermostat", lambda nome, cfg: bt)
+        monkeypatch.setattr(modulo, "get_heatpump", lambda nome, cfg: SmartThingsFinto())
+    _imposta(legrand_plant_id="casa-1")
+    dati = utente_client.get("/api/dispositivi/stato").get_json()
+    assert dati["errori"] == [] and {s["id"] for s in dati["stanze"]} == {"stanza-1", "stanza-2"}
+    assert all(m["tipo"] != "NAMain" for s in dati["stanze"] for m in s["moduli"])
+    assert utente_client.get("/api/dispositivi/stanza/esterno").status_code == 404
+
+
+def test_lista_moduli_senza_la_stanza_esterno(monkeypatch):
+    c = _client(["read_smarther"])
+    monkeypatch.setattr(c, "_homesdata", lambda forza=False: [_casa_con_stazione()["dati"]])
+    assert "esterno" not in {m["id"] for m in c.lista_moduli("casa-1")}
+
+
+def test_modulo_esterno_da_homestatus_se_getstationsdata_e_vuoto(monkeypatch):
+    c = _client(["read_smarther", "write_smarther", "read_station"])
+    casa = _casa_con_stazione()
+    monkeypatch.setattr(netatmo, "chiamata", lambda *a, **k: _Risposta({"body": {"devices": []}}))
+    monkeypatch.setattr(c, "_homesdata", lambda forza=False: [casa["dati"]])
+    monkeypatch.setattr(c, "_homestatus", lambda home_id: casa["stato"] | {"home": casa["stato"]})
+    [m] = c.stato_stazioni("casa-1")
+    assert m["id"] == MODULO_CASA["id"] and m["nome"] == "Modulo Esterno"
+    assert (m["temperatura"], m["umidita"], m["ts"], m["segnale_radio"]) == (17.1, 90.0, 1791632594, 74)
+    assert m["batteria_pct"] == 92 and m["raggiungibile"] is True and m["minima"] is None
+
+
+def test_senza_scope_il_modulo_arriva_comunque_da_homestatus(monkeypatch):
+    c = _client(["read_smarther", "write_smarther"])
+    casa = _casa_con_stazione()
+    monkeypatch.setattr(c, "_homesdata", lambda forza=False: [casa["dati"]])
+    monkeypatch.setattr(c, "_homestatus", lambda home_id: casa["stato"] | {"home": casa["stato"]})
+    assert [m["temperatura"] for m in c.stato_stazioni("casa-1")] == [17.1]
+    assert c.stato_stazioni() == []     # senza casa e senza scope non c'e' niente da leggere

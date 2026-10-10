@@ -110,6 +110,30 @@
     </div>
   </div>
 
+  <!-- Esplora i dati: qualsiasi misura di qualsiasi dispositivo -->
+  <section class="tp-card" id="esplora">
+    <div class="tp-card-header">
+      <div>
+        <h2 class="tp-card-title"><i class="bi bi-graph-up"></i>Esplora i dati</h2>
+        <div class="tp-card-sub">Ogni misura di sensori, termostati e condizionatori, registrata ogni 15 minuti: scegline fino a 8 (<span id="esploraConteggio">0</span>)</div>
+      </div>
+      <div class="tp-segmented" role="group" aria-label="Intervallo">
+        <button type="button" data-esplora-intervallo="24h" aria-pressed="false">24 ore</button>
+        <button type="button" class="active" data-esplora-intervallo="7g" aria-pressed="true">7 giorni</button>
+        <button type="button" data-esplora-intervallo="30g" aria-pressed="false">30 giorni</button>
+        <button type="button" data-esplora-intervallo="stagione" aria-pressed="false">Stagione</button>
+      </div>
+    </div>
+    <div class="d-flex gap-2 mb-2">
+      <input type="search" class="form-control form-control-sm" id="esploraCerca" placeholder="Cerca un dispositivo o una misura" aria-label="Cerca">
+      <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" id="esploraAzzera"><i class="bi bi-x-lg me-1"></i>Nessuna</button>
+    </div>
+    <div id="esploraSerie" class="tp-esplora-serie"><div class="tp-muted small">Caricamento…</div></div>
+    <div class="tp-legend mt-3" id="legendaEsplora"></div>
+    <div id="esploraVuoto" class="tp-muted small mt-2" style="display:none;"></div>
+    <div class="tp-chart tp-chart-lg mt-2"><canvas id="graficoEsplora" role="img" aria-label="Misure scelte"></canvas></div>
+  </section>
+
   <p class="small tp-muted mb-0">
     <i class="bi bi-info-circle me-1"></i>
     Si risparmia solo quando un condizionatore scalda davvero: ogni kWh di calore che produce è un kWh che la
@@ -128,4 +152,5 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/grafici.js') }}"></script>
 <script src="{{ url_for('static', filename='js/storico.js') }}"></script>
+<script src="{{ url_for('static', filename='js/esplora.js') }}"></script>
 {% endblock %}

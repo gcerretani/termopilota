@@ -19,8 +19,6 @@
     || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0);
   // Netatmo: wifi_strength piu' basso = segnale migliore (56 buono, 71 medio, 86 debole)
   const qualitaWifi = (v) => v === null || v === undefined ? '—' : v <= 60 ? 'buono' : v <= 75 ? 'medio' : 'debole';
-  // Moduli della stazione meteo: rf_status piu' basso = segnale radio migliore (60 buono, 90 debole)
-  const qualitaRadio = (v) => v === null || v === undefined ? '—' : v <= 70 ? 'buono' : v <= 85 ? 'medio' : 'debole';
   const TENDENZE = { up: 'in salita', down: 'in discesa', stable: 'stabile' };
   const oraMisura = (iso) => iso ? iso.slice(11, 16) : '—';
 
@@ -154,26 +152,29 @@
     </a></div>`;
   }
 
+  // Misure di un sensore da mostrare in evidenza (le statistiche del giorno e la diagnostica a parte)
+  const misurePrincipali = (m) => (m.grandezze || []).filter(g => !g.diagnostica && !['minima', 'massima'].includes(g.chiave));
+
   function cardMeteo(m) {
     const tag = [];
-    if (m.in_uso) tag.push('<span class="tp-badge-stato ac"><i class="bi bi-check2-circle"></i>in uso per i calcoli</span>');
+    if (m.in_uso) tag.push('<span class="tp-badge-stato ac"><i class="bi bi-check2-circle"></i>temperatura esterna</span>');
     if (m.raggiungibile === false) tag.push('<span class="tp-badge-stato danger"><i class="bi bi-wifi-off"></i>non raggiungibile</span>');
     if (m.batteria_pct !== null && m.batteria_pct !== undefined && m.batteria_pct < 20) {
       tag.push(`<span class="tp-badge-stato danger"><i class="bi bi-battery"></i>batteria ${percento(m.batteria_pct)}</span>`);
     }
+    const altre = misurePrincipali(m).filter(g => g.chiave !== 'temperatura');
+    const dove = [tipoSensore(m.tipo), m.stanza ? `in ${m.stanza}` : m.stazione].filter(Boolean).join(' · ');
     return `<div class="col-md-6 col-xl-4"><a class="tp-card d-block h-100 text-reset text-decoration-none" href="/dispositivi/meteo/${enc(m.id)}">
       <div class="d-flex justify-content-between align-items-start gap-2">
         <div class="min-w-0">
           <div class="fw-semibold text-truncate">${escapeHtml(m.nome)}</div>
-          <div class="small tp-muted mt-1">${escapeHtml(m.stazione || '')} · misura delle ${oraMisura(m.ora_misura)}</div>
+          <div class="small tp-muted mt-1">${escapeHtml(dove)} · misura delle ${oraMisura(m.ora_misura)}</div>
         </div>
         <div class="zona-temp">${gradi(m.temperatura)}</div>
       </div>
       ${tag.length ? `<div class="tp-list-tags">${tag.join('')}</div>` : ''}
       <div class="small tp-muted mt-3 d-flex flex-wrap gap-3">
-        <span><i class="bi bi-droplet"></i> ${percento(m.umidita)}</span>
-        <span><i class="bi bi-arrow-down-up"></i> ${gradi(m.minima)} / ${gradi(m.massima)}</span>
-        <span><i class="bi bi-battery-half"></i> ${percento(m.batteria_pct)}</span>
+        ${altre.map(g => `<span>${escapeHtml(g.etichetta)} <strong>${escapeHtml(valoreGrandezza(g))}</strong></span>`).join('')}
       </div>
     </a></div>`;
   }
@@ -187,9 +188,10 @@
       const vuotoSt = '<div class="col-12"><div class="tp-card tp-muted small">Nessun termostato: collega Netatmo e scegli l\'impianto in Impostazioni → Credenziali API.</div></div>';
       document.getElementById('listaAc').innerHTML = dati.ac.length ? dati.ac.map(cardAc).join('') : vuotoAc;
       document.getElementById('listaStanze').innerHTML = dati.stanze.length ? dati.stanze.map(cardStanza).join('') : vuotoSt;
-      const vuotoMeteo = '<div class="col-12"><div class="tp-card tp-muted small">Nessuna stazione meteo: se ne hai una Netatmo, premi di nuovo "Autorizza con Netatmo" in Impostazioni → Credenziali API (serve il permesso read_station).</div></div>';
+      // Funzione in piu': la sezione c'e' solo se Netatmo ha una stazione meteo
       const meteo = dati.meteo || [];
-      document.getElementById('listaMeteo').innerHTML = meteo.length ? meteo.map(cardMeteo).join('') : vuotoMeteo;
+      document.getElementById('listaMeteo').innerHTML = meteo.map(cardMeteo).join('');
+      document.getElementById('sezioneMeteo').style.display = meteo.length ? '' : 'none';
       const casaCard = document.getElementById('casaCard');
       if (dati.casa) {
         casaCard.style.display = '';
@@ -260,7 +262,10 @@
         dato('Richiesta di calore', percento(s.richiesta_calore_pct)),
         dato('Caldaia', s.caldaia_accesa ? '<span class="tp-gas">accesa</span>' : 'spenta'),
         dato('Finestra', s.finestra_aperta ? '<span class="text-danger">aperta</span>' : 'chiusa'),
-        ...moduli.map(m => dato(`Modulo ${m.tipo || ''}`, `WiFi ${qualitaWifi(m.wifi)} · fw ${escapeHtml(m.firmware ?? '—')}`)),
+        ...moduli.flatMap(m => [
+          dato(`Modulo ${m.tipo || ''} · WiFi`, qualitaWifi(m.wifi)),
+          dato(`Modulo ${m.tipo || ''} · firmware`, escapeHtml(m.firmware ?? '—')),
+        ]),
       ].join('');
     }
     return [
@@ -273,19 +278,33 @@
     ].join('');
   }
 
+  // Tutte le misure del sensore (generate dai dati: un modulo nuovo non richiede codice), poi il resto
   function datiMeteo(s) {
+    const grandezze = s.grandezze || [];
     return [
-      ...(s.errore ? [dato('Modulo', `<span class="text-danger">${escapeHtml(s.errore)}</span>`)] : []),
-      dato('Temperatura', gradi(s.temperatura)),
-      dato('Umidità', percento(s.umidita)),
-      dato('Minima / massima oggi', `${gradi(s.minima)} / ${gradi(s.massima)}`),
-      dato('Tendenza', escapeHtml(TENDENZE[s.tendenza] || s.tendenza || '—')),
+      ...(s.errore ? [dato('Sensore', `<span class="text-danger">${escapeHtml(s.errore)}</span>`)] : []),
+      ...grandezze.filter(g => !g.diagnostica).map(g => dato(g.etichetta, escapeHtml(valoreGrandezza(g)))),
+      ...(s.tendenza ? [dato('Tendenza', escapeHtml(TENDENZE[s.tendenza] || s.tendenza))] : []),
       dato('Misura delle', escapeHtml(oraMisura(s.ora_misura))),
-      dato('Batteria', percento(s.batteria_pct)),
-      dato('Segnale radio', qualitaRadio(s.segnale_radio)),
+      ...grandezze.filter(g => g.diagnostica).map(g => dato(g.etichetta, escapeHtml(valoreGrandezza(g)))),
+      dato('Tipo', escapeHtml(tipoSensore(s.tipo))),
+      dato('Stanza Netatmo', escapeHtml(s.stanza || '—')),
       dato('Stazione', escapeHtml(s.stazione || '—')),
       dato('Temperatura esterna', s.in_uso ? 'in uso per i calcoli' : 'non in uso'),
     ].join('');
+  }
+
+  // Serie da aprire in Esplora (Storico) per questo dispositivo
+  function serieEsplora(d) {
+    const s = d.stato || {};
+    if (tipo === 'ac') return ['temperatura', 'setpoint', 'potenza'].map(g => `ac|${ident}|${g}`);
+    if (tipo === 'stanza') {
+      return ['temperatura', 'setpoint', 'target'].map(g => `stanza|${ident}|${g}`)
+        .concat((d.sensori || []).filter(m => m.temperatura !== null && m.temperatura !== undefined)
+          .map(m => `sensore|${m.id}|temperatura`));
+    }
+    if (tipo === 'meteo') return misurePrincipali(s).map(g => `sensore|${ident}|${g.chiave}`);
+    return [];
   }
 
   // Controlli AC generati dalla whitelist del server (valori ammessi compresi)
@@ -403,7 +422,8 @@
     }
     if (tipo === 'meteo') {
       const modulo = Object.fromEntries(Object.entries(g).filter(([k]) => k !== 'dashboard_data'));
-      return gruppo('Misure', righe(g.dashboard_data)) + gruppo('Modulo', righe(modulo));
+      // getstationsdata ha le misure in dashboard_data, homestatus le mette nel modulo
+      return (g.dashboard_data ? gruppo('Misure', righe(g.dashboard_data)) : '') + gruppo('Modulo', righe(modulo));
     }
     if (tipo === 'stanza') {
       return gruppo('Stanza', righe(g.stanza)) + (g.moduli || []).map((m, i) => gruppo(`Modulo ${i + 1}`, righe(m))).join('');
@@ -440,7 +460,8 @@
       document.title = `${d.nome} · TermoPilota`;
       document.getElementById('nomeDispositivo').textContent = d.nome;
       document.getElementById('sottotitoloDispositivo').textContent =
-        { ac: 'Condizionatore Samsung (SmartThings)', stanza: 'Stanza Netatmo', meteo: 'Modulo esterno della stazione meteo Netatmo' }[tipo]
+        { ac: 'Condizionatore Samsung (SmartThings)', stanza: 'Termostato Netatmo',
+          meteo: [tipoSensore((d.stato || {}).tipo), 'Netatmo', (d.stato || {}).stanza ? `in ${d.stato.stanza}` : ''].filter(Boolean).join(' · ') }[tipo]
         || 'Casa Netatmo';
       document.getElementById('lettoDispositivo').innerHTML = etichettaLettura(d.letto_alle);
       document.getElementById('datiPrincipali').innerHTML = datiPrincipali(d);
@@ -458,6 +479,18 @@
       }
       document.getElementById('tuttiValori').innerHTML = tuttiValori(d);
       aggiornaVuoti();
+      const sezioneSensori = document.getElementById('sezioneSensori');
+      if (sezioneSensori) {
+        sezioneSensori.style.display = (d.sensori || []).length ? '' : 'none';
+        document.getElementById('sensoriStanza').innerHTML = htmlSensori(d.sensori);
+      }
+      const esplora = document.getElementById('linkEsplora');
+      const serie = serieEsplora(d).slice(0, 8);
+      if (esplora && serie.length) {
+        esplora.href = `/storico?${serie.map(k => `s=${enc(k)}`).join('&')}#esplora`;
+        esplora.style.display = '';
+      }
+      if (tipo === 'meteo' && !graficiSensoreCaricati) caricaGrafici();
     } catch (e) {
       mostraErrori([`Dispositivo non disponibile: ${e.message}`]);
     }
@@ -467,18 +500,8 @@
   const grafici = {};
   let intervallo = '24h';
 
-  function periodoDa(intervallo) {
-    const oggi = giornoLocale();
-    if (intervallo === '7g') return { da: giornoLocale(new Date(Date.now() - 6 * 86400000)), a: oggi, risoluzione: 'oraria' };
-    if (intervallo === '30g') return { da: giornoLocale(new Date(Date.now() - 29 * 86400000)), a: oggi, risoluzione: 'giornaliera' };
-    return { da: giornoLocale(new Date(Date.now() - 86400000)), a: oggi, risoluzione: 'grezza' };
-  }
-
-  function etichetta(periodo, risoluzione) {
-    if (risoluzione === 'grezza') return periodo.slice(11, 16);
-    const base = `${periodo.slice(8, 10)}/${periodo.slice(5, 7)}`;
-    return periodo.length > 10 ? `${base} ${periodo.slice(11, 13)}:00` : base;
-  }
+  const periodoDa = (i) => TPGrafici.periodo(i);
+  const etichetta = (p, risoluzione) => TPGrafici.etichettaPeriodo(p, risoluzione);
 
   function nuovoGrafico(id, config, legenda) {
     if (grafici[id]) grafici[id].destroy();
@@ -488,8 +511,55 @@
     if (legenda) TPGrafici.legenda(legenda, grafici[id]);
   }
 
+  // Sensore: un grafico per unita' di misura con tutte le sue misure (piu' la CFR sulla temperatura)
+  let graficiSensoreCaricati = false;
+  async function caricaGraficiSensore() {
+    const d = ultimoDettaglio;
+    if (!d || !d.stato) return;      // arriva con il dettaglio
+    graficiSensoreCaricati = true;
+    const misure = misurePrincipali(d.stato).slice(0, 7);
+    const chiavi = misure.map(g => `sensore|${ident}|${g.chiave}`);
+    if (d.cfr && d.cfr.id && misure.some(g => g.chiave === 'temperatura')) chiavi.push(`cfr|${d.cfr.id}|temperatura`);
+    const contenitore = document.getElementById('graficiSensore');
+    if (!chiavi.length || !contenitore) return;
+    const { da, a, risoluzione } = periodoDa(intervallo);
+    let dati;
+    try {
+      const catalogo = await apiGetJson('/api/serie');
+      const note = new Set(catalogo.dispositivi.flatMap(g => g.serie.map(s => s.chiave)));
+      const valide = chiavi.filter(k => note.has(k));
+      if (!valide.length) {
+        document.getElementById('graficiVuoti').style.display = '';
+        return;
+      }
+      dati = await apiGetJson(`/api/serie/dati?${valide.map(k => `s=${enc(k)}`).join('&')}&da=${da}&a=${a}&risoluzione=${risoluzione}`);
+    } catch (e) {
+      return;
+    }
+    const conPunti = dati.serie.filter(s => s.punti.length);
+    document.getElementById('graficiVuoti').style.display = conPunti.length ? 'none' : '';
+    Object.keys(grafici).forEach(id => { grafici[id].destroy(); delete grafici[id]; });
+    const perUnita = {};
+    conPunti.forEach(s => {
+      s.label = s.chiave.startsWith('cfr|') ? `CFR · ${s.nome}` : s.etichetta;
+      (perUnita[s.unita] = perUnita[s.unita] || []).push(s);
+    });
+    contenitore.innerHTML = Object.entries(perUnita).map(([u, serie], i) => `<div class="col-lg-6"><section class="tp-card h-100">
+      <div class="tp-card-header"><div>
+        <h2 class="tp-card-title"><i class="bi bi-graph-up"></i>${escapeHtml(serie.map(s => s.label).join(', '))}</h2>
+        <div class="tp-card-sub">${escapeHtml(u || 'valore')}</div></div>
+        <div class="tp-legend" id="legendaSensore${i}"></div></div>
+      <div class="tp-chart"><canvas id="graficoSensore${i}" role="img" aria-label="${escapeHtml(serie.map(s => s.label).join(', '))}"></canvas></div>
+    </section></div>`).join('');
+    Object.values(perUnita).forEach((serie, i) => {
+      grafici[`graficoSensore${i}`] = TPGrafici.graficoSerie(document.getElementById(`graficoSensore${i}`), serie, risoluzione,
+        { legenda: serie.length > 1 ? `legendaSensore${i}` : null });
+    });
+  }
+
   async function caricaGrafici() {
     if (typeof TPGrafici === 'undefined') return;
+    if (tipo === 'meteo') return caricaGraficiSensore();
     const G = TPGrafici;
     const { da, a, risoluzione } = periodoDa(intervallo);
     let dati;
@@ -520,16 +590,6 @@
       { label: tipo === 'ac' ? 'Impostata' : 'Termostato', coloreVar: '--chart-neutral',
         data: punti.map(x => x.setpoint), ...linea('neutro', { stepped: true, borderDash: [5, 4], backgroundColor: 'transparent' }) },
     ];
-    if (tipo === 'meteo') {
-      // Il modulo esterno, con la stazione CFR per confronto (stesse ore di lettura)
-      datasets.length = 1;
-      datasets[0].label = 'Netatmo';
-      if (dati.cfr && dati.cfr.length) {
-        const cfr = Object.fromEntries(dati.cfr.map(x => [x.periodo, x.t_ambiente]));
-        datasets.push({ label: 'CFR', coloreVar: '--chart-neutral', data: punti.map(x => cfr[x.periodo] ?? null),
-                        ...linea('neutro', { borderDash: [5, 4], backgroundColor: 'transparent', spanGaps: true }) });
-      }
-    }
     if (tipo === 'stanza' && risoluzione === 'grezza') {
       datasets.push({ label: 'Target', coloreVar: '--green', data: punti.map(x => (x.extra || {}).target ?? null),
                       ...linea('verde', { stepped: true, borderDash: [2, 3], backgroundColor: 'transparent' }) });
@@ -542,9 +602,7 @@
     const opzA = G.opzioniBase({ maxTickX });
     opzA.plugins.mirino = false;
     const barre = (chiave) => ({ backgroundColor: G.colore(chiave), hoverBackgroundColor: G.colore(chiave), borderRadius: 3, maxBarThickness: 24 });
-    if (tipo === 'meteo') {
-      // nessun grafico di attivita' per un sensore
-    } else if (tipo === 'ac') {
+    if (tipo === 'ac') {
       document.getElementById('titoloAttivita').innerHTML = '<i class="bi bi-plug"></i>Consumo';
       document.getElementById('sottotitoloAttivita').textContent = 'kWh elettrici dal contatore del condizionatore';
       const energia = risoluzione === 'grezza' ? (dati.energia || []) : punti.map(x => ({ periodo: x.periodo, kwh: x.kwh }));

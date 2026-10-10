@@ -87,27 +87,31 @@ class NetatmoFinto:
         self.stazione = stazione
         self.eta_misura_min = eta_misura_min
 
-    def stato_stazioni(self):
-        """Moduli esterni come NetatmoClient.stato_stazioni, misurati `eta_misura_min` fa."""
-        from termopilota.providers.netatmo import TIPO_MODULO_ESTERNO, normalizza_modulo_esterno
-        if self.stazione is None:
-            return []
+    def stato_stazioni(self, home_id=None):
+        """Sensori come NetatmoClient.stato_stazioni, misurati `eta_misura_min` fa: da getstationsdata
+        (`stazione`) o, senza, dai moduli della casa (homestatus)."""
+        from termopilota.providers.netatmo import (
+            TIPI_MODULI_METEO, normalizza_modulo_esterno, sensori_da_casa, stanza_del_modulo,
+        )
         moduli = []
-        for s in self.stazione["body"]["devices"]:
-            for m in s.get("modules", []):
-                if m.get("type") == TIPO_MODULO_ESTERNO:
+        if self.stazione is None:
+            stato = copy.deepcopy(self.casa["stato"])
+            for m in stato.get("modules", []):
+                if m.get("type") in TIPI_MODULI_METEO:
+                    m["ts"] = int(time.time() - self.eta_misura_min * 60)
+            moduli = sensori_da_casa(self.casa["dati"], stato)
+        for s in (self.stazione or {"body": {"devices": []}})["body"]["devices"]:
+            for m in [s, *s.get("modules", [])]:
+                if m.get("type") in TIPI_MODULI_METEO and m.get("dashboard_data") is not None:
                     m = copy.deepcopy(m)
-                    if m.get("dashboard_data"):
-                        m["dashboard_data"]["time_utc"] = int(time.time() - self.eta_misura_min * 60)
+                    m["dashboard_data"]["time_utc"] = int(time.time() - self.eta_misura_min * 60)
                     moduli.append(normalizza_modulo_esterno(m, s))
+        if home_id:
+            moduli = [m | stanza_del_modulo(self.casa["dati"], m["id"]) for m in moduli]
         return moduli
 
     def stato_casa(self, home_id):
         return copy.deepcopy(self.casa)
-
-    def stato_tutte_stanze(self, home_id):
-        from termopilota.providers.netatmo import normalizza_stanza
-        return {r["id"]: normalizza_stanza(r) for r in self.casa["stato"]["rooms"]}
 
     def _esito(self):
         if isinstance(self.esito, Exception):    # rifiuto di Netatmo (ErroreNetatmo)

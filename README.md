@@ -12,6 +12,8 @@ Sistema di controllo intelligente del riscaldamento domestico. Confronta in temp
 - **Pagina della stanza**: termostato e condizionatore insieme, cosa fa l'automazione e perché, comandi, grafico delle due temperature e correzione suggerita del setpoint dell'AC
 - **Modalita' esclusiva o affiancata**: con l'AC la caldaia non scalda la stanza, oppure AC e caldaia lavorano insieme con il termostato qualche grado sotto il target (la caldaia parte solo se l'AC non basta; con margine 0 in parallelo)
 - **Simulazione**: l'automazione decide e registra senza inviare comandi
+- **Termostati, condizionatori e sensori**: l'automazione passa dal termostato della stanza; i sensori della stazione meteo Netatmo (ovunque siano) mostrano tutte le loro misure, anche nella stanza in cui si trovano, e uno di loro può fare da temperatura esterna
+- **Esplora i dati**: ogni misura di ogni dispositivo (e i valori calcolati) si può mettere su un grafico nel tempo, più misure insieme con un asse per unità di misura
 - **Gestione AC condiviso**: un condizionatore puo' servire piu' stanze, si spegne solo quando tutte sono a temperatura
 - **Pagina Dispositivi**: tutti i valori di condizionatori, stanze e casa Netatmo, grafici delle letture e comandi manuali
 - **Consumo reale** dei condizionatori dal loro contatore di energia; il risparmio conta solo il calore che hanno davvero prodotto in riscaldamento
