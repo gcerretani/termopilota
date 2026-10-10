@@ -2,7 +2,7 @@
 
 ## Stack
 
-- **Backend**: Flask (Python 3.12), gunicorn in produzione
+- **Backend**: Flask (Python 3.14), gunicorn in produzione
 - **Frontend**: Bootstrap 5.3.8, Chart.js 4.5.1, Leaflet 1.9.4 (solo Admin → Impostazioni, mappe OpenStreetMap), vanilla JS (no bundler) — nessuna CDN: le librerie sono dichiarate in `package.json`/`package-lock.json` (Dependabot le aggiorna) e copiate in `src/termopilota/static/vendor/` (non committata) con `npm run vendor`; PWA installabile (manifest + service worker)
 - **Database**: SQLite per utenti (`data/users.db`) e storico (`data/storico.db`), JSON per configurazione (`data/config.json`)
 - **Auth**: Flask-Login con sessioni, admin iniziale da variabili d'ambiente
