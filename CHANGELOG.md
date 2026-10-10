@@ -7,6 +7,8 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.8.0] - 2026-10-10
+
 ### Aggiunto
 - **Sensori**: tutti i moduli della stazione meteo Netatmo (base, modulo esterno, moduli interni,
   anemometro, pluviometro) compaiono in Dispositivi con tutte le loro misure: temperatura, umidità,
@@ -442,7 +444,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.7.0...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.8.0
 [1.7.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.7.0
 [1.6.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.6.0
 [1.5.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.5.0
