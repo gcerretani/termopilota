@@ -15,10 +15,10 @@
     <strong>Errore previsioni meteo:</strong> {{ errore_meteo }} — Controlla la connessione internet.
   </div>
   {% endif %}
-  {% if errore_cfr %}
+  {% if errore_temp %}
   <div class="alert alert-warning mb-0">
     <i class="bi bi-wifi-off me-2"></i>
-    <strong>Stazione CFR non raggiunta</strong> — uso temperatura da previsione. ({{ errore_cfr }})
+    <strong>Temperatura esterna misurata non disponibile</strong> — uso la previsione. ({{ errore_temp }})
   </div>
   {% endif %}
 
@@ -44,7 +44,7 @@
             <div class="tp-hero-meta" id="heroExtra">
               <div>{{ attuale.meteo_icon }} {{ attuale.meteo_desc }}</div>
               {% if attuale.pioggia_prob > 20 %}<div>🌧 pioggia {{ attuale.pioggia_prob }}%</div>{% endif %}
-              {% if cfr_info %}<span class="tp-hero-tag"><i class="bi bi-broadcast"></i>CFR {{ cfr_info.ora }}</span>{% endif %}
+              {% if temp_info %}<span class="tp-hero-tag" title="{{ temp_info.nome }}"><i class="bi bi-broadcast"></i>{{ 'Netatmo' if temp_info.fonte == 'netatmo' else 'CFR' }} {{ temp_info.ora }}</span>{% endif %}
             </div>
           </div>
         </div>

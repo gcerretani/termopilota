@@ -68,7 +68,7 @@ def test_affiancata_senza_margine(admin_client, finti):
 
 def test_api_stanza_ha_l_ora_di_lettura_dei_due_dispositivi(utente_client, finti):
     d = utente_client.get("/api/stanze/stanza-1").get_json()
-    assert set(d["letti_alle"]) == {"ac", "netatmo"} and all(d["letti_alle"].values())
+    assert {"ac", "netatmo"} <= set(d["letti_alle"]) and all(d["letti_alle"].values())
 
 
 def test_storico_combinato(utente_client, finti):

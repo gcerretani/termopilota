@@ -116,7 +116,7 @@ def test_api_dashboard_struttura(admin_client):
     for chiave in ("prezzi", "raccomandazioni", "attuale", "ore_gas_oggi",
                    "ore_ac_oggi", "errori", "generato_alle"):
         assert chiave in dati
-    assert dati["errori"] == {"meteo": None, "cfr": None}
+    assert dati["errori"] == {"meteo": None, "temp_esterna": None}
     assert len(dati["raccomandazioni"]) == 24
 
 

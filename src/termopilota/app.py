@@ -4,7 +4,7 @@
 Sistema di raccomandazione energetica per riscaldamento domestico.
 Confronta costo riscaldamento: caldaia a condensazione (gas) vs pompa di calore (AC).
 
-Temperatura attuale:  CFR Toscana (stazione configurabile)
+Temperatura attuale:  stazione meteo Netatmo o CFR Toscana (priorita' configurabile)
 Previsioni 48h:       Open-Meteo (gratuito, nessuna API key)
 Prezzi gas:           TTF da Yahoo Finance (automatico, aggiornato ogni ora)
 Prezzi luce:          PUN da ENTSO-E (con chiave gratuita) oppure manuale
@@ -40,6 +40,7 @@ from termopilota import osservatore
 from termopilota import registro
 from termopilota import pannello
 from termopilota import storico
+from termopilota import temperatura_esterna
 from termopilota.versione import VERSIONE
 from termopilota.auth import (
     User, authenticate, change_password, count_admin_attivi, create_user,
@@ -142,6 +143,11 @@ DEFAULT_CONFIG = {
     "netatmo_polling_secondi": 120,
     "cfr_station_id": "",
     "cfr_station_name": "",
+    # Temperatura esterna attuale: fonte preferita (l'altra fa da riserva), modulo
+    # esterno Netatmo ("" = l'unico presente), eta' massima di una misura valida
+    "priorita_temp_esterna": "netatmo",  # netatmo | cfr
+    "meteo_modulo_id": "",
+    "temp_esterna_max_eta_minuti": 60,
     "lat": 0.0,
     "lon": 0.0,
 }
@@ -221,6 +227,54 @@ def scarica_temp_cfr(station_id: str) -> Optional[dict]:
     except Exception:
         pass
     return None
+
+
+# ─── Temperatura esterna attuale: Netatmo, CFR o previsione ──────────────────
+
+def misure_temp_esterna(cfg: dict) -> dict:
+    """{netatmo: {temp, ts, nome, id} | None, cfr: {temp, ts, nome, id} | None}.
+
+    Il modulo Netatmo arriva dalla fotografia dei dispositivi (parte 'meteo',
+    5 min di cache), la CFR dalla sua cache di 10 min."""
+    misure = {"netatmo": None, "cfr": None}
+    station_id = cfg.get("cfr_station_id", "")
+    try:
+        cfr = scarica_temp_cfr(station_id)
+        if cfr:
+            misure["cfr"] = {"temp": cfr["temp"], "ts": cfr["ts"], "id": station_id,
+                             "nome": cfg.get("cfr_station_name") or f"Stazione CFR {station_id}"}
+    except Exception as e:
+        logger.info("Temperatura CFR non disponibile: %s", e)
+    try:
+        snap = dispositivi.snapshot(cfg, parti=("meteo",))
+        modulo = dispositivi.modulo_meteo(snap, cfg.get("meteo_modulo_id", ""))
+        if modulo and modulo.get("temperatura") is not None and modulo.get("ts"):
+            misure["netatmo"] = {"temp": modulo["temperatura"], "ts": datetime.fromtimestamp(modulo["ts"]),
+                                 "id": modulo["id"], "nome": modulo.get("nome") or "Stazione Netatmo"}
+    except Exception as e:
+        logger.info("Temperatura Netatmo non disponibile: %s", e)
+    return misure
+
+
+def _max_eta_temp(cfg: dict) -> float:
+    return _limita(cfg.get("temp_esterna_max_eta_minuti"), temperatura_esterna.MAX_ETA_DEFAULT_MIN,
+                   temperatura_esterna.MAX_ETA_MIN, temperatura_esterna.MAX_ETA_MAX)
+
+
+def temperatura_esterna_attuale(cfg: dict, misure: Optional[dict] = None) -> Optional[dict]:
+    """Misura valida della fonte preferita, o della riserva: {temp, ts, fonte, nome} o None
+    (allora il motore usa la previsione)."""
+    if misure is None:
+        misure = misure_temp_esterna(cfg)
+    return temperatura_esterna.scegli(misure, temperatura_esterna.ordine(cfg.get("priorita_temp_esterna")),
+                                      _max_eta_temp(cfg), datetime.now())
+
+
+def raccomandazioni_con_temp(cfg: dict, prezzi: dict, scelta: Optional[dict]) -> list:
+    """Motore delle raccomandazioni con la temperatura esterna misurata sull'ora corrente."""
+    previsioni = scarica_previsioni(cfg.get("lat", 0.0), cfg.get("lon", 0.0))
+    return calcola_raccomandazioni(previsioni, cfg, scelta["temp"] if scelta else None, prezzi,
+                                   pannello.kw_per_ora(cfg), fonte_attuale=scelta["fonte"] if scelta else "cfr")
 
 
 # ─── Previsioni 48h: Open-Meteo con fallback Met.no ──────────────────────────
@@ -421,40 +475,35 @@ def login_google_callback():
 def dati_dashboard(cfg: dict) -> dict:
     """Raccoglie tutti i dati della dashboard: usato dal render Jinja al primo
     paint e dall'API /api/dashboard per il refresh live senza ricaricare."""
-    errore_meteo = errore_cfr = None
+    errore_meteo = errore_temp = None
     raccomandazioni = []
     attuale = None
-    cfr_info = None
+    temp_info = None
 
     prezzi = calcola_prezzi(cfg)
 
-    station_id = cfg.get("cfr_station_id", "")
-    lat = cfg.get("lat", 0.0)
-    lon = cfg.get("lon", 0.0)
+    misure = misure_temp_esterna(cfg)
+    scelta = temperatura_esterna_attuale(cfg, misure)
+    if scelta:
+        temp_info = {
+            "temp": scelta["temp"],
+            "ora": scelta["ts"].strftime("%H:%M"),
+            "data": scelta["ts"].strftime("%d/%m/%Y"),
+            "fonte": scelta["fonte"],
+            "nome": scelta["nome"],
+        }
+    elif any(misure.values()) or cfg.get("cfr_station_id"):
+        # Fonti configurate ma nessuna misura recente: si usa la previsione
+        errore_temp = "nessuna misura recente"
 
     try:
-        misura_cfr = scarica_temp_cfr(station_id)
-        if misura_cfr:
-            cfr_info = {
-                "temp": misura_cfr["temp"],
-                "ora": misura_cfr["ts"].strftime("%H:%M"),
-                "data": misura_cfr["ts"].strftime("%d/%m/%Y"),
-            }
-    except Exception as e:
-        errore_cfr = str(e)
-        misura_cfr = None
-
-    temp_cfr_val = misura_cfr["temp"] if misura_cfr else None
-
-    try:
-        previsioni = scarica_previsioni(lat, lon)
-        raccomandazioni = calcola_raccomandazioni(previsioni, cfg, temp_cfr_val, prezzi, pannello.kw_per_ora(cfg))
+        raccomandazioni = raccomandazioni_con_temp(cfg, prezzi, scelta)
         ora_str = datetime.now().strftime("%Y-%m-%dT%H:00")
         attuale = next((r for r in raccomandazioni if r["ora"] == ora_str),
                        raccomandazioni[0] if raccomandazioni else None)
-        if attuale and temp_cfr_val is not None:
-            attuale["temp_esterna"] = temp_cfr_val
-            attuale["fonte_temp"] = "cfr"
+        if attuale and scelta:
+            attuale["temp_esterna"] = scelta["temp"]
+            attuale["fonte_temp"] = scelta["fonte"]
     except Exception as e:
         errore_meteo = str(e)
 
@@ -466,11 +515,11 @@ def dati_dashboard(cfg: dict) -> dict:
     return {
         "prezzi": prezzi,
         "attuale": attuale,
-        "cfr_info": cfr_info,
+        "temp_info": temp_info,
         "raccomandazioni": raccomandazioni,
         "ore_gas_oggi": ore_gas_oggi,
         "ore_ac_oggi": ore_ac_oggi,
-        "errori": {"meteo": errore_meteo, "cfr": errore_cfr},
+        "errori": {"meteo": errore_meteo, "temp_esterna": errore_temp},
         "generato_alle": datetime.now().strftime("%H:%M"),
     }
 
@@ -487,7 +536,7 @@ def index():
         cfg=cfg,
         prezzi=dati["prezzi"],
         attuale=dati["attuale"],
-        cfr_info=dati["cfr_info"],
+        temp_info=dati["temp_info"],
         raccomandazioni=dati["raccomandazioni"],
         raccomandazioni_json=json.dumps(dati["raccomandazioni"]),
         ore_gas_oggi=dati["ore_gas_oggi"],
@@ -495,7 +544,7 @@ def index():
         stato_stanze_dashboard=stato_stanze_dashboard,
         consumo_ac_oggi=consumo_ac_oggi(),
         errore_meteo=dati["errori"]["meteo"],
-        errore_cfr=dati["errori"]["cfr"],
+        errore_temp=dati["errori"]["temp_esterna"],
         generato_alle=dati["generato_alle"],
     )
 
@@ -510,7 +559,7 @@ def pagina_previsioni():
         cfg=cfg,
         raccomandazioni_json=json.dumps(dati["raccomandazioni"]),
         errore_meteo=dati["errori"]["meteo"],
-        errore_cfr=dati["errori"]["cfr"],
+        errore_temp=dati["errori"]["temp_esterna"],
         generato_alle=dati["generato_alle"],
     )
 
@@ -540,7 +589,7 @@ def pagina_dispositivi():
     return render_template("dispositivi.html")
 
 
-TIPI_DISPOSITIVO = ("ac", "stanza", "casa")
+TIPI_DISPOSITIVO = ("ac", "stanza", "casa", "meteo")
 
 
 @app.route("/dispositivi/<tipo>/<ident>")
@@ -787,10 +836,7 @@ def api_prezzi():
 def api_dati():
     cfg = carica_config()
     prezzi = calcola_prezzi(cfg)
-    misura_cfr = scarica_temp_cfr(cfg.get("cfr_station_id", ""))
-    temp_cfr = misura_cfr["temp"] if misura_cfr else None
-    previsioni = scarica_previsioni(cfg.get("lat", 0.0), cfg.get("lon", 0.0))
-    return jsonify(calcola_raccomandazioni(previsioni, cfg, temp_cfr, prezzi, pannello.kw_per_ora(cfg)))
+    return jsonify(raccomandazioni_con_temp(cfg, prezzi, temperatura_esterna_attuale(cfg)))
 
 
 @app.route("/api/temp-cfr")
@@ -808,6 +854,33 @@ def api_temp_cfr():
             "timestamp": misura["ts"].isoformat(),
         })
     return jsonify({"errore": "Dati CFR non disponibili"}), 503
+
+
+def _misura_json(misura: Optional[dict], adesso: datetime) -> Optional[dict]:
+    if not misura:
+        return None
+    eta = temperatura_esterna.eta_minuti(misura, adesso)
+    return {**misura, "ts": misura["ts"].isoformat(timespec="minutes"),
+            "eta_minuti": round(eta) if eta is not None else None}
+
+
+@app.route("/api/temp-esterna")
+@login_required
+def api_temp_esterna():
+    """Temperatura esterna attuale: la misura scelta e quelle di tutte le fonti."""
+    cfg = carica_config()
+    misure = misure_temp_esterna(cfg)
+    scelta = temperatura_esterna_attuale(cfg, misure)
+    adesso = datetime.now()
+    max_eta = _max_eta_temp(cfg)
+    return jsonify({
+        "scelta": _misura_json(scelta, adesso),
+        "fonti": {f: (_misura_json(m, adesso) | {"valida": temperatura_esterna.valida(m, max_eta, adesso)}
+                      if m else None)
+                  for f, m in misure.items()},
+        "priorita": temperatura_esterna.ordine(cfg.get("priorita_temp_esterna")),
+        "max_eta_minuti": max_eta,
+    })
 
 
 VENTOLE_AC = ("auto", "low", "medium", "high", "turbo")
@@ -866,7 +939,7 @@ def api_config():
                      "legrand_client_id", "legrand_client_secret",
                      "legrand_subscription_key", "legrand_plant_id",
                      "google_client_id", "google_client_secret",
-                     "cfr_station_id", "cfr_station_name")
+                     "cfr_station_id", "cfr_station_name", "meteo_modulo_id")
         for campo in campi_float:
             if campo in dati:
                 try:
@@ -889,6 +962,15 @@ def api_config():
             cfg["automazione_simulazione"] = bool(dati["automazione_simulazione"])
         if dati.get("ac_ventola") in VENTOLE_AC:
             cfg["ac_ventola"] = dati["ac_ventola"]
+        if dati.get("priorita_temp_esterna") in temperatura_esterna.FONTI:
+            cfg["priorita_temp_esterna"] = dati["priorita_temp_esterna"]
+        if "temp_esterna_max_eta_minuti" in dati:
+            try:
+                cfg["temp_esterna_max_eta_minuti"] = int(max(
+                    temperatura_esterna.MAX_ETA_MIN,
+                    min(temperatura_esterna.MAX_ETA_MAX, float(dati["temp_esterna_max_eta_minuti"]))))
+            except (ValueError, TypeError):
+                pass
         if dati.get("ac_modalita_notte") in MODALITA_NOTTE_AC:
             cfg["ac_modalita_notte"] = dati["ac_modalita_notte"]
         for campo, minimo, massimo in (("notte_inizio", 0, 23), ("notte_fine", 0, 23)):
@@ -929,6 +1011,7 @@ def api_config():
         salva_config(cfg)
         _cache_meteo["timestamp"] = 0.0
         _cache_cfr["timestamp"] = 0.0
+        dispositivi.invalida("meteo")
         get_servizio().ricalcola()    # zone e soglie nuove al ciclo subito, non tra 15 min
         cambiate = sorted(k for k in set(prima) | set(cfg)
                           if k != "ultima_modifica_fissi" and prima.get(k) != cfg.get(k))
@@ -1105,6 +1188,9 @@ def api_dispositivi_stato():
         ac["zone"] = [z.get("nome") for z in dispositivi.zone_collegate(cfg, "ac", ac["id"])]
     for st in riepilogo["stanze"]:
         st["zone"] = [z.get("nome") for z in dispositivi.zone_collegate(cfg, "stanza", st["id"])]
+    modulo = dispositivi.modulo_meteo(dispositivi.snapshot(cfg), cfg.get("meteo_modulo_id", ""))
+    for m in riepilogo["meteo"]:
+        m["in_uso"] = bool(modulo) and m["id"] == modulo["id"]
     return jsonify(riepilogo)
 
 
@@ -1118,7 +1204,8 @@ def api_dispositivo(tipo, ident):
     decisioni = {z.get("room_id"): z for z in get_servizio().stato()["zone"]}
     zone = dispositivi.zone_collegate(cfg, tipo, ident)
     # L'ora dell'ultima lettura riuscita della parte che contiene il dispositivo
-    letto_alle = (snap.get("letti_alle") or {}).get("ac" if tipo == "ac" else "netatmo")
+    parte = {"ac": "ac", "meteo": "meteo"}.get(tipo, "netatmo")
+    letto_alle = (snap.get("letti_alle") or {}).get(parte)
     risposta = {"tipo": tipo, "id": ident, "errori": snap["errori"], "letto_alle": letto_alle,
                 "zone": [{"nome": z.get("nome"), "room_id": z.get("room_id"),
                           "automazione": z.get("automazione", True) is not False,
@@ -1140,6 +1227,16 @@ def api_dispositivo(tipo, ident):
                          "moduli": [{k: v for k, v in m.items() if k != "grezzo"} for m in st["moduli"]],
                          "grezzo": {"stanza": st["grezzo"], "moduli": [m["grezzo"] for m in st["moduli"]]},
                          "casa": {k: v for k, v in (snap["casa"] or {}).items() if k != "grezzo"}})
+    elif tipo == "meteo":
+        m = (snap.get("meteo") or {}).get(ident)
+        if not m:
+            return jsonify({"errore": "Modulo esterno non trovato", **risposta}), 404
+        in_uso = dispositivi.modulo_meteo(snap, cfg.get("meteo_modulo_id", ""))
+        risposta.update({"nome": m["nome"], "errore": m["errore"],
+                         "stato": {k: v for k, v in m.items() if k not in ("grezzo", "_campi")}
+                                  | {"in_uso": bool(in_uso) and in_uso["id"] == ident},
+                         "grezzo": m["grezzo"],
+                         "cfr": {"id": cfg.get("cfr_station_id", ""), "nome": cfg.get("cfr_station_name", "")}})
     else:
         casa = snap["casa"]
         if not casa or casa.get("id") != ident:
@@ -1153,8 +1250,8 @@ def api_dispositivo(tipo, ident):
 @app.route("/api/dispositivi/<tipo>/<ident>/storico")
 @login_required
 def api_dispositivo_storico(tipo, ident):
-    if tipo not in ("ac", "stanza"):
-        return jsonify({"errore": "Storico disponibile solo per condizionatori e stanze"}), 404
+    if tipo not in ("ac", "stanza", "meteo"):
+        return jsonify({"errore": "Storico disponibile solo per condizionatori, stanze e stazione meteo"}), 404
     oggi = datetime.now().date()
     da = request.args.get("da", (oggi - timedelta(days=1)).isoformat())
     a = request.args.get("a", oggi.isoformat())
@@ -1170,6 +1267,10 @@ def api_dispositivo_storico(tipo, ident):
     risposta = {"da": da, "a": a, "risoluzione": risoluzione, "punti": punti}
     if tipo == "ac" and risoluzione == "grezza":
         risposta["energia"] = storico.energia_ac(da, a, "oraria", ident)
+    station_id = carica_config().get("cfr_station_id", "")
+    if tipo == "meteo" and station_id:
+        # La stazione CFR, per il confronto con il modulo esterno
+        risposta["cfr"] = storico.leggi_letture("meteo", f"cfr:{station_id}", da, a, risoluzione)
     return jsonify(risposta)
 
 
@@ -2075,15 +2176,12 @@ def account():
 # ─── Avvio servizi in background (compatibile gunicorn --preload) ────────────
 
 def raccomandazione_ora_corrente(cfg: dict) -> Optional[dict]:
-    """Riga dell'ora corrente del motore delle raccomandazioni (con CFR e
-    pannello), piu' i prezzi: la usano storico e automazione. None se i dati
-    non sono disponibili."""
+    """Riga dell'ora corrente del motore delle raccomandazioni (con la
+    temperatura esterna misurata e il pannello), piu' i prezzi: la usano
+    storico e automazione. None se i dati non sono disponibili."""
     try:
         prezzi = calcola_prezzi(cfg)
-        misura_cfr = scarica_temp_cfr(cfg.get("cfr_station_id", ""))
-        temp_cfr = misura_cfr["temp"] if misura_cfr else None
-        previsioni = scarica_previsioni(cfg.get("lat", 0.0), cfg.get("lon", 0.0))
-        raccomandazioni = calcola_raccomandazioni(previsioni, cfg, temp_cfr, prezzi, pannello.kw_per_ora(cfg))
+        raccomandazioni = raccomandazioni_con_temp(cfg, prezzi, temperatura_esterna_attuale(cfg))
     except Exception as e:
         logger.warning("Raccomandazione dell'ora corrente non disponibile: %s", e)
         return None
@@ -2097,7 +2195,13 @@ def raccomandazione_ora_corrente(cfg: dict) -> Optional[dict]:
 def _letture_dispositivi() -> list:
     """Letture per lo storico (ogni 15 min): niente se non ci sono dispositivi."""
     cfg = carica_config()
-    return dispositivi.letture_per_storico(dispositivi.snapshot(cfg))
+    righe = dispositivi.letture_per_storico(dispositivi.snapshot(cfg))
+    cfr = misure_temp_esterna(cfg)["cfr"]
+    if cfr:
+        # Anche la CFR, per confrontarla con il modulo esterno Netatmo
+        righe.append(dispositivi.riga_meteo(f"cfr:{cfr['id']}", cfr["nome"], cfr["temp"],
+                                            extra={"ora_misura": cfr["ts"].isoformat(timespec="minutes")}))
+    return righe
 
 
 def _campione_corrente() -> Optional[dict]:

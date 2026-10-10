@@ -143,6 +143,33 @@
         <label class="form-label">Nome stazione CFR</label>
         <input type="text" class="form-control" id="cfrStationName" value="{{ cfg.cfr_station_name }}" placeholder="es. Poggio al Vento">
       </div>
+      <div class="col-md-3">
+        <label class="form-label">Modulo esterno Netatmo</label>
+        <select class="form-select" id="meteoModulo" data-valore="{{ cfg.meteo_modulo_id }}">
+          <option value="">Automatico (l'unico presente)</option>
+        </select>
+        <div class="form-text">Stazione meteo Netatmo (serve il permesso <code>read_station</code>, in Credenziali API)</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fonte preferita</label>
+        <select class="form-select" id="prioritaTempEsterna">
+          <option value="netatmo" {{ 'selected' if cfg.priorita_temp_esterna != 'cfr' }}>Netatmo, poi CFR</option>
+          <option value="cfr" {{ 'selected' if cfg.priorita_temp_esterna == 'cfr' }}>CFR, poi Netatmo</option>
+        </select>
+        <div class="form-text">Senza misure recenti si usa la previsione</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Età massima della misura</label>
+        <div class="input-group">
+          <input type="number" min="10" max="180" step="5" class="form-control" id="tempEsternaMaxEta" value="{{ cfg.temp_esterna_max_eta_minuti }}">
+          <span class="input-group-text">min</span>
+        </div>
+        <div class="form-text">Oltre, si passa alla fonte successiva</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Temperatura esterna adesso</label>
+        <ul class="list-unstyled small mb-0" id="fontiTempEsterna"><li class="text-muted">Caricamento…</li></ul>
+      </div>
     </div>
 
     <!-- Pannello adottato -->
@@ -309,6 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!m) return;
     try { await m.miaPosizione(); } catch (e) { alert(e.message); }
   }));
+  caricaFontiTemp();
   const netatmo = document.getElementById('posizioneNetatmo');
   if (netatmo) netatmo.addEventListener('click', async () => {
     try {
@@ -320,6 +348,42 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <script>
+// Moduli esterni Netatmo e confronto tra le fonti della temperatura esterna
+async function caricaFontiTemp() {
+  const select = document.getElementById('meteoModulo');
+  const lista = document.getElementById('fontiTempEsterna');
+  try {
+    const stato = await apiGetJson('/api/dispositivi/stato');
+    for (const m of stato.meteo || []) {
+      const opt = new Option(`${m.nome} (${m.stazione})`, m.id);
+      opt.selected = m.id === select.dataset.valore;
+      select.add(opt);
+    }
+  } catch (e) { /* senza Netatmo resta solo "Automatico" */ }
+  try {
+    const t = await apiGetJson('/api/temp-esterna');
+    const nomi = { netatmo: 'Netatmo', cfr: 'CFR' };
+    lista.replaceChildren(...t.priorita.map(fonte => {
+      const m = t.fonti[fonte];
+      const li = document.createElement('li');
+      li.textContent = m
+        ? `${nomi[fonte]}: ${m.temp.toFixed(1)}° (${m.eta_minuti} min fa)`
+        : `${nomi[fonte]}: nessuna misura`;
+      if (t.scelta && t.scelta.fonte === fonte) li.classList.add('fw-bold');
+      else if (!m || !m.valida) li.classList.add('text-muted');
+      return li;
+    }));
+    if (!t.scelta) {
+      const li = document.createElement('li');
+      li.className = 'fw-bold';
+      li.textContent = 'In uso: previsione Open-Meteo';
+      lista.append(li);
+    }
+  } catch (e) {
+    lista.innerHTML = '<li class="text-danger">Non disponibile</li>';
+  }
+}
+
 async function salvaImpostazioni() {
   const payload = {
     gas_fisso_smc:              parseFloat(document.getElementById('gasFisso').value),
@@ -359,6 +423,9 @@ async function salvaImpostazioni() {
     lon:                        parseFloat(document.getElementById('lon').value),
     cfr_station_id:             document.getElementById('cfrStationId').value.trim(),
     cfr_station_name:           document.getElementById('cfrStationName').value.trim(),
+    meteo_modulo_id:            document.getElementById('meteoModulo').value,
+    priorita_temp_esterna:      document.getElementById('prioritaTempEsterna').value,
+    temp_esterna_max_eta_minuti: parseInt(document.getElementById('tempEsternaMaxEta').value, 10),
   };
 
   if (isNaN(payload.gas_fisso_smc) || isNaN(payload.luce_fisso_kwh)) {

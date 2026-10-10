@@ -5,7 +5,10 @@ Provider termostati Netatmo per BTicino Smarther with Netatmo.
 
 App: Home + Control (Legrand/Netatmo/BTicino) — account Netatmo
 Registrazione app: https://dev.netatmo.com
-Scopes necessari: read_smarther write_smarther
+Scopes necessari: read_smarther write_smarther; read_station per la stazione meteo
+(modulo esterno: temperatura esterna misurata). Gli scope non si impostano su
+dev.netatmo.com: li chiede l'URL di autorizzazione, quindi aggiungerne uno
+richiede di ricollegare l'account.
 
 Modalita' di una stanza (setroomthermpoint): 'manual' (setpoint fisso fino a
 endtime), 'max' (massimo fino a endtime), 'home' (segue la modalita' della
@@ -32,6 +35,10 @@ logger = logging.getLogger(__name__)
 NETATMO_AUTH_URL = "https://api.netatmo.com/oauth2/authorize"
 NETATMO_TOKEN_URL = "https://api.netatmo.com/oauth2/token"
 NETATMO_BASE = "https://api.netatmo.com/api"
+
+SCOPE = "read_smarther write_smarther read_station"
+SCOPE_STAZIONE = "read_station"
+TIPO_MODULO_ESTERNO = "NAModule1"    # modulo esterno della stazione meteo
 
 MODALITA_STANZA = ("manual", "max", "home")
 
@@ -144,7 +151,7 @@ class NetatmoClient(ThermostatProvider):
         params = urlencode({
             "client_id": self.client_id,
             "redirect_uri": redirect_uri,
-            "scope": "read_smarther write_smarther",
+            "scope": SCOPE,
             "response_type": "code",
             "state": state,
         })
@@ -200,6 +207,13 @@ class NetatmoClient(ThermostatProvider):
     def autenticato(self) -> bool:
         return bool(self._token.get("access_token"))
 
+    def ha_scope(self, scope: str) -> bool:
+        """True se il token concesso include `scope` (Netatmo lo restituisce come lista)."""
+        concessi = self._token.get("scope") or []
+        if isinstance(concessi, str):
+            concessi = concessi.split()
+        return scope in concessi
+
     # ── Lettura ───────────────────────────────────────────────────────────────
 
     def _homesdata(self, forza: bool = False) -> list:
@@ -253,6 +267,28 @@ class NetatmoClient(ThermostatProvider):
         dati = next((h for h in self._homesdata() if h.get("id") == home_id), {})
         corpo = self._homestatus(home_id)
         return {"dati": dati, "stato": corpo.get("home", {}), "errori": corpo.get("errors", []) or []}
+
+    def stato_stazioni(self) -> list:
+        """Moduli esterni delle stazioni meteo (getstationsdata), normalizzati.
+
+        Senza lo scope read_station (token autorizzato prima che servisse) non
+        chiama Netatmo e restituisce una lista vuota."""
+        if not self.ha_scope(SCOPE_STAZIONE):
+            return []
+        resp = chiamata(
+            "netatmo", "get",
+            f"{NETATMO_BASE}/getstationsdata",
+            headers=self._headers(),
+            params={"get_favorites": "false"},
+            timeout=TIMEOUT_S,
+        )
+        resp.raise_for_status()
+        moduli = []
+        for stazione in resp.json().get("body", {}).get("devices", []) or []:
+            for modulo in stazione.get("modules", []) or []:
+                if modulo.get("type") == TIPO_MODULO_ESTERNO:
+                    moduli.append(normalizza_modulo_esterno(modulo, stazione))
+        return moduli
 
     # ── Comandi ───────────────────────────────────────────────────────────────
 
@@ -350,6 +386,32 @@ def normalizza_stanza(r: dict) -> dict:
         "raggiungibile": r.get("reachable", True) is not False,
         "anticipo": bool(r.get("anticipating")),
         "_campi": sorted(r.keys()),
+    }
+
+
+def normalizza_modulo_esterno(modulo: dict, stazione: dict) -> dict:
+    """Modulo esterno di getstationsdata nei campi usati da TermoPilota.
+
+    `ts` e' l'ora della misura (epoch, da dashboard_data.time_utc): un modulo
+    non raggiungibile non ha dashboard_data, quindi temperatura e ora sono None."""
+    misure = modulo.get("dashboard_data") or {}
+    return {
+        "id": modulo.get("_id"),
+        "nome": modulo.get("module_name") or "Modulo esterno",
+        "stazione": stazione.get("station_name") or stazione.get("home_name") or "Stazione meteo",
+        "stazione_id": stazione.get("_id"),
+        "temperatura": _num(misure.get("Temperature")),
+        "umidita": _num(misure.get("Humidity")),
+        "minima": _num(misure.get("min_temp")),
+        "massima": _num(misure.get("max_temp")),
+        "tendenza": misure.get("temp_trend"),
+        "ts": misure.get("time_utc"),
+        "batteria_pct": modulo.get("battery_percent"),
+        "segnale_radio": modulo.get("rf_status"),
+        "firmware": modulo.get("firmware"),
+        "raggiungibile": modulo.get("reachable", True) is not False and bool(misure),
+        "_campi": sorted(misure.keys()),
+        "grezzo": modulo,
     }
 
 

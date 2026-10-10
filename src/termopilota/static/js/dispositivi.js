@@ -19,6 +19,10 @@
     || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0);
   // Netatmo: wifi_strength piu' basso = segnale migliore (56 buono, 71 medio, 86 debole)
   const qualitaWifi = (v) => v === null || v === undefined ? '—' : v <= 60 ? 'buono' : v <= 75 ? 'medio' : 'debole';
+  // Moduli della stazione meteo: rf_status piu' basso = segnale radio migliore (60 buono, 90 debole)
+  const qualitaRadio = (v) => v === null || v === undefined ? '—' : v <= 70 ? 'buono' : v <= 85 ? 'medio' : 'debole';
+  const TENDENZE = { up: 'in salita', down: 'in discesa', stable: 'stabile' };
+  const oraMisura = (iso) => iso ? iso.slice(11, 16) : '—';
 
   function dato(etichetta, valore) {
     return `<div class="tp-dato"><div class="tp-dato-label">${escapeHtml(etichetta)}</div>
@@ -150,6 +154,30 @@
     </a></div>`;
   }
 
+  function cardMeteo(m) {
+    const tag = [];
+    if (m.in_uso) tag.push('<span class="tp-badge-stato ac"><i class="bi bi-check2-circle"></i>in uso per i calcoli</span>');
+    if (m.raggiungibile === false) tag.push('<span class="tp-badge-stato danger"><i class="bi bi-wifi-off"></i>non raggiungibile</span>');
+    if (m.batteria_pct !== null && m.batteria_pct !== undefined && m.batteria_pct < 20) {
+      tag.push(`<span class="tp-badge-stato danger"><i class="bi bi-battery"></i>batteria ${percento(m.batteria_pct)}</span>`);
+    }
+    return `<div class="col-md-6 col-xl-4"><a class="tp-card d-block h-100 text-reset text-decoration-none" href="/dispositivi/meteo/${enc(m.id)}">
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <div class="min-w-0">
+          <div class="fw-semibold text-truncate">${escapeHtml(m.nome)}</div>
+          <div class="small tp-muted mt-1">${escapeHtml(m.stazione || '')} · misura delle ${oraMisura(m.ora_misura)}</div>
+        </div>
+        <div class="zona-temp">${gradi(m.temperatura)}</div>
+      </div>
+      ${tag.length ? `<div class="tp-list-tags">${tag.join('')}</div>` : ''}
+      <div class="small tp-muted mt-3 d-flex flex-wrap gap-3">
+        <span><i class="bi bi-droplet"></i> ${percento(m.umidita)}</span>
+        <span><i class="bi bi-arrow-down-up"></i> ${gradi(m.minima)} / ${gradi(m.massima)}</span>
+        <span><i class="bi bi-battery-half"></i> ${percento(m.batteria_pct)}</span>
+      </div>
+    </a></div>`;
+  }
+
   async function caricaElenco() {
     try {
       const dati = await apiGetJson('/api/dispositivi/stato');
@@ -159,6 +187,9 @@
       const vuotoSt = '<div class="col-12"><div class="tp-card tp-muted small">Nessun termostato: collega Netatmo e scegli l\'impianto in Impostazioni → Credenziali API.</div></div>';
       document.getElementById('listaAc').innerHTML = dati.ac.length ? dati.ac.map(cardAc).join('') : vuotoAc;
       document.getElementById('listaStanze').innerHTML = dati.stanze.length ? dati.stanze.map(cardStanza).join('') : vuotoSt;
+      const vuotoMeteo = '<div class="col-12"><div class="tp-card tp-muted small">Nessuna stazione meteo: se ne hai una Netatmo, premi di nuovo "Autorizza con Netatmo" in Impostazioni → Credenziali API (serve il permesso read_station).</div></div>';
+      const meteo = dati.meteo || [];
+      document.getElementById('listaMeteo').innerHTML = meteo.length ? meteo.map(cardMeteo).join('') : vuotoMeteo;
       const casaCard = document.getElementById('casaCard');
       if (dati.casa) {
         casaCard.style.display = '';
@@ -201,6 +232,7 @@
 
   function datiPrincipali(d) {
     const s = d.stato || {};
+    if (tipo === 'meteo') return datiMeteo(s);
     if (tipo === 'ac') {
       const filtro = s.filtro_uso_h !== null && s.filtro_uso_h !== undefined
         ? `${s.filtro_uso_h} / ${s.filtro_capacita_h || '?'} h` : '—';
@@ -238,6 +270,21 @@
       dato('Programma', escapeHtml(s.programma_attivo || '—')),
       dato('Durata manuale', s.therm_setpoint_default_duration ? `${s.therm_setpoint_default_duration} min` : '—'),
       dato('Ora locale', escapeHtml(s.ora_locale || '—')),
+    ].join('');
+  }
+
+  function datiMeteo(s) {
+    return [
+      ...(s.errore ? [dato('Modulo', `<span class="text-danger">${escapeHtml(s.errore)}</span>`)] : []),
+      dato('Temperatura', gradi(s.temperatura)),
+      dato('Umidità', percento(s.umidita)),
+      dato('Minima / massima oggi', `${gradi(s.minima)} / ${gradi(s.massima)}`),
+      dato('Tendenza', escapeHtml(TENDENZE[s.tendenza] || s.tendenza || '—')),
+      dato('Misura delle', escapeHtml(oraMisura(s.ora_misura))),
+      dato('Batteria', percento(s.batteria_pct)),
+      dato('Segnale radio', qualitaRadio(s.segnale_radio)),
+      dato('Stazione', escapeHtml(s.stazione || '—')),
+      dato('Temperatura esterna', s.in_uso ? 'in uso per i calcoli' : 'non in uso'),
     ].join('');
   }
 
@@ -354,6 +401,10 @@
         return `<div class="${tuttiVuoti ? 'gruppo-vuoto' : ''}">${gruppo(cap, html)}</div>`;
       }).join('') + (d.ocf ? gruppo('ocf (dispositivo)', righe(d.ocf)) : '');
     }
+    if (tipo === 'meteo') {
+      const modulo = Object.fromEntries(Object.entries(g).filter(([k]) => k !== 'dashboard_data'));
+      return gruppo('Misure', righe(g.dashboard_data)) + gruppo('Modulo', righe(modulo));
+    }
     if (tipo === 'stanza') {
       return gruppo('Stanza', righe(g.stanza)) + (g.moduli || []).map((m, i) => gruppo(`Modulo ${i + 1}`, righe(m))).join('');
     }
@@ -381,19 +432,23 @@
       segnalaLettura(d.letto_alle);
       if (!res.ok) {
         document.getElementById('nomeDispositivo').textContent = d.errore || 'Non trovato';
-        document.getElementById('controlli').innerHTML = '';
+        const controlli = document.getElementById('controlli');
+        if (controlli) controlli.innerHTML = '';
         document.getElementById('tuttiValori').innerHTML = '';
         return;
       }
       document.title = `${d.nome} · TermoPilota`;
       document.getElementById('nomeDispositivo').textContent = d.nome;
       document.getElementById('sottotitoloDispositivo').textContent =
-        tipo === 'ac' ? 'Condizionatore Samsung (SmartThings)' : tipo === 'stanza' ? 'Stanza Netatmo' : 'Casa Netatmo';
+        { ac: 'Condizionatore Samsung (SmartThings)', stanza: 'Stanza Netatmo', meteo: 'Modulo esterno della stazione meteo Netatmo' }[tipo]
+        || 'Casa Netatmo';
       document.getElementById('lettoDispositivo').innerHTML = etichettaLettura(d.letto_alle);
       document.getElementById('datiPrincipali').innerHTML = datiPrincipali(d);
       document.getElementById('zoneCollegate').innerHTML = zoneCollegate(d.zone);
       const controlli = document.getElementById('controlli');
-      if (tipo === 'ac') {
+      if (!controlli) {
+        // stazione meteo: sola lettura
+      } else if (tipo === 'ac') {
         controlli.innerHTML = d.controlli && d.controlli.length ? d.controlli.map(controlloAc).join('')
           : '<div class="tp-muted small">Nessun controllo disponibile per questo dispositivo.</div>';
       } else if (tipo === 'stanza') {
@@ -465,6 +520,16 @@
       { label: tipo === 'ac' ? 'Impostata' : 'Termostato', coloreVar: '--chart-neutral',
         data: punti.map(x => x.setpoint), ...linea('neutro', { stepped: true, borderDash: [5, 4], backgroundColor: 'transparent' }) },
     ];
+    if (tipo === 'meteo') {
+      // Il modulo esterno, con la stazione CFR per confronto (stesse ore di lettura)
+      datasets.length = 1;
+      datasets[0].label = 'Netatmo';
+      if (dati.cfr && dati.cfr.length) {
+        const cfr = Object.fromEntries(dati.cfr.map(x => [x.periodo, x.t_ambiente]));
+        datasets.push({ label: 'CFR', coloreVar: '--chart-neutral', data: punti.map(x => cfr[x.periodo] ?? null),
+                        ...linea('neutro', { borderDash: [5, 4], backgroundColor: 'transparent', spanGaps: true }) });
+      }
+    }
     if (tipo === 'stanza' && risoluzione === 'grezza') {
       datasets.push({ label: 'Target', coloreVar: '--green', data: punti.map(x => (x.extra || {}).target ?? null),
                       ...linea('verde', { stepped: true, borderDash: [2, 3], backgroundColor: 'transparent' }) });
@@ -477,7 +542,9 @@
     const opzA = G.opzioniBase({ maxTickX });
     opzA.plugins.mirino = false;
     const barre = (chiave) => ({ backgroundColor: G.colore(chiave), hoverBackgroundColor: G.colore(chiave), borderRadius: 3, maxBarThickness: 24 });
-    if (tipo === 'ac') {
+    if (tipo === 'meteo') {
+      // nessun grafico di attivita' per un sensore
+    } else if (tipo === 'ac') {
       document.getElementById('titoloAttivita').innerHTML = '<i class="bi bi-plug"></i>Consumo';
       document.getElementById('sottotitoloAttivita').textContent = 'kWh elettrici dal contatore del condizionatore';
       const energia = risoluzione === 'grezza' ? (dati.energia || []) : punti.map(x => ({ periodo: x.periodo, kwh: x.kwh }));

@@ -7,6 +7,19 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Aggiunto
+- **Stazione meteo Netatmo**: il modulo esterno diventa una fonte della temperatura esterna attuale,
+  più vicina e più frequente della stazione CFR. Compare in Dispositivi (temperatura, umidità,
+  minima e massima, batteria, segnale) con il grafico delle letture e la stazione CFR sovrapposta per
+  confronto. Serve il permesso `read_station`: in Credenziali API premi di nuovo "Autorizza con
+  Netatmo" (un avviso lo ricorda finché manca).
+
+### Modificato
+- **Temperatura esterna**: in Impostazioni si sceglie la fonte preferita (Netatmo o CFR), l'altra fa
+  da riserva; vale solo una misura recente (60 minuti di default, configurabile), altrimenti si usa la
+  previsione. La Home e le Previsioni indicano la fonte in uso; Impostazioni mostra le due misure a
+  confronto.
+
 ## [1.6.0] - 2026-10-09
 
 ### Modificato

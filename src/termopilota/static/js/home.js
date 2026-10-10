@@ -34,7 +34,7 @@
   }
 
   // ── Hero + KPI ─────────────────────────────────────────────────────────
-  function renderHero(attuale, cfrInfo) {
+  function renderHero(attuale, tempInfo) {
     const card = document.getElementById('heroCard');
     if (!card || !attuale) return;
     const gas = attuale.raccomandazione === 'gas';
@@ -49,7 +49,10 @@
 
     let extra = `<div>${attuale.meteo_icon} ${escapeHtml(attuale.meteo_desc)}</div>`;
     if (attuale.pioggia_prob > 20) extra += `<div>🌧 pioggia ${attuale.pioggia_prob}%</div>`;
-    if (cfrInfo) extra += `<span class="tp-hero-tag"><i class="bi bi-broadcast"></i>CFR ${escapeHtml(cfrInfo.ora)}</span>`;
+    if (tempInfo) {
+      const fonte = tempInfo.fonte === 'netatmo' ? 'Netatmo' : 'CFR';
+      extra += `<span class="tp-hero-tag" title="${escapeHtml(tempInfo.nome)}"><i class="bi bi-broadcast"></i>${fonte} ${escapeHtml(tempInfo.ora)}</span>`;
+    }
     document.getElementById('heroExtra').innerHTML = extra;
 
     document.getElementById('heroCosti').innerHTML =
@@ -129,7 +132,7 @@
         datiOrari = dati.raccomandazioni;
         renderStriscia();
       }
-      renderHero(dati.attuale, dati.cfr_info);
+      renderHero(dati.attuale, dati.temp_info);
       renderKpi(dati);
       renderStanze(dati.stanze);
       const consumo = document.getElementById('statConsumoAc');
