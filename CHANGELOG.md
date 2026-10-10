@@ -7,6 +7,8 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+## [1.7.0] - 2026-10-10
+
 ### Aggiunto
 - **Stazione meteo Netatmo**: il modulo esterno diventa una fonte della temperatura esterna attuale,
   più vicina e più frequente della stazione CFR. Compare in Dispositivi (temperatura, umidità,
@@ -20,7 +22,6 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
   previsione. La Home e le Previsioni indicano la fonte in uso; Impostazioni mostra le due misure a
   confronto.
 - **Python 3.14**: l'immagine Docker e la CI usano Python 3.14, ora la versione minima richiesta.
-
 
 ## [1.6.0] - 2026-10-09
 
@@ -411,7 +412,8 @@ Prima versione stabile.
 - L'automazione dei termostati non tiene ancora conto del pannello: calcola il costo della pompa
   senza compensazione, mentre la dashboard sì.
 
-[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.6.0...HEAD
+[Non rilasciato]: https://github.com/gcerretani/termopilota/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.7.0
 [1.6.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.6.0
 [1.5.0]: https://github.com/gcerretani/termopilota/releases/tag/v1.5.0
 [1.4.3]: https://github.com/gcerretani/termopilota/releases/tag/v1.4.3
