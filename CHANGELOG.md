@@ -7,6 +7,15 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Corretto
+- **Termostati**: la stanza del modulo esterno della stazione meteo non compare più tra i termostati
+  (era segnata "non raggiungibile"): una stanza si mostra solo se contiene un termostato. I sensori
+  della stazione si riconoscono dal tipo di modulo, qualunque sia la stanza o il nome.
+- **Stazione meteo facoltativa**: senza stazione non compare nessun avviso (né in Home né in
+  Previsioni); in Credenziali API resta solo un suggerimento. Se Netatmo non espone la stazione con
+  `getstationsdata`, i valori si leggono dal modulo che la casa già elenca.
+- **Pagina del termostato**: WiFi e firmware del modulo sono due riquadri separati.
+
 ## [1.7.0] - 2026-10-10
 
 ### Aggiunto

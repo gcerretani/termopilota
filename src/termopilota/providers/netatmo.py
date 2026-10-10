@@ -38,7 +38,11 @@ NETATMO_BASE = "https://api.netatmo.com/api"
 
 SCOPE = "read_smarther write_smarther read_station"
 SCOPE_STAZIONE = "read_station"
-TIPO_MODULO_ESTERNO = "NAModule1"    # modulo esterno della stazione meteo
+# Moduli della stazione meteo: stanno nella casa Netatmo (in una stanza qualsiasi) ma non sono
+# termostati. Solo il modulo esterno (NAModule1) e' di default la temperatura esterna.
+TIPI_MODULI_METEO = ("NAMain", "NAModule1", "NAModule2", "NAModule3", "NAModule4")
+TIPI_MODULI_ESTERNI = ("NAModule1",)
+BATTERIA_MV = {"NAModule1": (3600, 6000)}   # tensione per 0% e 100%, se Netatmo non da' la percentuale
 
 MODALITA_STANZA = ("manual", "max", "home")
 
@@ -249,11 +253,12 @@ class NetatmoClient(ThermostatProvider):
             return []
         rooms = []
         for room in home.get("rooms", []):
-            has_thermostat = any(
+            # Una stanza vale se contiene qualcosa che non e' della stazione meteo
+            ha_moduli = any(
                 m for m in home.get("modules", [])
-                if m.get("room_id") == room["id"] and m.get("type") in ("NATherm1", "NRV", "OTM")
+                if m.get("room_id") == room["id"] and m.get("type") not in TIPI_MODULI_METEO
             )
-            if has_thermostat or room.get("module_ids"):
+            if ha_moduli:
                 rooms.append({"id": room["id"], "name": room.get("name", f"Stanza {room['id'][:6]}")})
         return rooms
 
@@ -268,27 +273,39 @@ class NetatmoClient(ThermostatProvider):
         corpo = self._homestatus(home_id)
         return {"dati": dati, "stato": corpo.get("home", {}), "errori": corpo.get("errors", []) or []}
 
-    def stato_stazioni(self) -> list:
-        """Moduli esterni delle stazioni meteo (getstationsdata), normalizzati.
+    def stato_stazioni(self, home_id: Optional[str] = None) -> list:
+        """Sensori delle stazioni meteo (base e moduli), normalizzati; `esterno` indica i moduli
+        che misurano fuori casa.
 
-        Senza lo scope read_station (token autorizzato prima che servisse) non
-        chiama Netatmo e restituisce una lista vuota."""
-        if not self.ha_scope(SCOPE_STAZIONE):
-            return []
-        resp = chiamata(
-            "netatmo", "get",
-            f"{NETATMO_BASE}/getstationsdata",
-            headers=self._headers(),
-            params={"get_favorites": "false"},
-            timeout=TIMEOUT_S,
-        )
-        resp.raise_for_status()
+        Prima getstationsdata (serve lo scope read_station: senza, non chiama Netatmo); se
+        non restituisce niente si leggono quelli della casa `home_id` da homestatus, dove i
+        moduli della stazione compaiono con temperatura e umidita'."""
         moduli = []
-        for stazione in resp.json().get("body", {}).get("devices", []) or []:
-            for modulo in stazione.get("modules", []) or []:
-                if modulo.get("type") == TIPO_MODULO_ESTERNO:
-                    moduli.append(normalizza_modulo_esterno(modulo, stazione))
+        if self.ha_scope(SCOPE_STAZIONE):
+            resp = chiamata(
+                "netatmo", "get",
+                f"{NETATMO_BASE}/getstationsdata",
+                headers=self._headers(),
+                params={"get_favorites": "false"},
+                timeout=TIMEOUT_S,
+            )
+            resp.raise_for_status()
+            for stazione in resp.json().get("body", {}).get("devices", []) or []:
+                for modulo in [stazione, *(stazione.get("modules", []) or [])]:
+                    if modulo.get("type") in TIPI_MODULI_METEO and modulo.get("dashboard_data") is not None:
+                        moduli.append(normalizza_modulo_esterno(modulo, stazione))
+        if not moduli and home_id:
+            moduli = self.moduli_esterni_casa(home_id)
         return moduli
+
+    def moduli_esterni_casa(self, home_id: str) -> list:
+        """Sensori della stazione meteo nella casa, da homestatus; i nomi da homesdata."""
+        casa = next((h for h in self._homesdata() if h.get("id") == home_id), {})
+        nomi = {m.get("id"): m for m in casa.get("modules", []) or []}
+        stato = self._homestatus(home_id).get("home", {})
+        return [normalizza_modulo_casa(m, nomi.get(m.get("id"), {}), casa.get("name"))
+                for m in stato.get("modules", []) or []
+                if m.get("type") in TIPI_MODULI_METEO and m.get("temperature") is not None]
 
     # ── Comandi ───────────────────────────────────────────────────────────────
 
@@ -390,14 +407,16 @@ def normalizza_stanza(r: dict) -> dict:
 
 
 def normalizza_modulo_esterno(modulo: dict, stazione: dict) -> dict:
-    """Modulo esterno di getstationsdata nei campi usati da TermoPilota.
+    """Base o modulo di getstationsdata nei campi usati da TermoPilota.
 
     `ts` e' l'ora della misura (epoch, da dashboard_data.time_utc): un modulo
     non raggiungibile non ha dashboard_data, quindi temperatura e ora sono None."""
     misure = modulo.get("dashboard_data") or {}
     return {
         "id": modulo.get("_id"),
-        "nome": modulo.get("module_name") or "Modulo esterno",
+        "tipo": modulo.get("type"),
+        "esterno": modulo.get("type") in TIPI_MODULI_ESTERNI,
+        "nome": modulo.get("module_name") or "Sensore meteo",
         "stazione": stazione.get("station_name") or stazione.get("home_name") or "Stazione meteo",
         "stazione_id": stazione.get("_id"),
         "temperatura": _num(misure.get("Temperature")),
@@ -411,6 +430,38 @@ def normalizza_modulo_esterno(modulo: dict, stazione: dict) -> dict:
         "firmware": modulo.get("firmware"),
         "raggiungibile": modulo.get("reachable", True) is not False and bool(misure),
         "_campi": sorted(misure.keys()),
+        "grezzo": modulo,
+    }
+
+
+def normalizza_modulo_casa(modulo: dict, dati: dict, nome_casa: Optional[str]) -> dict:
+    """Modulo esterno di homestatus (`dati` = lo stesso modulo in homesdata, per il nome)
+    nei campi di `normalizza_modulo_esterno`. Minima, massima e tendenza non ci sono; senza la
+    percentuale di Netatmo la carica e' stimata dalla tensione (`battery_level`, mV), se nota."""
+    batteria = modulo.get("battery_percent")
+    tensione = _num(modulo.get("battery_level"))
+    if batteria is None and tensione is not None and modulo.get("type") in BATTERIA_MV:
+        minimo, massimo = BATTERIA_MV[modulo["type"]]
+        batteria = round(max(0.0, min(100.0, (tensione - minimo) / (massimo - minimo) * 100)))
+    ts = modulo.get("ts") or modulo.get("last_seen")
+    return {
+        "id": modulo.get("id"),
+        "tipo": modulo.get("type"),
+        "esterno": modulo.get("type") in TIPI_MODULI_ESTERNI,
+        "nome": dati.get("name") or "Sensore meteo",
+        "stazione": nome_casa or "Stazione meteo",
+        "stazione_id": modulo.get("bridge"),
+        "temperatura": _num(modulo.get("temperature")),
+        "umidita": _num(modulo.get("humidity")),
+        "minima": None,
+        "massima": None,
+        "tendenza": None,
+        "ts": ts,
+        "batteria_pct": batteria,
+        "segnale_radio": modulo.get("rf_strength"),
+        "firmware": modulo.get("firmware_revision"),
+        "raggiungibile": modulo.get("reachable", True) is not False and modulo.get("temperature") is not None,
+        "_campi": sorted(modulo.keys()),
         "grezzo": modulo,
     }
 

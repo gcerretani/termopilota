@@ -187,9 +187,10 @@
       const vuotoSt = '<div class="col-12"><div class="tp-card tp-muted small">Nessun termostato: collega Netatmo e scegli l\'impianto in Impostazioni → Credenziali API.</div></div>';
       document.getElementById('listaAc').innerHTML = dati.ac.length ? dati.ac.map(cardAc).join('') : vuotoAc;
       document.getElementById('listaStanze').innerHTML = dati.stanze.length ? dati.stanze.map(cardStanza).join('') : vuotoSt;
-      const vuotoMeteo = '<div class="col-12"><div class="tp-card tp-muted small">Nessuna stazione meteo: se ne hai una Netatmo, premi di nuovo "Autorizza con Netatmo" in Impostazioni → Credenziali API (serve il permesso read_station).</div></div>';
+      // Funzione in piu': la sezione c'e' solo se Netatmo ha una stazione meteo
       const meteo = dati.meteo || [];
-      document.getElementById('listaMeteo').innerHTML = meteo.length ? meteo.map(cardMeteo).join('') : vuotoMeteo;
+      document.getElementById('listaMeteo').innerHTML = meteo.map(cardMeteo).join('');
+      document.getElementById('sezioneMeteo').style.display = meteo.length ? '' : 'none';
       const casaCard = document.getElementById('casaCard');
       if (dati.casa) {
         casaCard.style.display = '';
@@ -260,7 +261,10 @@
         dato('Richiesta di calore', percento(s.richiesta_calore_pct)),
         dato('Caldaia', s.caldaia_accesa ? '<span class="tp-gas">accesa</span>' : 'spenta'),
         dato('Finestra', s.finestra_aperta ? '<span class="text-danger">aperta</span>' : 'chiusa'),
-        ...moduli.map(m => dato(`Modulo ${m.tipo || ''}`, `WiFi ${qualitaWifi(m.wifi)} · fw ${escapeHtml(m.firmware ?? '—')}`)),
+        ...moduli.flatMap(m => [
+          dato(`Modulo ${m.tipo || ''} · WiFi`, qualitaWifi(m.wifi)),
+          dato(`Modulo ${m.tipo || ''} · firmware`, escapeHtml(m.firmware ?? '—')),
+        ]),
       ].join('');
     }
     return [
@@ -440,7 +444,7 @@
       document.title = `${d.nome} · TermoPilota`;
       document.getElementById('nomeDispositivo').textContent = d.nome;
       document.getElementById('sottotitoloDispositivo').textContent =
-        { ac: 'Condizionatore Samsung (SmartThings)', stanza: 'Stanza Netatmo', meteo: 'Modulo esterno della stazione meteo Netatmo' }[tipo]
+        { ac: 'Condizionatore Samsung (SmartThings)', stanza: 'Stanza Netatmo', meteo: 'Sensore della stazione meteo Netatmo' }[tipo]
         || 'Casa Netatmo';
       document.getElementById('lettoDispositivo').innerHTML = etichettaLettura(d.letto_alle);
       document.getElementById('datiPrincipali').innerHTML = datiPrincipali(d);

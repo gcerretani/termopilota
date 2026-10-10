@@ -87,18 +87,17 @@ class NetatmoFinto:
         self.stazione = stazione
         self.eta_misura_min = eta_misura_min
 
-    def stato_stazioni(self):
+    def stato_stazioni(self, home_id=None):
         """Moduli esterni come NetatmoClient.stato_stazioni, misurati `eta_misura_min` fa."""
-        from termopilota.providers.netatmo import TIPO_MODULO_ESTERNO, normalizza_modulo_esterno
+        from termopilota.providers.netatmo import TIPI_MODULI_METEO, normalizza_modulo_esterno
         if self.stazione is None:
             return []
         moduli = []
         for s in self.stazione["body"]["devices"]:
-            for m in s.get("modules", []):
-                if m.get("type") == TIPO_MODULO_ESTERNO:
+            for m in [s, *s.get("modules", [])]:
+                if m.get("type") in TIPI_MODULI_METEO and m.get("dashboard_data") is not None:
                     m = copy.deepcopy(m)
-                    if m.get("dashboard_data"):
-                        m["dashboard_data"]["time_utc"] = int(time.time() - self.eta_misura_min * 60)
+                    m["dashboard_data"]["time_utc"] = int(time.time() - self.eta_misura_min * 60)
                     moduli.append(normalizza_modulo_esterno(m, s))
         return moduli
 

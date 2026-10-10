@@ -144,9 +144,9 @@
         <input type="text" class="form-control" id="cfrStationName" value="{{ cfg.cfr_station_name }}" placeholder="es. Poggio al Vento">
       </div>
       <div class="col-md-3">
-        <label class="form-label">Modulo esterno Netatmo</label>
+        <label class="form-label">Sensore Netatmo</label>
         <select class="form-select" id="meteoModulo" data-valore="{{ cfg.meteo_modulo_id }}">
-          <option value="">Automatico (l'unico presente)</option>
+          <option value="">Automatico (l'unico modulo esterno)</option>
         </select>
         <div class="form-text">Stazione meteo Netatmo (serve il permesso <code>read_station</code>, in Credenziali API)</div>
       </div>
@@ -355,7 +355,7 @@ async function caricaFontiTemp() {
   try {
     const stato = await apiGetJson('/api/dispositivi/stato');
     for (const m of stato.meteo || []) {
-      const opt = new Option(`${m.nome} (${m.stazione})`, m.id);
+      const opt = new Option(`${m.nome} (${m.stazione}${m.esterno ? ', esterno' : ''})`, m.id);
       opt.selected = m.id === select.dataset.valore;
       select.add(opt);
     }
