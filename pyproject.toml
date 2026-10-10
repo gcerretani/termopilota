@@ -7,7 +7,7 @@ name = "termopilota"
 dynamic = ["version"]
 description = "Controllo del riscaldamento: caldaia a gas o pompa di calore, a seconda di cosa conviene."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "Giovanni Cerretani" }]

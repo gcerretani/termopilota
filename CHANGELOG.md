@@ -19,6 +19,8 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
   da riserva; vale solo una misura recente (60 minuti di default, configurabile), altrimenti si usa la
   previsione. La Home e le Previsioni indicano la fonte in uso; Impostazioni mostra le due misure a
   confronto.
+- **Python 3.14**: l'immagine Docker e la CI usano Python 3.14, ora la versione minima richiesta.
+
 
 ## [1.6.0] - 2026-10-09
 
