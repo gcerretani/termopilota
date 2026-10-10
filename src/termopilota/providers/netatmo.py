@@ -44,6 +44,38 @@ TIPI_MODULI_METEO = ("NAMain", "NAModule1", "NAModule2", "NAModule3", "NAModule4
 TIPI_MODULI_ESTERNI = ("NAModule1",)
 BATTERIA_MV = {"NAModule1": (3600, 6000)}   # tensione per 0% e 100%, se Netatmo non da' la percentuale
 
+# Misure dei sensori: chiave Netatmo normalizzata (minuscola, senza '_': getstationsdata scrive
+# 'Temperature' e 'CO2', homestatus 'temperature' e 'co2') -> (chiave, etichetta, unita', diagnostica).
+# Le chiavi numeriche non elencate entrano lo stesso, con la chiave come etichetta: un modulo nuovo
+# funziona senza toccare il codice.
+GRANDEZZE_NETATMO = {
+    "temperature": ("temperatura", "Temperatura", "°C", False),
+    "humidity": ("umidita", "Umidità", "%", False),
+    "co2": ("co2", "CO₂", "ppm", False),
+    "noise": ("rumore", "Rumore", "dB", False),
+    "pressure": ("pressione", "Pressione", "hPa", False),
+    "absolutepressure": ("pressione_assoluta", "Pressione assoluta", "hPa", False),
+    "mintemp": ("minima", "Minima di oggi", "°C", False),
+    "maxtemp": ("massima", "Massima di oggi", "°C", False),
+    "windstrength": ("vento", "Vento", "km/h", False),
+    "windangle": ("direzione_vento", "Direzione del vento", "°", False),
+    "guststrength": ("raffica", "Raffica", "km/h", False),
+    "gustangle": ("direzione_raffica", "Direzione della raffica", "°", False),
+    "maxwindstr": ("vento_massimo", "Vento massimo di oggi", "km/h", False),
+    "maxwindangle": ("direzione_vento_massimo", "Direzione del vento massimo", "°", False),
+    "rain": ("pioggia", "Pioggia", "mm", False),
+    "sumrain1": ("pioggia_1h", "Pioggia nell'ultima ora", "mm", False),
+    "sumrain24": ("pioggia_24h", "Pioggia di oggi", "mm", False),
+    "batterypercent": ("batteria", "Batteria", "%", True),
+    "rfstatus": ("segnale_radio", "Segnale radio", "", True),
+    "rfstrength": ("segnale_radio", "Segnale radio", "", True),
+    "wifistatus": ("segnale_wifi", "Segnale WiFi", "", True),
+    "wifistrength": ("segnale_wifi", "Segnale WiFi", "", True),
+}
+# Numeri che non sono misure: date e ore (epoch), versioni, tensione della batteria
+_NON_MISURE_PREFISSI = ("date", "time", "last")
+_NON_MISURE = {"ts", "firmware", "firmwarerevision", "batteryvp", "batterylevel", "setupdate"}
+
 MODALITA_STANZA = ("manual", "max", "home")
 
 
@@ -262,10 +294,6 @@ class NetatmoClient(ThermostatProvider):
                 rooms.append({"id": room["id"], "name": room.get("name", f"Stanza {room['id'][:6]}")})
         return rooms
 
-    def stato_tutte_stanze(self, home_id: str) -> dict:
-        rooms = self._homestatus(home_id).get("home", {}).get("rooms", [])
-        return {r["id"]: normalizza_stanza(r) for r in rooms}
-
     def stato_casa(self, home_id: str) -> dict:
         """Dati completi della casa: {'dati': homesdata della casa, 'stato': homestatus,
         'errori': moduli che homestatus segnala in errore}."""
@@ -296,16 +324,15 @@ class NetatmoClient(ThermostatProvider):
                         moduli.append(normalizza_modulo_esterno(modulo, stazione))
         if not moduli and home_id:
             moduli = self.moduli_esterni_casa(home_id)
+        if home_id:
+            casa = next((h for h in self._homesdata() if h.get("id") == home_id), {})
+            moduli = [m | stanza_del_modulo(casa, m["id"]) for m in moduli]
         return moduli
 
     def moduli_esterni_casa(self, home_id: str) -> list:
         """Sensori della stazione meteo nella casa, da homestatus; i nomi da homesdata."""
         casa = next((h for h in self._homesdata() if h.get("id") == home_id), {})
-        nomi = {m.get("id"): m for m in casa.get("modules", []) or []}
-        stato = self._homestatus(home_id).get("home", {})
-        return [normalizza_modulo_casa(m, nomi.get(m.get("id"), {}), casa.get("name"))
-                for m in stato.get("modules", []) or []
-                if m.get("type") in TIPI_MODULI_METEO and m.get("temperature") is not None]
+        return sensori_da_casa(casa, self._homestatus(home_id).get("home", {}))
 
     # ── Comandi ───────────────────────────────────────────────────────────────
 
@@ -406,6 +433,47 @@ def normalizza_stanza(r: dict) -> dict:
     }
 
 
+def _chiave_netatmo(chiave: str) -> str:
+    return chiave.lower().replace("_", "")
+
+
+def estrai_grandezze(*sorgenti: dict) -> list:
+    """Tutte le misure numeriche di un sensore: [{chiave, etichetta, unita, valore, diagnostica}].
+
+    Prima quelle note (nell'ordine di GRANDEZZE_NETATMO), poi le altre in ordine alfabetico;
+    una chiave gia' trovata in una sorgente precedente non si ripete."""
+    trovate = {}
+    for sorgente in sorgenti:
+        for chiave, valore in (sorgente or {}).items():
+            if isinstance(valore, bool) or not isinstance(valore, (int, float)):
+                continue
+            norm = _chiave_netatmo(chiave)
+            if norm in _NON_MISURE or norm.startswith(_NON_MISURE_PREFISSI):
+                continue
+            nostra, etichetta, unita, diagnostica = GRANDEZZE_NETATMO.get(norm, (norm, chiave, "", False))
+            trovate.setdefault(nostra, {"chiave": nostra, "etichetta": etichetta, "unita": unita,
+                                        "valore": float(valore), "diagnostica": diagnostica})
+    ordine = {v[0]: i for i, v in enumerate(GRANDEZZE_NETATMO.values())}
+    return sorted(trovate.values(), key=lambda g: (ordine.get(g["chiave"], len(ordine)), g["chiave"]))
+
+
+def sensori_da_casa(casa: dict, stato: dict) -> list:
+    """Sensori della stazione meteo tra i moduli di homestatus (`stato`, con i nomi dalla casa di
+    homesdata): quelli di un tipo meteo con almeno una misura."""
+    nomi = {m.get("id"): m for m in casa.get("modules", []) or []}
+    return [normalizza_modulo_casa(m, nomi.get(m.get("id"), {}), casa.get("name"))
+            for m in stato.get("modules", []) or []
+            if m.get("type") in TIPI_MODULI_METEO and any(not g["diagnostica"] for g in estrai_grandezze(m))]
+
+
+def stanza_del_modulo(casa: dict, modulo_id: str) -> dict:
+    """{room_id, stanza}: la stanza Netatmo (homesdata) in cui sta il modulo, se c'e'."""
+    modulo = next((m for m in casa.get("modules", []) or [] if m.get("id") == modulo_id), {})
+    rid = modulo.get("room_id")
+    stanza = next((r for r in casa.get("rooms", []) or [] if r.get("id") == rid), {})
+    return {"room_id": rid, "stanza": stanza.get("name") if rid else None}
+
+
 def normalizza_modulo_esterno(modulo: dict, stazione: dict) -> dict:
     """Base o modulo di getstationsdata nei campi usati da TermoPilota.
 
@@ -429,6 +497,7 @@ def normalizza_modulo_esterno(modulo: dict, stazione: dict) -> dict:
         "segnale_radio": modulo.get("rf_status"),
         "firmware": modulo.get("firmware"),
         "raggiungibile": modulo.get("reachable", True) is not False and bool(misure),
+        "grandezze": estrai_grandezze(misure, {k: modulo.get(k) for k in ("battery_percent", "rf_status", "wifi_status")}),
         "_campi": sorted(misure.keys()),
         "grezzo": modulo,
     }
@@ -460,7 +529,8 @@ def normalizza_modulo_casa(modulo: dict, dati: dict, nome_casa: Optional[str]) -
         "batteria_pct": batteria,
         "segnale_radio": modulo.get("rf_strength"),
         "firmware": modulo.get("firmware_revision"),
-        "raggiungibile": modulo.get("reachable", True) is not False and modulo.get("temperature") is not None,
+        "raggiungibile": modulo.get("reachable", True) is not False and modulo.get("ts") is not None,
+        "grandezze": estrai_grandezze(modulo, {"battery_percent": batteria}),
         "_campi": sorted(modulo.keys()),
         "grezzo": modulo,
     }

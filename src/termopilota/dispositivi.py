@@ -497,21 +497,66 @@ def letture_per_storico(snap: dict) -> list:
             "extra": {"richiesta_calore_pct": richiesta, "target": st.get("target"),
                       "finestra_aperta": st.get("finestra_aperta"), "caldaia_accesa": st.get("caldaia_accesa")},
         })
-    for m in (snap.get("meteo") or {}).values():
-        if m.get("temperatura") is None:
-            continue    # modulo non raggiungibile: nessuna misura
-        righe.append(riga_meteo(m["id"], m.get("nome"), m.get("temperatura"), m.get("umidita"),
-                                {"ora_misura": m.get("ora_misura"), "batteria_pct": m.get("batteria_pct"),
-                                 "segnale_radio": m.get("segnale_radio")}))
     return righe
 
 
-def riga_meteo(ident: str, nome, temperatura, umidita=None, extra: Optional[dict] = None) -> dict:
-    """Riga di letture_dispositivi per una fonte di temperatura esterna (modulo
-    Netatmo o, con id 'cfr:<stazione>', la stazione CFR per il confronto)."""
-    return {"tipo": "meteo", "id": ident, "nome": nome, "t_ambiente": temperatura, "umidita": umidita,
-            "setpoint": None, "attivo": None, "modalita": None, "energia_wh": None, "potenza_w": None,
-            "extra": extra or {}}
+# Misure di condizionatori e termostati per lo storico generico (tabella `misure`):
+# (campo dello stato normalizzato, grandezza, etichetta, unita', fattore)
+MISURE_AC = (
+    ("temperatura_ambiente", "temperatura", "Temperatura", "°C", 1),
+    ("setpoint_riscaldamento", "setpoint", "Temperatura impostata", "°C", 1),
+    ("umidita", "umidita", "Umidità", "%", 1),
+    ("potenza_w", "potenza", "Potenza", "W", 1),
+    ("energia_wh", "energia", "Contatore energia", "kWh", 0.001),
+)
+MISURE_STANZA = (
+    ("temperatura_attuale", "temperatura", "Temperatura", "°C", 1),
+    ("setpoint", "setpoint", "Termostato", "°C", 1),
+    ("target", "target", "Target del programma", "°C", 1),
+    ("richiesta_calore_pct", "richiesta_calore", "Richiesta di calore", "%", 1),
+    ("umidita", "umidita", "Umidità", "%", 1),
+)
+
+
+def misura(sorgente: str, ident: str, nome, grandezza: str, etichetta: str, unita: str, valore) -> dict:
+    """Riga della tabella `misure` (con nome, etichetta e unita' per il catalogo delle serie)."""
+    return {"sorgente": sorgente, "id": ident, "nome": nome, "grandezza": grandezza,
+            "etichetta": etichetta, "unita": unita, "valore": float(valore)}
+
+
+def _numero(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def misure_per_storico(snap: dict) -> list:
+    """Tutte le misure numeriche della fotografia, una riga per (dispositivo, grandezza):
+    condizionatori ('ac'), termostati ('stanza') e sensori ('sensore', ogni grandezza)."""
+    righe = []
+    for ac in snap.get("ac", {}).values():
+        s = ac.get("stato") or {}
+        if not s:
+            continue
+        for campo, grandezza, etichetta, unita, fattore in MISURE_AC:
+            if _numero(s.get(campo)):
+                righe.append(misura("ac", ac["id"], ac["nome"], grandezza, etichetta, unita, s[campo] * fattore))
+        if s.get("acceso") is not None:
+            righe.append(misura("ac", ac["id"], ac["nome"], "acceso", "Acceso", "", 1 if s["acceso"] else 0))
+    for st in snap.get("stanze", {}).values():
+        for campo, grandezza, etichetta, unita, fattore in MISURE_STANZA:
+            if _numero(st.get(campo)):
+                righe.append(misura("stanza", st["id"], st["nome"], grandezza, etichetta, unita, st[campo] * fattore))
+    for m in (snap.get("meteo") or {}).values():
+        if not m.get("raggiungibile"):
+            continue    # sensore non raggiungibile: valori vecchi
+        for g in m.get("grandezze") or []:
+            righe.append(misura("sensore", m["id"], m.get("nome"), g["chiave"], g["etichetta"], g["unita"], g["valore"]))
+    return righe
+
+
+def sensori_stanza(snap: dict, room_id: str) -> list:
+    """Sensori (stazione meteo) che Netatmo mette nella stanza `room_id`, senza i dati grezzi."""
+    return [{k: v for k, v in m.items() if k not in ("grezzo", "_campi")}
+            for m in (snap.get("meteo") or {}).values() if room_id and m.get("room_id") == room_id]
 
 
 def riepilogo(snap: dict) -> dict:

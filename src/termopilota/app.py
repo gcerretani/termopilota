@@ -1226,11 +1226,12 @@ def api_dispositivo(tipo, ident):
                          "stato": {k: v for k, v in st.items() if k not in ("grezzo", "moduli", "_campi")},
                          "moduli": [{k: v for k, v in m.items() if k != "grezzo"} for m in st["moduli"]],
                          "grezzo": {"stanza": st["grezzo"], "moduli": [m["grezzo"] for m in st["moduli"]]},
-                         "casa": {k: v for k, v in (snap["casa"] or {}).items() if k != "grezzo"}})
+                         "casa": {k: v for k, v in (snap["casa"] or {}).items() if k != "grezzo"},
+                         "sensori": dispositivi.sensori_stanza(snap, ident)})
     elif tipo == "meteo":
         m = (snap.get("meteo") or {}).get(ident)
         if not m:
-            return jsonify({"errore": "Modulo esterno non trovato", **risposta}), 404
+            return jsonify({"errore": "Sensore non trovato", **risposta}), 404
         in_uso = dispositivi.modulo_meteo(snap, cfg.get("meteo_modulo_id", ""))
         risposta.update({"nome": m["nome"], "errore": m["errore"],
                          "stato": {k: v for k, v in m.items() if k not in ("grezzo", "_campi")}
@@ -1250,8 +1251,9 @@ def api_dispositivo(tipo, ident):
 @app.route("/api/dispositivi/<tipo>/<ident>/storico")
 @login_required
 def api_dispositivo_storico(tipo, ident):
-    if tipo not in ("ac", "stanza", "meteo"):
-        return jsonify({"errore": "Storico disponibile solo per condizionatori, stanze e stazione meteo"}), 404
+    if tipo not in ("ac", "stanza"):
+        # I sensori hanno solo le serie generiche: /api/serie/dati
+        return jsonify({"errore": "Storico disponibile solo per condizionatori e stanze"}), 404
     oggi = datetime.now().date()
     da = request.args.get("da", (oggi - timedelta(days=1)).isoformat())
     a = request.args.get("a", oggi.isoformat())
@@ -1267,11 +1269,71 @@ def api_dispositivo_storico(tipo, ident):
     risposta = {"da": da, "a": a, "risoluzione": risoluzione, "punti": punti}
     if tipo == "ac" and risoluzione == "grezza":
         risposta["energia"] = storico.energia_ac(da, a, "oraria", ident)
-    station_id = carica_config().get("cfr_station_id", "")
-    if tipo == "meteo" and station_id:
-        # La stazione CFR, per il confronto con il modulo esterno
-        risposta["cfr"] = storico.leggi_letture("meteo", f"cfr:{station_id}", da, a, risoluzione)
     return jsonify(risposta)
+
+
+# ─── Serie storiche generiche (grafici di tutte le misure) ───────────────────
+
+SEPARATORE_SERIE = "|"     # chiave "sorgente|id|grandezza" (gli id Netatmo contengono ':')
+
+
+def _chiave_serie(s: dict) -> str:
+    return SEPARATORE_SERIE.join((s["sorgente"], s["id"], s["grandezza"]))
+
+
+def _periodo_richiesta() -> tuple:
+    """(da, a, risoluzione) dagli argomenti, o un messaggio d'errore."""
+    oggi = datetime.now().date()
+    da = request.args.get("da", (oggi - timedelta(days=1)).isoformat())
+    a = request.args.get("a", oggi.isoformat())
+    risoluzione = request.args.get("risoluzione", "grezza")
+    if risoluzione not in ("grezza", "oraria", "giornaliera"):
+        return None, "risoluzione deve essere 'grezza', 'oraria' o 'giornaliera'"
+    try:
+        if datetime.strptime(da, "%Y-%m-%d") > datetime.strptime(a, "%Y-%m-%d"):
+            return None, "'da' dopo 'a'"
+    except ValueError:
+        return None, "date nel formato YYYY-MM-DD"
+    return (da, a, risoluzione), None
+
+
+@app.route("/api/serie")
+@login_required
+def api_serie():
+    """Catalogo delle serie che si possono mettere su un grafico, per dispositivo."""
+    gruppi = {}
+    for s in storico.catalogo_serie():
+        gruppo = gruppi.setdefault((s["sorgente"], s["id"]), {
+            "sorgente": s["sorgente"], "id": s["id"], "nome": s["nome"] or s["id"], "serie": []})
+        gruppo["serie"].append({"chiave": _chiave_serie(s), "grandezza": s["grandezza"],
+                                "etichetta": s["etichetta"] or s["grandezza"], "unita": s["unita"] or "",
+                                "ultimo_ts": s["ultimo_ts"]})
+    return jsonify({"dispositivi": list(gruppi.values()), "max_serie": storico.MAX_SERIE})
+
+
+@app.route("/api/serie/dati")
+@login_required
+def api_serie_dati():
+    """Valori delle serie richieste (`s` ripetuto, al massimo MAX_SERIE) nel periodo."""
+    chiavi = request.args.getlist("s")
+    if not chiavi:
+        return jsonify({"errore": "indica almeno una serie (s=sorgente|id|grandezza)"}), 400
+    if len(chiavi) > storico.MAX_SERIE:
+        return jsonify({"errore": f"al massimo {storico.MAX_SERIE} serie per grafico"}), 400
+    periodo, errore = _periodo_richiesta()
+    if errore:
+        return jsonify({"errore": errore}), 400
+    da, a, risoluzione = periodo
+    catalogo = {_chiave_serie(s): s for s in storico.catalogo_serie()}
+    sconosciute = [c for c in chiavi if c not in catalogo]
+    if sconosciute:
+        return jsonify({"errore": f"serie sconosciute: {', '.join(sconosciute)}"}), 400
+    tuple_chiavi = [tuple(c.split(SEPARATORE_SERIE, 2)) for c in chiavi]
+    valori = storico.leggi_serie(tuple_chiavi, da, a, risoluzione)
+    return jsonify({"da": da, "a": a, "risoluzione": risoluzione, "serie": [
+        {"chiave": c, "nome": catalogo[c]["nome"], "etichetta": catalogo[c]["etichetta"],
+         "unita": catalogo[c]["unita"] or "", "punti": valori[t]}
+        for c, t in zip(chiavi, tuple_chiavi)]})
 
 
 def _esito_comando(funzione, descrizione: Optional[str] = None, oggetto: Optional[str] = None, dati=None):
@@ -1782,6 +1844,7 @@ def api_stanza(room_id):
         "automazione_attiva": servizio["attiva"],
         "calcolo": _calcolo_stanza(cfg, zona, stanza),
         "differenza_sensori": storico.differenza_sensori(room_id, acid),
+        "sensori": dispositivi.sensori_stanza(snap, room_id),
         "oggetti_registro": oggetti,
         "errori": snap["errori"],
         "letto_alle": snap["letto_alle"],
@@ -2193,14 +2256,16 @@ def raccomandazione_ora_corrente(cfg: dict) -> Optional[dict]:
 
 
 def _letture_dispositivi() -> list:
-    """Letture per lo storico (ogni 15 min): niente se non ci sono dispositivi."""
+    """Letture per lo storico (ogni 15 min): niente se non ci sono dispositivi. Le righe di
+    letture_dispositivi (AC e stanze) e quelle della tabella generica `misure` (ogni misura di
+    ogni dispositivo, piu' la stazione CFR)."""
     cfg = carica_config()
-    righe = dispositivi.letture_per_storico(dispositivi.snapshot(cfg))
+    snap = dispositivi.snapshot(cfg)
+    righe = dispositivi.letture_per_storico(snap) + dispositivi.misure_per_storico(snap)
     cfr = misure_temp_esterna(cfg)["cfr"]
     if cfr:
-        # Anche la CFR, per confrontarla con il modulo esterno Netatmo
-        righe.append(dispositivi.riga_meteo(f"cfr:{cfr['id']}", cfr["nome"], cfr["temp"],
-                                            extra={"ora_misura": cfr["ts"].isoformat(timespec="minutes")}))
+        righe.append(dispositivi.misura("cfr", cfr["id"], cfr["nome"], "temperatura", "Temperatura", "°C",
+                                        cfr["temp"]))
     return righe
 
 

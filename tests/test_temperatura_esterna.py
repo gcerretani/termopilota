@@ -208,21 +208,29 @@ def test_elenco_e_dettaglio_del_modulo_esterno(utente_client, finti):
     assert d["nome"] == "Esterno" and d["stato"]["temperatura"] == 9.3 and d["stato"]["in_uso"] is True
     assert d["grezzo"]["dashboard_data"]["Humidity"] == 81 and d["letto_alle"]
     html = utente_client.get(f"/dispositivi/meteo/{MODULO}").get_data(as_text=True)
-    assert "Stazione meteo" in html and 'id="controlli"' not in html
+    assert "<title>Sensore" in html and 'id="controlli"' not in html
     assert utente_client.get("/api/dispositivi/meteo/nessuno").status_code == 404
 
 
-def test_letture_e_storico_con_la_cfr_per_confronto(utente_client, finti, cfr):
+def test_misure_e_serie_con_la_cfr_per_confronto(utente_client, finti, cfr):
     from termopilota import app as modulo_app
     from termopilota import storico
-    righe = modulo_app._letture_dispositivi()
-    meteo = {r["id"]: r for r in righe if r["tipo"] == "meteo"}
-    assert meteo[MODULO]["t_ambiente"] == 9.3 and meteo[MODULO]["umidita"] == 81.0
-    assert meteo["cfr:TOS01"]["t_ambiente"] == 11.0 and meteo["cfr:TOS01"]["nome"] == "Poggio"
+    righe = [r for r in modulo_app._letture_dispositivi() if "sorgente" in r]
+    misure = {(r["sorgente"], r["id"], r["grandezza"]): r for r in righe}
+    assert misure[("sensore", MODULO, "temperatura")]["valore"] == 9.3
+    assert misure[("sensore", MODULO, "umidita")]["valore"] == 81.0
+    assert misure[("sensore", "70:ee:50:00:00:01", "co2")]["unita"] == "ppm"      # la base, con la CO2
+    assert misure[("cfr", "TOS01", "temperatura")]["valore"] == 11.0
+    assert misure[("cfr", "TOS01", "temperatura")]["nome"] == "Poggio"
+    storico.registra_misure(datetime.now().strftime("%Y-%m-%dT%H:%M"), righe)
+    catalogo = {g["id"]: g for g in utente_client.get("/api/serie").get_json()["dispositivi"]}
+    assert {"temperatura", "umidita", "minima", "massima", "batteria", "segnale_radio"} <= {
+        s["grandezza"] for s in catalogo[MODULO]["serie"]}
     oggi = datetime.now().date().isoformat()
-    storico.registra_letture(datetime.now().strftime("%Y-%m-%dT%H:%M"), righe)
-    d = utente_client.get(f"/api/dispositivi/meteo/{MODULO}/storico?da={oggi}&a={oggi}").get_json()
-    assert d["punti"][0]["t_ambiente"] == 9.3 and d["cfr"][0]["t_ambiente"] == 11.0
+    d = utente_client.get(f"/api/serie/dati?s=sensore|{MODULO}|temperatura&s=cfr|TOS01|temperatura"
+                          f"&da={oggi}&a={oggi}").get_json()
+    assert [s["punti"][0]["valore"] for s in d["serie"]] == [9.3, 11.0]
+    assert d["serie"][0]["unita"] == "°C" and d["serie"][1]["nome"] == "Poggio"
 
 
 def test_campione_orario_con_fonte_netatmo(finti, cfr, monkeypatch):

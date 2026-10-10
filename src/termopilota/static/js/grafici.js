@@ -207,6 +207,84 @@ const TPGrafici = (function () {
     },
   };
 
+  // Periodo di un intervallo predefinito ('24h' | '7g' | '30g' | 'stagione'): {da, a, risoluzione}
+  function periodo(intervallo) {
+    const oggi = new Date();
+    const a = giornoLocale(oggi);
+    if (intervallo === '7g') return { da: giornoLocale(new Date(Date.now() - 6 * 86400000)), a, risoluzione: 'oraria' };
+    if (intervallo === '30g') return { da: giornoLocale(new Date(Date.now() - 29 * 86400000)), a, risoluzione: 'giornaliera' };
+    if (intervallo === 'stagione') {
+      // Stagione termica: dal 1° ottobre (dell'anno scorso se siamo prima di ottobre)
+      const anno = oggi.getMonth() >= 9 ? oggi.getFullYear() : oggi.getFullYear() - 1;
+      return { da: `${anno}-10-01`, a, risoluzione: 'giornaliera' };
+    }
+    return { da: giornoLocale(new Date(Date.now() - 86400000)), a, risoluzione: 'grezza' };
+  }
+
+  // Etichetta dell'asse x per un periodo "YYYY-MM-DDTHH:MM" | "YYYY-MM-DDTHH" | "YYYY-MM-DD"
+  function etichettaPeriodo(p, risoluzione) {
+    if (risoluzione === 'grezza') return p.slice(11, 16);
+    const base = `${p.slice(8, 10)}/${p.slice(5, 7)}`;
+    return p.length > 10 ? `${base} ${p.slice(11, 13)}:00` : base;
+  }
+
+  // Colori delle serie di un grafico libero: prima quelli del tema, poi una tavolozza fissa
+  const TAVOLOZZA = ['ac', 'gas', 'verde', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6', 'neutro'];
+  function coloreSerie(i) {
+    const c = TAVOLOZZA[i % TAVOLOZZA.length];
+    return c.startsWith('#') ? c : (colori()[c] || c);
+  }
+
+  // Un asse y per unita' di misura, alternati a sinistra e a destra: {scales, asse: {unita: idAsse}}
+  function assiPerUnita(unita) {
+    const scales = {};
+    const asse = {};
+    [...new Set(unita)].forEach((u, i) => {
+      const id = `y${i}`;
+      asse[u] = id;
+      scales[id] = {
+        position: i % 2 ? 'right' : 'left',
+        border: { display: false },
+        grid: { color: colore('griglia'), drawTicks: false, drawOnChartArea: i === 0 },
+        ticks: { padding: 6, maxTicksLimit: 5 },
+        title: { display: !!u && !mobile(), text: u },
+      };
+    });
+    return { scales, asse };
+  }
+
+  // Grafico di serie qualsiasi (risposta di /api/serie/dati): asse x = tutti i periodi,
+  // un asse y per unita', colori dalla tavolozza. `serie` = [{label, unita, punti: [{periodo, valore}]}].
+  function graficoSerie(canvas, serie, risoluzione, { legenda: el } = {}) {
+    const periodi = [...new Set(serie.flatMap(s => s.punti.map(p => p.periodo)))].sort();
+    const { scales, asse } = assiPerUnita(serie.map(s => s.unita || ''));
+    const datasets = serie.map((s, i) => {
+      const c = coloreSerie(i);
+      const valori = Object.fromEntries(s.punti.map(p => [p.periodo, p.valore]));
+      return {
+        label: s.label, unita: s.unita || '', coloreHex: c, yAxisID: asse[s.unita || ''],
+        data: periodi.map(p => valori[p] ?? null), spanGaps: true,
+        borderColor: c, backgroundColor: alfa(c, 0.12), pointHoverBackgroundColor: c,
+        pointHoverBorderColor: colore('pannello'),
+      };
+    });
+    const opzioni = opzioniBase({ maxTickX: mobile() ? 5 : 8 });
+    delete opzioni.scales.y;
+    Object.assign(opzioni.scales, scales);
+    opzioni.plugins.tooltip = { callbacks: { label: ctx => {
+      const v = ctx.parsed.y;
+      const u = ctx.dataset.unita;
+      return ` ${ctx.dataset.label}: ${v === null ? '—' : `${Number(v.toFixed(2))}${u ? (u === '%' || u === '°C' ? u : ` ${u}`) : ''}`}`;
+    } } };
+    const chart = new Chart(canvas, {
+      type: 'line',
+      data: { labels: periodi.map(p => etichettaPeriodo(p, risoluzione)), datasets },
+      options: opzioni,
+    });
+    if (el) legenda(el, chart);
+    return chart;
+  }
+
   // Legenda HTML: chip cliccabili che mostrano/nascondono le serie
   function legenda(contenitore, chart) {
     const el = typeof contenitore === 'string' ? document.getElementById(contenitore) : contenitore;
@@ -217,7 +295,8 @@ const TPGrafici = (function () {
       b.type = 'button';
       b.className = 'tp-legend-chip';
       b.setAttribute('aria-pressed', 'true');
-      b.innerHTML = `<span class="tp-legend-swatch" style="--sw:var(${ds.coloreVar || '--chart-neutral'})"></span>${escapeHtml(ds.label)}`;
+      const sw = ds.coloreHex || `var(${ds.coloreVar || '--chart-neutral'})`;
+      b.innerHTML = `<span class="tp-legend-swatch" style="--sw:${sw}"></span>${escapeHtml(ds.label)}`;
       b.addEventListener('click', () => {
         const visibile = chart.isDatasetVisible(i);
         chart.setDatasetVisibility(i, !visibile);
@@ -238,5 +317,6 @@ const TPGrafici = (function () {
     });
   }
 
-  return { colori, colore, gradiente, alfa, opzioniBase, legenda, mobile };
+  return { colori, colore, gradiente, alfa, opzioniBase, legenda, mobile, periodo, etichettaPeriodo, coloreSerie, graficoSerie,
+           assiPerUnita };
 })();

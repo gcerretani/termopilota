@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ {'ac': 'Condizionatore', 'stanza': 'Stanza', 'casa': 'Casa', 'meteo': 'Stazione meteo'}[tipo] }}{% endblock %}
+{% block title %}{{ {'ac': 'Condizionatore', 'stanza': 'Termostato', 'casa': 'Casa', 'meteo': 'Sensore'}[tipo] }}{% endblock %}
 
 {% block head_extra %}
 {% if tipo != 'casa' %}<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>{% endif %}
@@ -25,6 +25,19 @@
     <div class="tp-dati" id="datiPrincipali"></div>
     <div id="zoneCollegate" class="mt-3"></div>
   </section>
+
+  {% if tipo == 'stanza' %}
+  <!-- Sensori che Netatmo mette nella stessa stanza (solo per monitoraggio) -->
+  <section class="tp-card" id="sezioneSensori" style="display:none;">
+    <div class="tp-card-header">
+      <div>
+        <h2 class="tp-card-title"><i class="bi bi-cloud-sun"></i>Sensori nella stanza</h2>
+        <div class="tp-card-sub">Della stazione meteo: si vedono qui, l'automazione usa il termostato</div>
+      </div>
+    </div>
+    <div id="sensoriStanza"></div>
+  </section>
+  {% endif %}
 
   {% if tipo != 'meteo' %}
   <!-- Controlli -->
@@ -56,7 +69,10 @@
   {% if tipo != 'casa' %}
   <!-- Grafici -->
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <div class="tp-section-title m-0">Andamento</div>
+    <div class="d-flex align-items-center gap-3">
+      <div class="tp-section-title m-0">Andamento</div>
+      <a class="tp-card-link" id="linkEsplora" href="/storico#esplora" style="display:none;">Esplora <i class="bi bi-chevron-right"></i></a>
+    </div>
     <div class="tp-segmented" role="group" aria-label="Intervallo">
       <button type="button" class="active" data-intervallo="24h" aria-pressed="true">24 ore</button>
       <button type="button" data-intervallo="7g" aria-pressed="false">7 giorni</button>
@@ -67,6 +83,9 @@
     <i class="bi bi-hourglass-split me-2"></i>
     Nessuna lettura ancora per questo intervallo: TermoPilota registra i dispositivi ogni 15 minuti.
   </div>
+  {% if tipo == 'meteo' %}
+  <div class="row g-3" id="graficiSensore"></div>
+  {% else %}
   <div class="row g-3">
     <div class="col-lg-6">
       <section class="tp-card h-100">
@@ -105,6 +124,7 @@
       </section>
     </div>
   </div>
+  {% endif %}
   {% endif %}
 
   <!-- Tutti i valori -->

@@ -7,10 +7,31 @@ adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Aggiunto
+- **Sensori**: tutti i moduli della stazione meteo Netatmo (base, modulo esterno, moduli interni,
+  anemometro, pluviometro) compaiono in Dispositivi con tutte le loro misure: temperatura, umidità,
+  CO₂, rumore, pressione, vento, pioggia, più batteria e segnale. Le misure si ricavano dai dati,
+  quindi anche un modulo nuovo si vede senza aggiornare TermoPilota.
+- **Sensori nella stanza**: se Netatmo mette un sensore nella stessa stanza di un termostato, la
+  pagina della stanza e quella del termostato lo mostrano a parte. L'automazione continua a usare
+  solo il termostato.
+- **Esplora i dati** (in Storico): ogni misura di sensori, termostati e condizionatori, la stazione CFR
+  e i valori calcolati (temperatura esterna usata, COP, costi) su un grafico, fino a 8 insieme con un
+  asse per unità di misura. La scelta resta nell'indirizzo; dalle pagine dei dispositivi il
+  collegamento "Esplora" apre le loro misure. Le misure ogni 15 minuti restano 90 giorni, poi si
+  conservano le medie orarie.
+
+### Modificato
+- **Temperatura esterna**: si può usare un sensore Netatmo qualsiasi che misuri la temperatura (di
+  default l'unico modulo esterno).
+- **Dispositivi**: le sezioni si chiamano "Termostati" e "Sensori"; la pagina di un sensore mostra un
+  grafico per ogni unità di misura.
+
 ### Corretto
 - **Termostati**: la stanza del modulo esterno della stazione meteo non compare più tra i termostati
   (era segnata "non raggiungibile"): una stanza si mostra solo se contiene un termostato. I sensori
-  della stazione si riconoscono dal tipo di modulo, qualunque sia la stanza o il nome.
+  della stazione si riconoscono dal tipo di modulo, qualunque sia la stanza o il nome, e non
+  compaiono più come moduli del termostato (per esempio la base accanto al termostato dello studio).
 - **Stazione meteo facoltativa**: senza stazione non compare nessun avviso (né in Home né in
   Previsioni); in Credenziali API resta solo un suggerimento. Se Netatmo non espone la stazione con
   `getstationsdata`, i valori si leggono dal modulo che la casa già elenca.

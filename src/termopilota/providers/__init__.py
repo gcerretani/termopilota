@@ -167,11 +167,6 @@ class ThermostatProvider(ABC):
         ...
 
     @abstractmethod
-    def stato_tutte_stanze(self, home_id: str) -> dict:
-        """Restituisce {room_id: {temperatura_attuale, setpoint, modalita, sta_riscaldando}} per tutte le stanze."""
-        ...
-
-    @abstractmethod
     def imposta_modalita(self, home_id: str, room_id: str, mode: str, setpoint: float = 7.0,
                          fine: Optional[int] = None) -> bool:
         """Imposta modalita' termostato. mode: 'OFF' (manuale a `setpoint` fino a `fine`,
